@@ -1,0 +1,7 @@
+.build/
+dist/
+artifacts/
+vendor/
+.swiftpm/
+.DS_Store
+*.dmg

@@ -1,0 +1,85 @@
+import Foundation
+
+enum L {
+    static var isChinese: Bool {
+        Locale.preferredLanguages.first?.lowercased().hasPrefix("zh") == true
+    }
+
+    static func t(_ key: String) -> String {
+        guard isChinese else { return key }
+        return zh[key] ?? key
+    }
+
+    private static let zh: [String: String] = [
+        "Transcribe": "转写",
+        "Downloads": "下载",
+        "Models": "模型",
+        "History": "历史",
+        "Settings": "设置",
+        "Whisper Metal": "声迹",
+        "Add": "添加",
+        "Clear": "清空",
+        "Outputs": "输出",
+        "Run": "运行",
+        "Cancel": "取消",
+        "Drop audio or video files": "拖入音频或视频文件",
+        "Choose local media files to transcribe with the selected GGML model.": "选择本地媒体文件并使用当前 GGML 模型转写。",
+        "Run Log": "运行日志",
+        "Debug Log": "调试日志",
+        "Clear Log": "清除日志",
+        "No run output yet.": "暂无运行输出。",
+        "Live Transcript": "实时转写",
+        "No transcript yet.": "暂无转写内容。",
+        "Queue": "队列",
+        "Queue is empty": "队列为空",
+        "Open": "打开",
+        "Reveal": "在访达中显示",
+        "Remove": "移除",
+        "Delete": "删除",
+        "Model": "模型",
+        "Active model": "当前模型",
+        "No local models": "无本地模型",
+        "Import GGML Model": "导入 GGML 模型",
+        "Output": "输出",
+        "Output folder": "输出文件夹",
+        "Recognition": "识别",
+        "Task": "任务",
+        "Language": "语言",
+        "Use Metal GPU": "使用 Metal GPU",
+        "Print timestamps": "输出时间戳",
+        "Stereo diarization": "立体声说话人分离",
+        "Voice Activity": "语音活动检测",
+        "Use Silero VAD": "使用 Silero VAD",
+        "VAD model": "VAD 模型",
+        "Threshold": "阈值",
+        "Performance": "性能",
+        "Prompt": "提示词",
+        "Initial prompt": "初始提示词",
+        "Advanced Decoding": "高级解码",
+        "Download or import GGML models used by whisper.cpp.": "下载或导入 whisper.cpp 使用的 GGML 模型。",
+        "Installed": "已安装",
+        "No installed models": "无已安装模型",
+        "Download": "下载",
+        "Voice Activity Models": "语音活动模型",
+        "Refresh": "刷新",
+        "Import": "导入",
+        "Use": "使用",
+        "YouTube / URL Downloads": "YouTube / URL 下载",
+        "Video or playlist URL": "视频或播放列表 URL",
+        "Audio only": "仅音频",
+        "Add downloaded files to queue": "下载后加入队列",
+        "Download Media": "下载媒体",
+        "yt-dlp Runtime": "yt-dlp 运行时",
+        "Update yt-dlp": "更新 yt-dlp",
+        "YouTube uses yt-dlp. Direct URLs use streaming or accelerated download when available.": "YouTube 使用 yt-dlp；直连 URL 会优先使用流式或可用的加速下载。",
+        "Keep downloaded files": "保留下载文件",
+        "Ready": "就绪",
+        "Finished": "完成",
+        "Failed": "失败",
+        "Cancelled": "已取消",
+        "Auto Detect": "自动检测",
+        "Translate": "翻译",
+        "Completed Runs": "已完成任务",
+        "No completed runs": "暂无完成任务"
+    ]
+}
