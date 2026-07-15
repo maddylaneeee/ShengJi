@@ -94,6 +94,27 @@ enum LiveCaptionSlidingWindow {
     }
 }
 
+enum LiveCaptionReadabilityPolicy {
+    /// Keep a completed recognition segment as context while the next partial
+    /// result continues to slide. This prevents punctuation/final boundaries
+    /// from looking like the caption was instantly cleared without freezing UI.
+    static let completedSegmentHoldDuration = Duration.seconds(2)
+
+    static func shouldHoldPrevious(_ line: LiveCaptionLine?) -> Bool {
+        guard let line else { return false }
+        return line.isFinal && !LiveCaptionDisplayFormatter.normalized(line.text).isEmpty
+    }
+
+    static func displayText(held: String?, current: String) -> String {
+        let current = LiveCaptionDisplayFormatter.normalized(current)
+        guard let held else { return current }
+        let heldNormalized = LiveCaptionDisplayFormatter.normalized(held)
+        guard !heldNormalized.isEmpty else { return current }
+        guard !current.isEmpty, current != heldNormalized else { return heldNormalized }
+        return heldNormalized + "  " + current
+    }
+}
+
 private struct PendingLiveTranslation: Sendable {
     let lineID: UUID
     let text: String
@@ -130,6 +151,7 @@ final class LiveCaptionController {
     private(set) var isPreparingTranslation = false
     private(set) var lines: [LiveCaptionLine] = []
     private(set) var errorMessage: String?
+    private(set) var heldCompletedText: String?
 
     @ObservationIgnored private var pipelines: [any LiveCaptionPipeline] = []
     @ObservationIgnored private let panelPresenter = LiveCaptionPanelPresenter()
@@ -140,6 +162,7 @@ final class LiveCaptionController {
     @ObservationIgnored private var translationRevisions: [UUID: Int] = [:]
     @ObservationIgnored private var partialFirstSeenAt: [UUID: Date] = [:]
     @ObservationIgnored private var partialLastEnqueuedAt: [UUID: Date] = [:]
+    @ObservationIgnored private var completedTextHoldTask: Task<Void, Never>?
     @ObservationIgnored private var nextTranslationRevision = 0
     @ObservationIgnored private var sourceLocale: Locale = .current
 
@@ -175,7 +198,10 @@ final class LiveCaptionController {
         if isLiveTranslationActive {
             return LiveCaptionDisplayFormatter.normalized(latestTranslatedText ?? "正在等待 Apple Translation…")
         }
-        return LiveCaptionDisplayFormatter.normalized(latestOriginalText)
+        return LiveCaptionReadabilityPolicy.displayText(
+            held: heldCompletedText,
+            current: latestOriginalText
+        )
     }
 
     var secondaryText: String? {
@@ -202,6 +228,7 @@ final class LiveCaptionController {
         normalizeTargetLanguageForLiveTranslation(sourceLocale: locale)
         errorMessage = nil
         lines = []
+        clearCompletedTextHold()
         translationCache.removeAll(keepingCapacity: true)
         translationRevisions.removeAll(keepingCapacity: true)
         partialFirstSeenAt.removeAll(keepingCapacity: true)
@@ -243,6 +270,7 @@ final class LiveCaptionController {
 
     func stop() async {
         cancelPendingTranslation()
+        clearCompletedTextHold()
         let runningPipelines = pipelines
         pipelines = []
         for pipeline in runningPipelines {
@@ -341,6 +369,11 @@ final class LiveCaptionController {
             lines[last].updatedAt = now
             lineID = lines[last].id
         } else {
+            if heldCompletedText == nil,
+               let previous = lines.last,
+               LiveCaptionReadabilityPolicy.shouldHoldPrevious(previous) {
+                holdCompletedText(previous.text)
+            }
             let line = LiveCaptionLine(source: source.label, text: displayText, isFinal: isFinal, updatedAt: now)
             lines.append(line)
             lineID = line.id
@@ -356,6 +389,25 @@ final class LiveCaptionController {
             lines.removeFirst(lines.count - 5)
         }
         scheduleTranslation(for: lineID, text: displayText, isFinal: isFinal)
+    }
+
+    private func holdCompletedText(_ text: String) {
+        let normalized = LiveCaptionDisplayFormatter.normalized(text)
+        guard !normalized.isEmpty else { return }
+        heldCompletedText = normalized
+        completedTextHoldTask?.cancel()
+        completedTextHoldTask = Task { [weak self] in
+            try? await Task.sleep(for: LiveCaptionReadabilityPolicy.completedSegmentHoldDuration)
+            guard !Task.isCancelled else { return }
+            self?.heldCompletedText = nil
+            self?.completedTextHoldTask = nil
+        }
+    }
+
+    private func clearCompletedTextHold() {
+        completedTextHoldTask?.cancel()
+        completedTextHoldTask = nil
+        heldCompletedText = nil
     }
 
     private func scheduleTranslation(for lineID: UUID?, text: String, isFinal: Bool) {

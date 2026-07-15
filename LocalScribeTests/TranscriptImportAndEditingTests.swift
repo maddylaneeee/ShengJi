@@ -66,4 +66,28 @@ final class TranscriptImportAndEditingTests: XCTestCase {
             "今天的天气很好"
         )
     }
+
+    func testLiveCaptionCompletedSegmentIsHeldAtBoundary() {
+        let completed = LiveCaptionLine(
+            source: "麦克风",
+            text: "这句话已经完成。",
+            isFinal: true
+        )
+        let partial = LiveCaptionLine(
+            source: "麦克风",
+            text: "下一句话",
+            isFinal: false
+        )
+
+        XCTAssertTrue(LiveCaptionReadabilityPolicy.shouldHoldPrevious(completed))
+        XCTAssertFalse(LiveCaptionReadabilityPolicy.shouldHoldPrevious(partial))
+        XCTAssertEqual(LiveCaptionReadabilityPolicy.completedSegmentHoldDuration, .seconds(2))
+        XCTAssertEqual(
+            LiveCaptionReadabilityPolicy.displayText(
+                held: completed.text,
+                current: "下一句话仍在继续"
+            ),
+            "这句话已经完成。  下一句话仍在继续"
+        )
+    }
 }
