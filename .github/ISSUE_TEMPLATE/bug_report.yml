@@ -1,0 +1,96 @@
+name: Bug report
+description: Report a reproducible problem in LocalScribe.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve LocalScribe. Please remove private transcript content before attaching logs or screenshots.
+
+  - type: input
+    id: version
+    attributes:
+      label: LocalScribe version
+      description: Open Settings → About to find the version and build number.
+      placeholder: 1.3.6 (18)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mac
+    attributes:
+      label: Mac model
+      options:
+        - Apple silicon MacBook Air
+        - Apple silicon MacBook Pro
+        - Apple silicon Mac mini / Studio / Pro
+        - Intel Mac (not currently supported)
+        - Other / unknown
+    validations:
+      required: true
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 26.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Recognition or translation engine
+      options:
+        - Apple Speech
+        - Whisper
+        - SenseVoice
+        - NVIDIA Parakeet
+        - Apple Translation
+        - NLLB
+        - Not engine-specific
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the input type and model, but do not upload private audio without permission.
+      placeholder: |
+        1. Open LocalScribe…
+        2. Select…
+        3. Start…
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Additional diagnostics
+      description: Add redacted logs, screenshots, model name, media duration, and approximate memory use when relevant.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for the same problem.
+          required: true
+        - label: I removed private or sensitive transcript content.
+          required: true
