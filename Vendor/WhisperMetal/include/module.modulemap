@@ -1,0 +1,8 @@
+module WhisperMetal {
+    header "whisper.h"
+    export *
+    link "c++"
+    link framework "Accelerate"
+    link framework "Foundation"
+    link framework "Metal"
+}
