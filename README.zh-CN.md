@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/maddylaneeee/ShengJi/actions/workflows/ci.yml/badge.svg)](https://github.com/maddylaneeee/ShengJi/actions/workflows/ci.yml)
 
-声迹是一款原生 macOS 本地语音转录应用。它可以转录麦克风、音频或视频文件以及 Mac 正在播放的声音，并提供本地翻译、稿件编辑、字幕导入导出和可恢复的长任务工作流。
+声迹是一款原生 macOS 本地语音转录应用，支持**简体中文和英文**。它可以转录麦克风、音频或视频文件以及 Mac 正在播放的声音，并提供本地翻译、稿件编辑、字幕导入导出和可恢复的长任务工作流。
 
 当前源码版本：**1.4.0（19）**
 
