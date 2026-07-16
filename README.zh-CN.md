@@ -6,6 +6,7 @@
 [![Apple silicon](https://img.shields.io/badge/Apple%20silicon-arm64-555555)](https://support.apple.com/guide/mac-help/about-this-mac-mchl3a2c2cb0/mac)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/maddylaneeee/ShengJi/actions/workflows/ci.yml/badge.svg)](https://github.com/maddylaneeee/ShengJi/actions/workflows/ci.yml)
+[![下载 macOS 版](https://img.shields.io/badge/下载-macOS%20DMG-0A84FF?logo=github)](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg)
 
 声迹是一款原生 macOS 本地语音转录应用。它可以转录麦克风、音频或视频文件以及 Mac 正在播放的声音，并提供本地翻译、稿件编辑、字幕导入导出和可恢复的长任务工作流。
 
@@ -32,9 +33,16 @@
 | 支持平台 | Apple silicon，macOS 15.5+ |
 | Apple 本地识别与实时字幕 | macOS 26+ |
 | Intel Mac | 暂不支持 |
-| 公开安装包 | Developer ID 签名与 Apple 公证版本尚未发布 |
+| 公开安装包 | GitHub Releases 提供未公证的 Apple silicon DMG；Developer ID 版本尚未发布 |
 
-目前 GitHub 不提供正式签名的二进制安装包。仓库中的本机打包脚本和独立更新通道用于开发验收，不代表已经通过 Apple 公证的公开发行版。希望试用的开发者可按下方步骤从源码构建。
+## 下载与安装
+
+1. [下载最新版 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg)。
+2. 打开 DMG，将“声迹”拖到 Applications。
+3. 首次双击会被 macOS 拦截。尝试打开一次后，进入“系统设置 → 隐私与安全性”，点击“仍要打开”，再确认“打开”。
+
+> [!WARNING]
+> 此安装包只有 ad-hoc 完整性签名，没有 Apple Developer ID 签名，也没有经过 Apple 公证。仅当你信任本仓库及对应 Release 时才应绕过警告。Release 同时提供 SHA-256 校验文件；最稳妥的公开分发仍然是 Developer ID 签名并公证。
 
 ## 功能
 
@@ -102,13 +110,13 @@ xcodebuild \
 
 CI 使用 GitHub 官方 `macos-26` Apple Silicon runner 执行测试和 Release 静态分析。
 
-本机发布脚本会生成经过签名层级、架构、最低系统版本、嵌套 Mach-O 和解压启动检查的 ZIP：
+本机发布脚本会生成经过签名层级、架构、最低系统版本、嵌套 Mach-O、解压启动和 DMG 挂载检查的 ZIP 与 DMG：
 
 ```sh
 ./tools/package_local_release.sh
 ```
 
-该脚本默认不覆盖已安装应用；本机验收时可显式设置 `INSTALL_LOCAL_COPY=1`。公开分发仍应使用 Developer ID、时间戳、公证和 stapling，不应把本机签名产物当作正式公开发行包。
+该脚本默认使用本机开发证书且不覆盖已安装应用；本机验收时可显式设置 `INSTALL_LOCAL_COPY=1`。设置 `CODESIGN_IDENTITY=-` 可生成与 GitHub Actions 一致的 ad-hoc 包。推送与 `Info.plist` 版本一致的标签（例如 `v1.4.0`）后，`release-unsigned.yml` 会构建、验证并创建 GitHub Release，无需保存签名证书或密码到 GitHub Secrets。
 
 ## CLI
 
@@ -121,9 +129,9 @@ CI 使用 GitHub 官方 `macos-26` Apple Silicon runner 执行测试和 Release 
 
 ## 应用内更新
 
-默认更新清单：<https://lixinchen.ca/localscribe/update.json>
+默认更新清单：<https://github.com/maddylaneeee/ShengJi/releases/latest/download/update.json>
 
-更新器会下载 ZIP、校验 SHA-256、核对 Bundle ID、版本和最低系统要求，并在用户确认后替换应用。更新站点与 GitHub 源码仓库相互独立。
+更新器会从 GitHub Release 下载 ZIP、校验 SHA-256、核对 Bundle ID、版本和最低系统要求，并在用户确认后替换应用。
 
 ## 隐私与文档
 

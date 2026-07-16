@@ -6,13 +6,23 @@
 [![Apple silicon](https://img.shields.io/badge/Apple%20silicon-arm64-555555)](https://support.apple.com/guide/mac-help/about-this-mac-mchl3a2c2cb0/mac)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/maddylaneeee/ShengJi/actions/workflows/ci.yml/badge.svg)](https://github.com/maddylaneeee/ShengJi/actions/workflows/ci.yml)
+[![Download for macOS](https://img.shields.io/badge/download-macOS%20DMG-0A84FF?logo=github)](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg)
 
 Native, local-first transcription, live captions, transcript editing, and optional on-device translation for Apple silicon Macs.
 
 LocalScribe can transcribe microphones, audio and video files, and audio playing on your Mac. It combines Apple Speech, whisper.cpp, SenseVoice, NVIDIA Parakeet, Apple Translation, and NLLB behind one native SwiftUI interface.
 
 > [!IMPORTANT]
-> **Developer Beta — testers wanted.** The current source version is **1.4.0 (19)**. A Developer ID-signed and notarized public binary is not available yet, so this beta is currently intended for developers who can build with Xcode. Please report results and hardware details in [GitHub Discussions](https://github.com/maddylaneeee/ShengJi/discussions) or [Issues](https://github.com/maddylaneeee/ShengJi/issues).
+> **Developer Beta — testers wanted.** The current source version is **1.4.0 (19)**. GitHub Releases provides an ad-hoc signed, unnotarized Apple silicon build. A Developer ID-signed and notarized binary is not available yet. Please report results and hardware details in [GitHub Discussions](https://github.com/maddylaneeee/ShengJi/discussions) or [Issues](https://github.com/maddylaneeee/ShengJi/issues).
+
+## Download and install
+
+1. [Download the latest DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg).
+2. Open it and drag ShengJi to Applications.
+3. The first launch will be blocked. After trying once, open System Settings → Privacy & Security, click Open Anyway, then confirm Open.
+
+> [!WARNING]
+> This build has an ad-hoc integrity signature only. It is neither Developer ID signed nor notarized by Apple. Override the warning only if you trust this repository and its Release. SHA-256 files are included with every Release.
 
 ![ShengJi home screen in English with model selection, import, translation and live-caption controls](Documentation/Screenshots/home-en.png)
 
@@ -108,13 +118,13 @@ xcodebuild \
 
 CI runs the tests and Release static analysis on GitHub's macOS 26 Apple silicon runner.
 
-The local packaging script validates nested signatures, architectures, deployment targets, embedded Mach-O files, archive extraction, and helper startup:
+The local packaging script creates ZIP and DMG artifacts and validates nested signatures, architectures, deployment targets, embedded Mach-O files, archive extraction, DMG mounting, and helper startup:
 
 ```sh
 ./tools/package_local_release.sh
 ```
 
-Its locally signed output is for development acceptance only. A public release should use a Developer ID certificate, timestamping, Apple notarization, and stapling.
+By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` to make the same ad-hoc package produced by GitHub Actions. Pushing a tag that matches the version in `Info.plist` (for example, `v1.4.0`) runs `release-unsigned.yml`, verifies the package, and creates the GitHub Release without storing a certificate or password in GitHub Secrets. Developer ID signing, timestamping, notarization, and stapling remain the preferred public distribution path.
 
 ## CLI
 
@@ -129,7 +139,7 @@ Its locally signed output is for development acceptance only. A public release s
 
 LocalScribe does not upload recognition audio or imported transcripts. Network access is used for user-initiated model downloads, update checks, and opening external documentation.
 
-The built-in updater downloads a ZIP, verifies SHA-256, checks the bundle identifier and version, and asks before replacing the app. The development update channel is independent of this GitHub repository and is not a substitute for a notarized public release.
+The built-in updater reads `update.json` from the latest GitHub Release, downloads its ZIP, verifies SHA-256, checks the bundle identifier and version, and asks before replacing the app. This update path is not a substitute for a notarized public release.
 
 ## Documentation
 

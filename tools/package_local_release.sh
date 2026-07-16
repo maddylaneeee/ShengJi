@@ -3,9 +3,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IDENTITY="${CODESIGN_IDENTITY:-MLCCS Local Code Signing}"
-VERSION="1.4.0"
-BUILD="19"
+INFO_PLIST="$ROOT/LocalScribe/Resources/Info.plist"
+VERSION="${VERSION:-$(plutil -extract CFBundleShortVersionString raw "$INFO_PLIST")}"
+BUILD="${BUILD:-$(plutil -extract CFBundleVersion raw "$INFO_PLIST")}"
 INSTALL_LOCAL_COPY="${INSTALL_LOCAL_COPY:-0}"
+GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}"
+RELEASE_TAG="${RELEASE_TAG:-${GITHUB_REF_NAME:-v${VERSION}}}"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK_ROOT="${TMPDIR:-/tmp}/codex-macos-packager/shengji-${VERSION}-${BUILD}-${RUN_ID}"
 ARCHIVE="$WORK_ROOT/声迹.xcarchive"
@@ -13,8 +16,13 @@ STAGE="$WORK_ROOT/stage"
 VERIFY="$WORK_ROOT/verify"
 APP="$STAGE/声迹.app"
 OUTPUT="$ROOT/dist/${VERSION}-${BUILD}"
-ZIP_NAME="声迹-macOS15.5-arm64-${VERSION}.zip"
+ZIP_NAME="ShengJi-macOS-arm64.zip"
 ZIP="$OUTPUT/$ZIP_NAME"
+DMG_NAME="ShengJi-macOS-arm64.dmg"
+DMG="$OUTPUT/$DMG_NAME"
+DMG_STAGE="$WORK_ROOT/dmg"
+DMG_MOUNT="$WORK_ROOT/dmg-mount"
+UPDATE_MANIFEST="$OUTPUT/update.json"
 REPORT="$OUTPUT/BUILD-REPORT-${VERSION}-${BUILD}.md"
 MACHO_AUDIT="$OUTPUT/MACHO-AUDIT-${VERSION}-${BUILD}.txt"
 LOCAL_DESKTOP_APPS="/Users/mattlixinchen/Desktop/Apps"
@@ -36,9 +44,20 @@ DESKTOP_APPS="$(resolve_desktop_apps)"
 
 mkdir -p "$WORK_ROOT" "$STAGE" "$VERIFY" "$OUTPUT"
 
-if ! security find-identity -v -p codesigning | rg -Fq "\"$IDENTITY\""; then
+plutil -lint \
+  "$INFO_PLIST" \
+  "$ROOT/LocalScribe/Resources/LocalScribe.entitlements" \
+  "$ROOT/LocalScribe/Resources/LocalScribeHelper.entitlements"
+
+if [[ "$IDENTITY" != "-" ]] && ! security find-identity -v -p codesigning | rg -Fq "\"$IDENTITY\""; then
   print -u2 "找不到代码签名证书：$IDENTITY"
   exit 2
+fi
+
+if [[ "$IDENTITY" == "-" ]]; then
+  SIGNING_DESCRIPTION="ad-hoc（无 Apple Developer ID，不公证）"
+else
+  SIGNING_DESCRIPTION="$IDENTITY（非 Apple Developer ID，不公证）"
 fi
 
 xcodebuild \
@@ -153,6 +172,7 @@ done < "$MACHO_LIST"
 
 rm -f "$ZIP"
 COPYFILE_DISABLE=1 ditto -c -k --norsrc --keepParent "$APP" "$ZIP"
+unzip -t "$ZIP" > "$WORK_ROOT/zip-test.txt"
 ditto -x -k "$ZIP" "$VERIFY"
 EXTRACTED_APP="$(find "$VERIFY" -maxdepth 1 -type d -name '*.app' -print -quit)"
 xattr -dr com.apple.FinderInfo "$EXTRACTED_APP" 2>/dev/null || true
@@ -179,11 +199,46 @@ fi
 SHA256="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
 print -r -- "$SHA256  $ZIP_NAME" > "$ZIP.sha256"
 
-cat > "$OUTPUT/update-manifest-${VERSION}-${BUILD}.json" <<EOF
+rm -rf "$DMG_STAGE" "$DMG_MOUNT"
+mkdir -p "$DMG_STAGE" "$DMG_MOUNT"
+ditto --norsrc "$APP" "$DMG_STAGE/声迹.app"
+ln -s /Applications "$DMG_STAGE/Applications"
+rm -f "$DMG"
+hdiutil create -quiet -fs HFS+ -format UDZO -volname "声迹 ${VERSION}" \
+  -srcfolder "$DMG_STAGE" "$DMG"
+hdiutil verify "$DMG"
+MOUNT_DEVICE="$(hdiutil attach -quiet -readonly -nobrowse -mountpoint "$DMG_MOUNT" "$DMG" | awk 'NR == 1 { print $1 }')"
+detach_dmg() {
+  [[ -z "${MOUNT_DEVICE:-}" ]] && return 0
+  local attempt
+  for attempt in 1 2 3; do
+    if hdiutil detach -quiet "$MOUNT_DEVICE" 2>/dev/null; then
+      MOUNT_DEVICE=""
+      return 0
+    fi
+    sleep 1
+  done
+  hdiutil detach -quiet -force "$MOUNT_DEVICE"
+  MOUNT_DEVICE=""
+}
+trap 'detach_dmg || true' EXIT
+codesign --verify --deep --strict --verbose=2 "$DMG_MOUNT/声迹.app"
+[[ -L "$DMG_MOUNT/Applications" ]]
+detach_dmg
+DMG_SHA256="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+print -r -- "$DMG_SHA256  $DMG_NAME" > "$DMG.sha256"
+
+if [[ -n "$GITHUB_REPOSITORY" ]]; then
+  DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ZIP_NAME}"
+else
+  DOWNLOAD_URL="file://$ZIP"
+fi
+
+cat > "$UPDATE_MANIFEST" <<EOF
 {
   "version": "$VERSION",
   "build": "$BUILD",
-  "download_url": "file://$ZIP",
+  "download_url": "$DOWNLOAD_URL",
   "sha256": "$SHA256",
   "release_notes": "声迹 1.4.0：新增完整英文界面，并根据 macOS 首选语言自动切换；本地化资源采用可扩展结构，方便后续继续添加语言。",
   "minimum_system_version": "15.5",
@@ -201,7 +256,7 @@ cat > "$REPORT" <<EOF
 - Bundle ID：ca.lixinchen.localscribe
 - 架构：arm64
 - 最低系统：macOS 15.5
-- 签名：$IDENTITY；Hardened Runtime；timestamp=none
+- 签名：$SIGNING_DESCRIPTION；Hardened Runtime；timestamp=none
 - Library Validation：仅 Sherpa 与 NLLB helper 局部禁用（无 Team ID 本机证书兼容）；主 App 未禁用
 - 嵌套 Mach-O 数量：$MACHO_COUNT
 - Whisper：whisper.cpp v1.9.1，Metal→CPU；内置 Silero VAD v6.2.0；整段文件由 whisper.cpp 自动推进窗口
@@ -209,6 +264,8 @@ cat > "$REPORT" <<EOF
 - NLLB：CTranslate2 CPU/int8
 - ZIP：$ZIP_NAME
 - SHA-256：$SHA256
+- DMG：$DMG_NAME
+- DMG SHA-256：$DMG_SHA256
 - 静态验证：Bundle 元数据、arm64、Mach-O 最低系统版本、源码泄漏、逐层签名、严格深层签名均通过
 - 解压验证：在非 iCloud 临时目录解压后严格验签和 CLI/helper 启动通过
 - 本机交付：默认仅生成更新 ZIP，优先通过应用内更新安装；仅在 INSTALL_LOCAL_COPY=1 时覆盖 $DESKTOP_APPS/声迹.app
@@ -218,15 +275,15 @@ cat > "$REPORT" <<EOF
 - macOS 15.5：本轮按用户选择完成静态兼容性审计；真实功能回归在 macOS 26.5.2 完成，未创建 15.5 VM
 EOF
 
-mkdir -p "$DESKTOP_APPS" "$LOCAL_APPS"
-for supplemental_report in \
-  "$OUTPUT/RUNTIME-VERIFICATION-${VERSION}-${BUILD}.md" \
-  "$OUTPUT/FILE-DIFF-${VERSION}-${BUILD}.md"; do
-  if [[ -f "$supplemental_report" ]]; then
-    cp "$supplemental_report" "$DESKTOP_APPS/"
-  fi
-done
 if [[ "$INSTALL_LOCAL_COPY" == "1" ]]; then
+  mkdir -p "$DESKTOP_APPS" "$LOCAL_APPS"
+  for supplemental_report in \
+    "$OUTPUT/RUNTIME-VERIFICATION-${VERSION}-${BUILD}.md" \
+    "$OUTPUT/FILE-DIFF-${VERSION}-${BUILD}.md"; do
+    if [[ -f "$supplemental_report" ]]; then
+      cp "$supplemental_report" "$DESKTOP_APPS/"
+    fi
+  done
   if [[ -e "$CANONICAL_APP" || -L "$CANONICAL_APP" ]]; then
     mv "$CANONICAL_APP" "$LOCAL_APPS/声迹-${VERSION}-previous-${RUN_ID}.app"
   fi
@@ -245,6 +302,7 @@ if [[ "$INSTALL_LOCAL_COPY" == "1" ]]; then
 fi
 
 print "发布完成：$ZIP"
+print "DMG：$DMG"
 if [[ "$INSTALL_LOCAL_COPY" == "1" ]]; then
   print "桌面 App：$DESKTOP_APPS/声迹.app（备用覆盖安装）"
 else
