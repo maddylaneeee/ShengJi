@@ -486,11 +486,15 @@ struct SegmentTranslation: Codable, Identifiable, Hashable, Sendable {
     let errorMessage: String?
 
     var displayText: String {
+        displayText(languageCode: nil)
+    }
+
+    func displayText(languageCode: String?) -> String {
         switch state {
         case .translated, .sourceLanguage:
             translatedText
         case .fallback:
-            L10n.format("【未翻译】%@", sourceText)
+            L10n.format("【未翻译】%@", languageCode: languageCode, sourceText)
         }
     }
 

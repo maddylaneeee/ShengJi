@@ -67,7 +67,8 @@ final class TranslationStructureTests: XCTestCase {
             errorMessage: "mock failure"
         )
 
-        XCTAssertEqual(failed.displayText, "【未翻译】保留我")
+        XCTAssertEqual(failed.displayText(languageCode: "en"), "[Not translated] 保留我")
+        XCTAssertEqual(failed.displayText(languageCode: "zh-Hans"), "【未翻译】保留我")
         XCTAssertEqual(failed.transcriptSegment.id, source.id)
     }
 
