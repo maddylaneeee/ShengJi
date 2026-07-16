@@ -141,6 +141,9 @@ VAD_MODEL="$APP/Contents/Resources/WhisperVAD/ggml-silero-v6.2.0.bin"
 [[ -f "$VAD_MODEL" ]]
 [[ "$(stat -f %z "$VAD_MODEL")" == "885098" ]]
 [[ "$(shasum -a 256 "$VAD_MODEL" | awk '{print $1}')" == "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987" ]]
+NLLB_BASE_LIBRARY="$APP/Contents/Resources/NLLBTranslator/runtime/LocalScribeNLLB/_internal/base_library.zip"
+[[ -f "$NLLB_BASE_LIBRARY" ]]
+unzip -t "$NLLB_BASE_LIBRARY" > "$WORK_ROOT/nllb-base-library-test.txt"
 
 if find "$APP" -type f \( -name '*.swift' -o -name '*.c' -o -name '*.cpp' -o -name 'translate_helper.py' \) -print -quit | grep -q .; then
   print -u2 "发布包中发现不应包含的源码。"

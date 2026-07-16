@@ -9,6 +9,7 @@ DerivedData/
 *.profraw
 *.dmg
 *.zip
+!Vendor/NLLBTranslator/runtime/LocalScribeNLLB/_internal/base_library.zip
 *.log
 Vendor/NLLBTranslator/__pycache__/
 LocalScribe/Resources/SherpaOnnx/
