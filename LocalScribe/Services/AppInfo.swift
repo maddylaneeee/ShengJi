@@ -25,7 +25,7 @@ enum AppInfo {
                let url = URL(string: value) {
                 return url
             }
-            return URL(string: "https://lixinchen.ca/localscribe/update.json")!
+            return URL(string: "https://github.com/maddylaneeee/ShengJi/releases/latest/download/update.json")!
         }
         set {
             UserDefaults.standard.set(newValue.absoluteString, forKey: "UpdateManifestURL")

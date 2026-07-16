@@ -1,0 +1,78 @@
+name: Release unsigned macOS app
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package-and-release:
+    name: Package and publish
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Validate release tag
+        if: github.event_name == 'push'
+        run: |
+          version="$(plutil -extract CFBundleShortVersionString raw LocalScribe/Resources/Info.plist)"
+          test "$GITHUB_REF_NAME" = "v$version"
+
+      - name: Build ad-hoc signed release
+        env:
+          CODESIGN_IDENTITY: '-'
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: ./tools/package_local_release.sh
+
+      - name: Save workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShengJi-macOS-${{ github.ref_name }}
+          path: |
+            dist/**/ShengJi-macOS-arm64.dmg
+            dist/**/ShengJi-macOS-arm64.dmg.sha256
+            dist/**/ShengJi-macOS-arm64.zip
+            dist/**/ShengJi-macOS-arm64.zip.sha256
+            dist/**/update.json
+            dist/**/BUILD-REPORT-*.md
+            dist/**/MACHO-AUDIT-*.txt
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          output="$(dirname "$(find dist -name ShengJi-macOS-arm64.dmg -type f -print -quit)")"
+          test -n "$output"
+          notes="$RUNNER_TEMP/release-notes.md"
+          {
+            echo '## 安装 / Installation'
+            echo
+            echo '下载 `ShengJi-macOS-arm64.dmg`，打开后将“声迹”拖入 Applications。'
+            echo
+            echo '> 此版本没有 Apple Developer ID 签名或 Apple 公证。首次启动会被 macOS 拦截；尝试打开一次后，请前往“系统设置 → 隐私与安全性 → 仍要打开”。仅在信任本仓库时继续。'
+            echo
+            echo 'Download `ShengJi-macOS-arm64.dmg`, then drag ShengJi to Applications.'
+            echo
+            echo '> This build is not Developer ID signed or notarized. After the first blocked launch, use System Settings → Privacy & Security → Open Anyway, and proceed only if you trust this repository.'
+          } > "$notes"
+          gh release create "$GITHUB_REF_NAME" \
+            "$output/ShengJi-macOS-arm64.dmg" \
+            "$output/ShengJi-macOS-arm64.dmg.sha256" \
+            "$output/ShengJi-macOS-arm64.zip" \
+            "$output/ShengJi-macOS-arm64.zip.sha256" \
+            "$output/update.json" \
+            --title "声迹 $GITHUB_REF_NAME" \
+            --notes-file "$notes" \
+            --verify-tag
