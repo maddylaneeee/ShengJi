@@ -57,15 +57,11 @@ jobs:
           test -n "$output"
           notes="$RUNNER_TEMP/release-notes.md"
           {
-            echo '## 安装 / Installation'
+            echo '## Installation'
             echo
-            echo '下载 `ShengJi-macOS-arm64.dmg`，打开后将“声迹”拖入 Applications。'
+            echo 'Download `ShengJi-macOS-arm64.dmg`, open it, and drag ShengJi to Applications.'
             echo
-            echo '> 此版本没有 Apple Developer ID 签名或 Apple 公证。首次启动会被 macOS 拦截；尝试打开一次后，请前往“系统设置 → 隐私与安全性 → 仍要打开”。仅在信任本仓库时继续。'
-            echo
-            echo 'Download `ShengJi-macOS-arm64.dmg`, then drag ShengJi to Applications.'
-            echo
-            echo '> This build is not Developer ID signed or notarized. After the first blocked launch, use System Settings → Privacy & Security → Open Anyway, and proceed only if you trust this repository.'
+            echo '> This build is not Developer ID signed or notarized by Apple. After the first blocked launch, open System Settings → Privacy & Security, click Open Anyway, and then confirm Open. Continue only if you trust this repository.'
           } > "$notes"
           gh release create "$GITHUB_REF_NAME" \
             "$output/ShengJi-macOS-arm64.dmg" \
@@ -73,6 +69,6 @@ jobs:
             "$output/ShengJi-macOS-arm64.zip" \
             "$output/ShengJi-macOS-arm64.zip.sha256" \
             "$output/update.json" \
-            --title "声迹 $GITHUB_REF_NAME" \
+            --title "ShengJi $GITHUB_REF_NAME" \
             --notes-file "$notes" \
             --verify-tag

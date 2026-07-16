@@ -1,6 +1,6 @@
-# LocalScribe · 声迹
+# ShengJi · LocalScribe
 
-**English** | [简体中文](README.zh-CN.md)
+**English** | [Chinese (Simplified)](README.zh-CN.md)
 
 [![macOS 15.5+](https://img.shields.io/badge/macOS-15.5%2B-000000?logo=apple)](https://support.apple.com/macos)
 [![Apple silicon](https://img.shields.io/badge/Apple%20silicon-arm64-555555)](https://support.apple.com/guide/mac-help/about-this-mac-mchl3a2c2cb0/mac)
@@ -129,9 +129,9 @@ By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` t
 ## CLI
 
 ```sh
-声迹.app/Contents/MacOS/LocalScribe --cli help
-声迹.app/Contents/MacOS/LocalScribe --cli models --json
-声迹.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
+ShengJi.app/Contents/MacOS/LocalScribe --cli help
+ShengJi.app/Contents/MacOS/LocalScribe --cli models --json
+ShengJi.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
   --engine whisper --language en_US --format srt --output output.srt
 ```
 

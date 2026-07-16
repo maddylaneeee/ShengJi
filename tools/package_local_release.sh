@@ -55,9 +55,9 @@ if [[ "$IDENTITY" != "-" ]] && ! security find-identity -v -p codesigning | grep
 fi
 
 if [[ "$IDENTITY" == "-" ]]; then
-  SIGNING_DESCRIPTION="ad-hoc（无 Apple Developer ID，不公证）"
+  SIGNING_DESCRIPTION="ad hoc (no Apple Developer ID; not notarized)"
 else
-  SIGNING_DESCRIPTION="$IDENTITY（非 Apple Developer ID，不公证）"
+  SIGNING_DESCRIPTION="$IDENTITY (not an Apple Developer ID; not notarized)"
 fi
 
 xcodebuild \
@@ -257,7 +257,7 @@ cat > "$UPDATE_MANIFEST" <<EOF
   "build": "$BUILD",
   "download_url": "$DOWNLOAD_URL",
   "sha256": "$SHA256",
-  "release_notes": "声迹 1.4.0：新增完整英文界面，并根据 macOS 首选语言自动切换；本地化资源采用可扩展结构，方便后续继续添加语言。",
+  "release_notes": "ShengJi 1.4.0 adds a complete English interface, follows the preferred macOS language automatically, and uses an extensible localization structure for future languages.",
   "minimum_system_version": "15.5",
   "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "size_bytes": $(stat -f %z "$ZIP")
@@ -266,30 +266,30 @@ EOF
 
 MACHO_COUNT="$(wc -l < "$MACHO_LIST" | tr -d ' ')"
 cat > "$REPORT" <<EOF
-# 声迹 ${VERSION}（${BUILD}）本机发布报告
+# ShengJi ${VERSION} (${BUILD}) Local Release Report
 
-- 源码：$ROOT
-- 构建时间（UTC）：$(date -u +%Y-%m-%dT%H:%M:%SZ)
-- Bundle ID：ca.lixinchen.localscribe
-- 架构：arm64
-- 最低系统：macOS 15.5
-- 签名：$SIGNING_DESCRIPTION；Hardened Runtime；timestamp=none
-- Library Validation：仅 Sherpa 与 NLLB helper 局部禁用（无 Team ID 本机证书兼容）；主 App 未禁用
-- 嵌套 Mach-O 数量：$MACHO_COUNT
-- Whisper：whisper.cpp v1.9.1，Metal→CPU；内置 Silero VAD v6.2.0；整段文件由 whisper.cpp 自动推进窗口
-- SenseVoice/Parakeet：自动优先尝试 Core ML，失败后回退 CPU；实际计算单元由系统选择
-- NLLB：CTranslate2 CPU/int8
-- ZIP：$ZIP_NAME
-- SHA-256：$SHA256
-- DMG：$DMG_NAME
-- DMG SHA-256：$DMG_SHA256
-- 静态验证：Bundle 元数据、arm64、Mach-O 最低系统版本、源码泄漏、逐层签名、严格深层签名均通过
-- 解压验证：在非 iCloud 临时目录解压后严格验签和 CLI/helper 启动通过
-- 本机交付：默认仅生成更新 ZIP，优先通过应用内更新安装；仅在 INSTALL_LOCAL_COPY=1 时覆盖 $DESKTOP_APPS/声迹.app
-- Gatekeeper：本机自签名证书不是 Developer ID，spctl 拒绝属于预期，不作为包损坏判据
-- 运行验证：见 RUNTIME-VERIFICATION-${VERSION}-${BUILD}.md；Debug、Release、Analyze、单元测试和真实 GUI/CLI Whisper 回归结果记录在该报告中
-- 差异摘要：见 FILE-DIFF-${VERSION}-${BUILD}.md
-- macOS 15.5：本轮按用户选择完成静态兼容性审计；真实功能回归在 macOS 26.5.2 完成，未创建 15.5 VM
+- Source: $ROOT
+- Build time (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)
+- Bundle ID: ca.lixinchen.localscribe
+- Architecture: arm64
+- Minimum system version: macOS 15.5
+- Signing: $SIGNING_DESCRIPTION; Hardened Runtime; timestamp=none
+- Library validation: disabled only for the isolated Sherpa and NLLB helpers to support a local certificate without a Team ID; enabled for the main app
+- Nested Mach-O count: $MACHO_COUNT
+- Whisper: whisper.cpp v1.9.1, Metal with CPU fallback; bundled Silero VAD v6.2.0; whisper.cpp advances its own windows over complete files
+- SenseVoice/Parakeet: tries Core ML first and falls back to CPU; macOS selects the actual compute units
+- NLLB: CTranslate2 CPU/int8
+- ZIP: $ZIP_NAME
+- SHA-256: $SHA256
+- DMG: $DMG_NAME
+- DMG SHA-256: $DMG_SHA256
+- Static verification: bundle metadata, arm64 architecture, Mach-O deployment targets, source leakage checks, leaf signing, and strict deep signing passed
+- Extraction verification: strict signing and CLI/helper startup checks passed after extraction to a non-iCloud temporary directory
+- Local delivery: creates only the updater ZIP by default; set INSTALL_LOCAL_COPY=1 to replace the locally installed app
+- Gatekeeper: rejection by spctl is expected for a local non-Developer-ID certificate and is not treated as package corruption
+- Runtime verification: see RUNTIME-VERIFICATION-${VERSION}-${BUILD}.md for Debug, Release, Analyze, unit test, and real GUI/CLI Whisper regression results
+- Change summary: see FILE-DIFF-${VERSION}-${BUILD}.md
+- macOS 15.5: static compatibility was audited; real feature regression testing was completed on macOS 26.5.2 without creating a 15.5 VM
 EOF
 
 if [[ "$INSTALL_LOCAL_COPY" == "1" ]]; then
