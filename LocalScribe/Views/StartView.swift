@@ -113,15 +113,15 @@ struct StartView: View {
     @ViewBuilder
     private var actionButtons: some View {
         StartActionButton(
-            title: "麦克风转录",
-            detail: "进入后选择设置并手动开始",
+            title: L10n.text("麦克风转录"),
+            detail: L10n.text("进入后选择设置并手动开始"),
             symbol: "mic.fill",
             isEnabled: canStartMicrophone,
             action: startMicrophone
         )
         StartActionButton(
-            title: "音频或视频文件",
-            detail: "导入后仍可切换模型与功能",
+            title: L10n.text("音频或视频文件"),
+            detail: L10n.text("导入后仍可切换模型与功能"),
             symbol: "folder.badge.plus",
             isEnabled: canChooseFile,
             action: chooseFile
@@ -185,14 +185,16 @@ struct StartView: View {
     private var liveCaptionControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) {
-                    liveCaptionLanguagePicker
-                    liveCaptionInputPicker
+                HStack(alignment: .top, spacing: 18) {
+                    liveCaptionLanguageControl
+                        .frame(width: 250, alignment: .leading)
+                    liveCaptionInputControl
+                        .frame(minWidth: 410, maxWidth: .infinity, alignment: .leading)
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    liveCaptionLanguagePicker
-                    liveCaptionInputPicker
+                VStack(alignment: .leading, spacing: 14) {
+                    liveCaptionLanguageControl
+                    liveCaptionInputControl
                 }
             }
 
@@ -202,27 +204,39 @@ struct StartView: View {
         }
     }
 
-    private var liveCaptionLanguagePicker: some View {
-        Picker("字幕语言", selection: $liveCaptions.localeIdentifier) {
-            ForEach(catalog.languages) { language in
-                Text(language.displayName).tag(language.id)
+    private var liveCaptionLanguageControl: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("字幕语言")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            Picker("字幕语言", selection: $liveCaptions.localeIdentifier) {
+                ForEach(catalog.languages) { language in
+                    Text(language.displayName).tag(language.id)
+                }
             }
+            .labelsHidden()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .disabled(catalog.isLoading || liveCaptions.isRunning)
+            .mainMenuHoverFeedback(isEnabled: !catalog.isLoading && !liveCaptions.isRunning)
         }
-        .frame(minWidth: 190, maxWidth: 260)
-        .disabled(catalog.isLoading || liveCaptions.isRunning)
-        .mainMenuHoverFeedback(isEnabled: !catalog.isLoading && !liveCaptions.isRunning)
     }
 
-    private var liveCaptionInputPicker: some View {
-        Picker("声音来源", selection: $liveCaptions.inputMode) {
-            ForEach(LiveCaptionInputMode.allCases) { mode in
-                Label(mode.title, systemImage: mode.symbol).tag(mode)
+    private var liveCaptionInputControl: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("声音来源")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            Picker("声音来源", selection: $liveCaptions.inputMode) {
+                ForEach(LiveCaptionInputMode.allCases) { mode in
+                    Label(mode.title, systemImage: mode.symbol).tag(mode)
+                }
             }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(maxWidth: .infinity)
+            .disabled(liveCaptions.isRunning)
+            .mainMenuHoverFeedback(isEnabled: !liveCaptions.isRunning)
         }
-        .pickerStyle(.segmented)
-        .frame(minWidth: 250, maxWidth: 360)
-        .disabled(liveCaptions.isRunning)
-        .mainMenuHoverFeedback(isEnabled: !liveCaptions.isRunning)
     }
 
     private var canStartMicrophone: Bool {
@@ -415,12 +429,12 @@ struct StartView: View {
 
     private var thirdPartyMenuTitle: String {
         preferences.engine.usesManagedModel
-            ? "\(preferences.selectedManagedModel.title)\(preferences.selectedModelIsInstalled ? " · 已下载" : " · 未下载")"
-            : "第三方模型…"
+            ? "\(preferences.selectedManagedModel.title)\(preferences.selectedModelIsInstalled ? L10n.text(" · 已下载") : L10n.text(" · 未下载"))"
+            : L10n.text("第三方模型…")
     }
 
     private func modelMenuLabel(for model: ManagedSpeechModel) -> String {
-        "\(model.title) · \(model.sizeLabel)\(preferences.installedModels.contains(model) ? " · 已下载" : "")"
+        "\(model.title) · \(model.sizeLabel)\(preferences.installedModels.contains(model) ? L10n.text(" · 已下载") : "")"
     }
 
     private var installedManagedModels: [ManagedSpeechModel] {

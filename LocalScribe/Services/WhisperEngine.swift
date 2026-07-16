@@ -12,11 +12,11 @@ enum WhisperEngineError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .modelMissing(let name): "尚未下载 Whisper 模型 \(name)。"
-        case .modelLoadFailed: "Whisper 模型无法载入，文件可能已损坏或内存不足。"
-        case .inferenceFailed(let code): "Whisper 推理失败（错误码 \(code)）。"
-        case .invalidAudio: "无法将音频转换为 Whisper 所需的格式。"
-        case .metalUnavailable: "Whisper Metal 后端不可用。"
+        case .modelMissing(let name): L10n.format("尚未下载 Whisper 模型 %@。", name)
+        case .modelLoadFailed: L10n.text("Whisper 模型无法载入，文件可能已损坏或内存不足。")
+        case .inferenceFailed(let code): L10n.format("Whisper 推理失败（错误码 %lld）。", code)
+        case .invalidAudio: L10n.text("无法将音频转换为 Whisper 所需的格式。")
+        case .metalUnavailable: L10n.text("Whisper Metal 后端不可用。")
         }
     }
 }
@@ -56,7 +56,7 @@ actor WhisperModelContext {
                 aneEligible: false,
                 detail: "Whisper · Metal GPU",
                 fallbackReason: preference == .coreMLANEPreferred
-                    ? "当前 Whisper 模型没有匹配的 Core ML encoder；普通 whisper.cpp Metal 模型不使用 ANE。"
+                    ? L10n.text("当前 Whisper 模型没有匹配的 Core ML encoder；普通 whisper.cpp Metal 模型不使用 ANE。")
                     : nil
             )
         } else if let loaded = Self.load(modelURL: modelURL, useGPU: false) {
@@ -66,7 +66,7 @@ actor WhisperModelContext {
                 resolved: .cpu,
                 aneEligible: false,
                 detail: "Whisper · CPU",
-                fallbackReason: requestsCPU ? nil : "Metal 初始化不可用，已回退到 CPU。"
+                fallbackReason: requestsCPU ? nil : L10n.text("Metal 初始化不可用，已回退到 CPU。")
             )
         } else {
             throw WhisperEngineError.modelLoadFailed

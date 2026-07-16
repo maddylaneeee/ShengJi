@@ -110,7 +110,7 @@ struct RootView: View {
         )) {
             Button("好") { importError = nil }
         } message: {
-            Text(importError ?? "未知错误")
+            Text(importError ?? L10n.text("未知错误"))
         }
         .onReceive(NotificationCenter.default.publisher(for: .chooseTranscriptionFile)) { _ in
             guard session == nil else { return }

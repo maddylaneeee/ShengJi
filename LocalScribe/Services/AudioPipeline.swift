@@ -76,11 +76,11 @@ enum AudioPipelineError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedMedia: "无法读取这个文件的音频。"
-        case .noAudioTrack: "所选文件中没有可转录的音轨。"
-        case .cannotCreateExporter: "无法创建音轨分离任务。"
-        case .exportFailed(let message): "分离音轨失败：\(message)"
-        case .conversionFailed(let message): "音频格式转换失败：\(message)"
+        case .unsupportedMedia: L10n.text("无法读取这个文件的音频。")
+        case .noAudioTrack: L10n.text("所选文件中没有可转录的音轨。")
+        case .cannotCreateExporter: L10n.text("无法创建音轨分离任务。")
+        case .exportFailed(let message): L10n.format("分离音轨失败：%@", message)
+        case .conversionFailed(let message): L10n.format("音频格式转换失败：%@", message)
         }
     }
 }
@@ -193,7 +193,7 @@ enum AudioFileFeeder {
         }
 
         if status == .error || conversionError != nil {
-            throw AudioPipelineError.conversionFailed(conversionError?.localizedDescription ?? "未知错误")
+            throw AudioPipelineError.conversionFailed(conversionError?.localizedDescription ?? L10n.text("未知错误"))
         }
         return output
     }

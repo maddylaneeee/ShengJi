@@ -57,12 +57,12 @@ final class AppUpdateController {
 
     var statusText: String {
         switch state {
-        case .idle: "尚未检查更新"
-        case .checking: "正在检查更新…"
-        case .available(let manifest): "发现 \(manifest.version) (\(manifest.build))"
-        case .upToDate: "当前已是最新版本"
-        case .downloading(let progress): "正在下载 \(progress.formatted(.percent.precision(.fractionLength(0))))"
-        case .ready: "更新已准备好，重启后替换应用"
+        case .idle: L10n.text("尚未检查更新")
+        case .checking: L10n.text("正在检查更新…")
+        case .available(let manifest): L10n.format("发现 %@ (%@)", manifest.version, manifest.build)
+        case .upToDate: L10n.text("当前已是最新版本")
+        case .downloading(let progress): L10n.format("正在下载 %@", progress.formatted(.percent.precision(.fractionLength(0))))
+        case .ready: L10n.text("更新已准备好，重启后替换应用")
         case .failed(let message): message
         }
     }
@@ -74,7 +74,7 @@ final class AppUpdateController {
 
     func checkForUpdates() async {
         guard let manifestURL = URL(string: manifestURLString) else {
-            state = .failed("更新地址无效。")
+            state = .failed(L10n.text("更新地址无效。"))
             return
         }
 
@@ -108,7 +108,7 @@ final class AppUpdateController {
         default: manifest = currentManifest
         }
         guard let manifest else {
-            state = .failed("没有可下载的更新。")
+            state = .failed(L10n.text("没有可下载的更新。"))
             return
         }
 
@@ -299,14 +299,14 @@ private enum UpdateError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidResponse: "更新服务器返回了无效响应。"
-        case .checksumMismatch: "更新包校验失败，已停止安装。"
-        case .extractionFailed(let message): "更新包解压失败：\(message)"
-        case .noAppInArchive: "更新包中没有找到 .app。"
-        case .invalidBundle: "更新包不是声迹应用。"
-        case .versionMismatch: "更新包版本与更新说明不一致。"
-        case .invalidCodeSignature(let message): "更新包签名验证失败：\(message)"
-        case .noDownloadedApp: "尚未准备好可安装的更新。"
+        case .invalidResponse: L10n.text("更新服务器返回了无效响应。")
+        case .checksumMismatch: L10n.text("更新包校验失败，已停止安装。")
+        case .extractionFailed(let message): L10n.format("更新包解压失败：%@", message)
+        case .noAppInArchive: L10n.text("更新包中没有找到 .app。")
+        case .invalidBundle: L10n.text("更新包不是声迹应用。")
+        case .versionMismatch: L10n.text("更新包版本与更新说明不一致。")
+        case .invalidCodeSignature(let message): L10n.format("更新包签名验证失败：%@", message)
+        case .noDownloadedApp: L10n.text("尚未准备好可安装的更新。")
         }
     }
 }

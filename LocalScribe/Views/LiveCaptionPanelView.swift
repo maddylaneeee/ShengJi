@@ -9,7 +9,7 @@ struct LiveCaptionPanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Label(controller.isPaused ? "已暂停" : "实时字幕", systemImage: "captions.bubble")
+                Label(controller.isPaused ? L10n.text("已暂停") : L10n.text("实时字幕"), systemImage: "captions.bubble")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -98,7 +98,7 @@ struct LiveCaptionPanelView: View {
         role: ButtonRole? = nil,
         action: @escaping () -> Void
     ) -> some View {
-        Button(title, systemImage: symbol, role: role, action: action)
+        Button(L10n.text(title), systemImage: symbol, role: role, action: action)
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)
             .font(.system(size: 13, weight: .semibold))

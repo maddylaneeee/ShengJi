@@ -80,7 +80,7 @@ struct TranscriptionView: View {
         )) {
             Button("好") { exportError = nil }
         } message: {
-            Text(exportError ?? "未知错误")
+            Text(exportError ?? L10n.text("未知错误"))
         }
         .onAppear {
             nllbModelManager.refresh()
@@ -272,11 +272,11 @@ struct TranscriptionView: View {
     private var computePreferenceHint: String {
         switch recognitionPreferences.engine {
         case .apple:
-            "Apple 框架自行管理计算单元。"
+            L10n.text("Apple 框架自行管理计算单元。")
         case .whisper:
-            "当前 GGML 模型支持 Metal/CPU；没有 Core ML encoder 时不会使用 ANE。"
+            L10n.text("当前 GGML 模型支持 Metal/CPU；没有 Core ML encoder 时不会使用 ANE。")
         case .senseVoice, .parakeet:
-            "自动按 Core ML（优先 ANE）→ CPU 回退；实际计算单元由系统决定。"
+            L10n.text("自动按 Core ML（优先 ANE）→ CPU 回退；实际计算单元由系统决定。")
         }
     }
 
@@ -335,14 +335,14 @@ struct TranscriptionView: View {
             recognitionPreferences.chooseModel(model)
         } label: {
             Label(
-                "\(model.title) · \(model.sizeLabel)\(recognitionPreferences.installedModels.contains(model) ? " · 已下载" : "")",
+                "\(model.title) · \(model.sizeLabel)\(recognitionPreferences.installedModels.contains(model) ? L10n.text(" · 已下载") : "")",
                 systemImage: model.engine.symbol
             )
         }
     }
 
     private var preflightModelTitle: String {
-        "\(recognitionPreferences.selectedManagedModel.title)\(recognitionPreferences.selectedModelIsInstalled ? " · 已下载" : " · 未下载")"
+        "\(recognitionPreferences.selectedManagedModel.title)\(recognitionPreferences.selectedModelIsInstalled ? L10n.text(" · 已下载") : L10n.text(" · 未下载"))"
     }
 
     @ViewBuilder
@@ -466,13 +466,13 @@ struct TranscriptionView: View {
 
                 Button("设为节点 A") {
                     firstEditNode = editorSelection
-                    editStatus = "已设置节点 A"
+                    editStatus = L10n.text("已设置节点 A")
                 }
                 .disabled(TranscriptTextEditing.validRange(editorSelection, in: session.transcriptText) == nil)
 
                 Button("设为节点 B") {
                     secondEditNode = editorSelection
-                    editStatus = "已设置节点 B"
+                    editStatus = L10n.text("已设置节点 B")
                 }
                 .disabled(TranscriptTextEditing.validRange(editorSelection, in: session.transcriptText) == nil)
 
@@ -541,29 +541,29 @@ struct TranscriptionView: View {
     }
 
     private var selectionDescription: String {
-        if editorSelection.length > 0 { return "已选择 \(editorSelection.length) 个字符" }
-        return "光标位置 \(editorSelection.location)"
+        if editorSelection.length > 0 { return L10n.format("已选择 %lld 个字符", editorSelection.length) }
+        return L10n.format("光标位置 %lld", editorSelection.location)
     }
 
     private func findNext() {
         guard let found = TranscriptTextEditing.find(searchText, in: session.transcriptText, after: editorSelection) else {
-            editStatus = "未找到“\(searchText)”"
+            editStatus = L10n.format("未找到“%@”", searchText)
             return
         }
         editorSelection = found
-        editStatus = "已找到"
+        editStatus = L10n.text("已找到")
     }
 
     private func applyEdit(_ result: (String, NSRange)?) {
         guard let (text, selection) = result else {
-            editStatus = "无法执行此操作"
+            editStatus = L10n.text("无法执行此操作")
             return
         }
         session.transcriptText = text
         editorSelection = selection
         firstEditNode = nil
         secondEditNode = nil
-        editStatus = "已修改"
+        editStatus = L10n.text("已修改")
     }
 
     private var translationLabel: some View {
@@ -757,7 +757,7 @@ struct TranscriptionView: View {
                 }
                 LabeledContent("语言", value: session.languageName)
                 if session.isImportedTranscript {
-                    LabeledContent("类型", value: "导入稿件")
+                    LabeledContent("类型", value: L10n.text("导入稿件"))
                 } else {
                     LabeledContent("引擎", value: session.configuration.displayName)
                 }
@@ -910,16 +910,16 @@ struct TranscriptionView: View {
         let text = usesTranslation ? session.translatedText : session.transcriptText
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        copyStatus = "已复制"
+        copyStatus = L10n.text("已复制")
         Task {
             try? await Task.sleep(for: .seconds(2))
-            if copyStatus == "已复制" { copyStatus = nil }
+            if copyStatus == L10n.text("已复制") { copyStatus = nil }
         }
     }
 
     private var defaultTitle: String {
         switch session.source {
-        case .microphone: "麦克风转录"
+        case .microphone: L10n.text("麦克风转录")
         case .file(let url): url.deletingPathExtension().lastPathComponent
         case .recovered(let title): title
         }
@@ -929,19 +929,19 @@ struct TranscriptionView: View {
 
     private var placeholderTitle: String {
         switch session.phase {
-        case .preparing: "选择设置，然后开始转录"
-        case .failed: "还没有可显示的文字"
-        default: "识别到的文字会显示在这里"
+        case .preparing: L10n.text("选择设置，然后开始转录")
+        case .failed: L10n.text("还没有可显示的文字")
+        default: L10n.text("识别到的文字会显示在这里")
         }
     }
 
     private var placeholderDetail: String {
         switch session.phase {
-        case .preparing: "开始后会锁定当前语言、识别引擎和模型。"
+        case .preparing: L10n.text("开始后会锁定当前语言、识别引擎和模型。")
         case .loadingModel, .preparingAudio, .transcribing, .finishing: session.activityDetail
-        case .paused: "已暂停。你现在可以直接编辑这段文字。"
+        case .paused: L10n.text("已暂停。你现在可以直接编辑这段文字。")
         case .failed(let message): message
-        case .finished: "转录结果可以编辑、翻译或导出。"
+        case .finished: L10n.text("转录结果可以编辑、翻译或导出。")
         }
     }
 
@@ -959,17 +959,17 @@ struct TranscriptionView: View {
     }
 
     private var preflightBlockedReason: String {
-        if catalog.isLoading { return "正在读取本地语言" }
+        if catalog.isLoading { return L10n.text("正在读取本地语言") }
         if case .microphone = session.source, !recognitionPreferences.engine.supportsRealtimeMicrophone {
-            return "当前引擎不支持麦克风实时转录"
+            return L10n.text("当前引擎不支持麦克风实时转录")
         }
         if recognitionPreferences.engine == .apple, !catalog.isSpeechAvailable {
-            return "Apple 本地识别暂不可用"
+            return L10n.text("Apple 本地识别暂不可用")
         }
         if recognitionPreferences.engine.usesManagedModel, !recognitionPreferences.selectedModelIsInstalled {
-            return "需先下载识别模型"
+            return L10n.text("需先下载识别模型")
         }
-        return "检查设置"
+        return L10n.text("检查设置")
     }
 
     private func syncPendingConfiguration() {

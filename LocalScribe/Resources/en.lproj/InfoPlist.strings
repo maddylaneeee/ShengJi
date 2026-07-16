@@ -1,0 +1,5 @@
+"CFBundleDisplayName" = "ShengJi";
+"CFBundleName" = "ShengJi";
+"NSFileProviderDomainUsageDescription" = "Read audio or video you select and save transcripts to a location you choose.";
+"NSMicrophoneUsageDescription" = "Use the microphone to transcribe what you say in real time on this Mac.";
+"NSSpeechRecognitionUsageDescription" = "Use Apple on-device speech recognition to generate transcripts and live captions on this Mac.";

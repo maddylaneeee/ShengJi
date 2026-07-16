@@ -19,11 +19,11 @@ enum TranslationTargetLanguage: String, CaseIterable, Codable, Identifiable, Sen
 
     var title: String {
         switch self {
-        case .system: "跟随系统"
-        case .chineseSimplified: "简体中文"
-        case .chineseTraditional: "繁體中文"
+        case .system: L10n.text("跟随系统")
+        case .chineseSimplified: L10n.text("简体中文")
+        case .chineseTraditional: L10n.text("繁體中文")
         case .english: "English"
-        case .japanese: "日本語"
+        case .japanese: L10n.text("日本語")
         case .korean: "한국어"
         case .spanish: "Español"
         case .french: "Français"
@@ -67,15 +67,15 @@ enum TranslationProvider: String, CaseIterable, Codable, Identifiable, Sendable 
 
     var title: String {
         switch self {
-        case .apple: "Apple 翻译"
+        case .apple: L10n.text("Apple 翻译")
         case .nllb: "NLLB"
         }
     }
 
     var detail: String {
         switch self {
-        case .apple: "默认；使用 macOS Translation Framework，本机完成。"
-        case .nllb: "可选；使用本机 NLLB 模型，适合离线批量翻译。"
+        case .apple: L10n.text("默认；使用 macOS Translation Framework，本机完成。")
+        case .nllb: L10n.text("可选；使用本机 NLLB 模型，适合离线批量翻译。")
         }
     }
 
@@ -377,11 +377,11 @@ enum AppleTranslationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            "Apple Translation 返回了不完整的翻译结果。"
+            L10n.text("Apple Translation 返回了不完整的翻译结果。")
         case .languageAssetsNotInstalled:
-            "所需 Apple 翻译语言包尚未安装；请先在声迹图形界面中翻译一次，并按系统提示下载。"
+            L10n.text("所需 Apple 翻译语言包尚未安装；请先在声迹图形界面中翻译一次，并按系统提示下载。")
         case .unsupportedPair(let source, let target):
-            "本机 Apple Translation 不支持从 \(source) 翻译为 \(target)。"
+            L10n.format("本机 Apple Translation 不支持从 %@ 翻译为 %@。", source, target)
         }
     }
 }

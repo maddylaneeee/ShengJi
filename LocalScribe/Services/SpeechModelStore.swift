@@ -21,13 +21,13 @@ enum ModelStorageError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidResponse: "模型服务器返回了无效响应。"
+        case .invalidResponse: L10n.text("模型服务器返回了无效响应。")
         case .invalidSize(let expected, let actual):
-            "模型文件不完整（应为 \(expected) 字节，实际为 \(actual) 字节）。"
+            L10n.format("模型文件不完整（应为 %lld 字节，实际为 %lld 字节）。", expected, actual)
         case .invalidChecksum(let expected, let actual):
-            "模型校验失败（SHA1 应为 \(expected)，实际为 \(actual)）。"
-        case .extractionFailed(let message): "模型解包失败：\(message)"
-        case .modelNotInstalled(let title): "尚未安装模型 \(title)。"
+            L10n.format("模型校验失败（SHA1 应为 %@，实际为 %@）。", expected, actual)
+        case .extractionFailed(let message): L10n.format("模型解包失败：%@", message)
+        case .modelNotInstalled(let title): L10n.format("尚未安装模型 %@。", title)
         }
     }
 }
@@ -161,11 +161,11 @@ enum SpeechModelStore {
         }
 
         guard let extractedDirectoryName = model.extractedDirectoryName else {
-            throw ModelStorageError.extractionFailed("模型缺少目录信息。")
+            throw ModelStorageError.extractionFailed(L10n.text("模型缺少目录信息。"))
         }
         let extractedURL = stagingURL.appendingPathComponent(extractedDirectoryName, isDirectory: true)
         guard FileManager.default.fileExists(atPath: extractedURL.path) else {
-            throw ModelStorageError.extractionFailed("未找到解包后的模型目录 \(extractedDirectoryName)。")
+            throw ModelStorageError.extractionFailed(L10n.format("未找到解包后的模型目录 %@。", extractedDirectoryName))
         }
 
         try? FileManager.default.removeItem(at: finalURL)

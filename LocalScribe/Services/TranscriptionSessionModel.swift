@@ -30,7 +30,7 @@ final class TranscriptionSessionModel {
     private(set) var computeBackendStatus: ComputeBackendStatus?
     var progress: Double = 0
     private(set) var progressIsIndeterminate = false
-    private(set) var activityDetail = "选择设置后开始转录"
+    private(set) var activityDetail = L10n.text("选择设置后开始转录")
     var audioLevel: Double = 0
     var elapsed: TimeInterval = 0
     var isShowingInspector = true
@@ -461,7 +461,7 @@ final class TranscriptionSessionModel {
             self.translatedText = translations.map(\.displayText).joined(separator: "\n")
             Task { await self.transcriptRepository.replaceTranslations(translations) }
             let failures = translations.filter { $0.state == .fallback }
-            self.translationError = failures.isEmpty ? nil : "有 \(failures.count) 个片段未能翻译，已保留原文并标记。"
+            self.translationError = failures.isEmpty ? nil : L10n.format("有 %lld 个片段未能翻译，已保留原文并标记。", failures.count)
             self.isTranslating = false
             self.translationTask = nil
             self.saveRecoveryNow()
@@ -708,12 +708,12 @@ final class TranscriptionSessionModel {
     private func startWhisper() async {
         do {
             guard let model = configuration.whisperModel else {
-                throw WhisperEngineError.modelMissing("未选择")
+                throw WhisperEngineError.modelMissing(L10n.text("未选择"))
             }
             phase = .loadingModel
             progress = 0
             progressIsIndeterminate = true
-            activityDetail = "正在从磁盘载入 \(model.title)；内存占用上升属于正常现象"
+            activityDetail = L10n.format("正在从磁盘载入 %@；内存占用上升属于正常现象", model.title)
             let modelURL = RecognitionPreferences.url(for: model)
             let computePreference = configuration.computeBackend
             let size = try modelURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
@@ -740,11 +740,11 @@ final class TranscriptionSessionModel {
                 try await startWhisperMicrophone(context: context)
                 phase = .transcribing
                 progressIsIndeterminate = false
-                activityDetail = "模型已加载，正在等待麦克风语音"
+                activityDetail = L10n.text("模型已加载，正在等待麦克风语音")
                 beginTimer()
             case .file(let url):
                 phase = .preparingAudio
-                activityDetail = "模型已加载，正在读取并转换音频"
+                activityDetail = L10n.text("模型已加载，正在读取并转换音频")
                 try await startWhisperFile(url: url, context: context)
                 phase = .transcribing
             case .recovered:
@@ -1023,7 +1023,7 @@ final class TranscriptionSessionModel {
         guard phase == .transcribing || phase == .finishing else { return }
         phase = .finishing
         progressIsIndeterminate = true
-        activityDetail = "正在应用置信度与末尾静音过滤，并整理时间戳"
+        activityDetail = L10n.text("正在应用置信度与末尾静音过滤，并整理时间戳")
         whisperPreviewSegments.removeAll()
         whisperPreviewFingerprints.removeAll()
         refreshGeneratedText()
@@ -1033,7 +1033,7 @@ final class TranscriptionSessionModel {
         phase = .finished
         progress = 1
         progressIsIndeterminate = false
-        activityDetail = finalSegments.isEmpty ? "未检测到可转写的语音" : "转录与幻觉过滤已完成"
+        activityDetail = finalSegments.isEmpty ? L10n.text("未检测到可转写的语音") : L10n.text("转录与幻觉过滤已完成")
         elapsed = sourceDuration
         saveRecoveryNow()
         cleanupResources()
@@ -1047,7 +1047,7 @@ final class TranscriptionSessionModel {
                 whisperPreviewSegments.append(segment)
             }
         }
-        activityDetail = "Whisper 正在生成文字 · 已出现 \(whisperPreviewSegments.count) 个片段"
+        activityDetail = L10n.format("Whisper 正在生成文字 · 已出现 %lld 个片段", whisperPreviewSegments.count)
         refreshGeneratedText()
     }
 
@@ -1055,19 +1055,19 @@ final class TranscriptionSessionModel {
         switch stage {
         case .converting(let value):
             progressIsIndeterminate = false
-            activityDetail = "正在转换为 16 kHz 单声道音频 · \(value.formatted(.percent.precision(.fractionLength(0))))"
+            activityDetail = L10n.format("正在转换为 16 kHz 单声道音频 · %@", value.formatted(.percent.precision(.fractionLength(0))))
         case .inferring(let value):
             if let value {
                 progressIsIndeterminate = false
-                activityDetail = "VAD 与 Whisper 正在识别 · \(value.formatted(.percent.precision(.fractionLength(0))))"
+                activityDetail = L10n.format("VAD 与 Whisper 正在识别 · %@", value.formatted(.percent.precision(.fractionLength(0))))
             } else {
                 progressIsIndeterminate = true
-                activityDetail = "VAD 已启用，Whisper 正在分析整段音频；首批文字生成后会立即显示"
+                activityDetail = L10n.text("VAD 已启用，Whisper 正在分析整段音频；首批文字生成后会立即显示")
             }
         case .finalizing:
             phase = .finishing
             progressIsIndeterminate = true
-            activityDetail = "推理完成，正在过滤末尾幻觉并整理文字"
+            activityDetail = L10n.text("推理完成，正在过滤末尾幻觉并整理文字")
         }
     }
 
@@ -1327,11 +1327,11 @@ private enum SessionError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .requiresMacOS26: "Apple 本地识别需要 macOS 26；当前系统可使用 Whisper、SenseVoice 或 Parakeet。"
-        case .unsupportedLanguage(let language): "本机不支持 \(language) 的离线识别。"
-        case .noCompatibleAudioFormat: "无法找到兼容的音频格式。"
-        case .microphonePermissionDenied: "未获得麦克风权限。请在系统设置的“隐私与安全性”中允许访问。"
-        case .noMicrophone: "没有找到可用的音频输入设备。"
+        case .requiresMacOS26: L10n.text("Apple 本地识别需要 macOS 26；当前系统可使用 Whisper、SenseVoice 或 Parakeet。")
+        case .unsupportedLanguage(let language): L10n.format("本机不支持 %@ 的离线识别。", language)
+        case .noCompatibleAudioFormat: L10n.text("无法找到兼容的音频格式。")
+        case .microphonePermissionDenied: L10n.text("未获得麦克风权限。请在系统设置的“隐私与安全性”中允许访问。")
+        case .noMicrophone: L10n.text("没有找到可用的音频输入设备。")
         case .resultCollectionFailed(let message): message
         }
     }

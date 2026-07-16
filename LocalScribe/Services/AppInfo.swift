@@ -40,43 +40,43 @@ enum AppInfo {
     static let dependencies: [OpenSourceDependency] = [
         OpenSourceDependency(
             name: "Apple SpeechAnalyzer / SpeechTranscriber",
-            role: "Apple 本地语音识别与实时字幕",
+            role: L10n.text("Apple 本地语音识别与实时字幕"),
             license: "Apple platform SDK",
             url: URL(string: "https://developer.apple.com/documentation/speech")!
         ),
         OpenSourceDependency(
             name: "whisper.cpp / GGML",
-            role: "Whisper Metal 离线识别与 VAD 运行时",
+            role: L10n.text("Whisper Metal 离线识别与 VAD 运行时"),
             license: "MIT",
             url: URL(string: "https://github.com/ggerganov/whisper.cpp")!
         ),
         OpenSourceDependency(
             name: "Silero VAD v6.2.0",
-            role: "Whisper 文件转录语音活动检测",
+            role: L10n.text("Whisper 文件转录语音活动检测"),
             license: "MIT",
             url: URL(string: "https://huggingface.co/ggml-org/whisper-vad")!
         ),
         OpenSourceDependency(
             name: "sherpa-onnx",
-            role: "SenseVoice 与 NVIDIA Parakeet 文件识别运行时",
+            role: L10n.text("SenseVoice 与 NVIDIA Parakeet 文件识别运行时"),
             license: "Apache-2.0",
             url: URL(string: "https://github.com/k2-fsa/sherpa-onnx")!
         ),
         OpenSourceDependency(
             name: "ONNX Runtime",
-            role: "sherpa-onnx 推理依赖",
+            role: L10n.text("sherpa-onnx 推理依赖"),
             license: "MIT",
             url: URL(string: "https://github.com/microsoft/onnxruntime")!
         ),
         OpenSourceDependency(
             name: "Apple Translation Framework",
-            role: "默认转录后翻译与系统语言包管理",
+            role: L10n.text("默认转录后翻译与系统语言包管理"),
             license: "Apple platform SDK",
             url: URL(string: "https://developer.apple.com/documentation/translation")!
         ),
         OpenSourceDependency(
             name: "NLLB / CTranslate2 / SentencePiece",
-            role: "可选转录后本机翻译后端",
+            role: L10n.text("可选转录后本机翻译后端"),
             license: "CC-BY-NC-4.0 / MIT / Apache-2.0",
             url: URL(string: "https://huggingface.co/osa911/nllb-200-distilled-600M-ct2-int8")!
         )

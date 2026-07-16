@@ -12,9 +12,9 @@ Native, local-first transcription, live captions, transcript editing, and option
 LocalScribe can transcribe microphones, audio and video files, and audio playing on your Mac. It combines Apple Speech, whisper.cpp, SenseVoice, NVIDIA Parakeet, Apple Translation, and NLLB behind one native SwiftUI interface.
 
 > [!IMPORTANT]
-> **Developer Beta — testers wanted.** The current source version is **1.3.6 (18)**. A Developer ID-signed and notarized public binary is not available yet, so this beta is currently intended for developers who can build with Xcode. Please report results and hardware details in [GitHub Discussions](https://github.com/maddylaneeee/ShengJi/discussions) or [Issues](https://github.com/maddylaneeee/ShengJi/issues).
+> **Developer Beta — testers wanted.** The current source version is **1.4.0 (19)**. A Developer ID-signed and notarized public binary is not available yet, so this beta is currently intended for developers who can build with Xcode. Please report results and hardware details in [GitHub Discussions](https://github.com/maddylaneeee/ShengJi/discussions) or [Issues](https://github.com/maddylaneeee/ShengJi/issues).
 
-![LocalScribe home screen with model selection, import, translation and live-caption controls](Documentation/Screenshots/home.jpeg)
+![ShengJi home screen in English with model selection, import, translation and live-caption controls](Documentation/Screenshots/home-en.png)
 
 ## Why LocalScribe?
 
@@ -23,12 +23,27 @@ LocalScribe can transcribe microphones, audio and video files, and audio playing
 - **Multiple offline engines.** Choose Apple Speech, whisper.cpp with Metal, SenseVoice, or NVIDIA Parakeet instead of being locked to one model family.
 - **Long-task workflow.** Progressive results, append-only recovery journals, bounded transcript rendering, pause/resume, and resumable sessions are designed for long recordings.
 - **Editable deliverables.** Import, search, replace, trim, translate, and export TXT, Markdown, JSON, PDF, SRT, or WebVTT.
+- **System-aware interface.** English and Simplified Chinese switch automatically with the Mac language preference, using an extensible localization structure.
 
 ## Transcript editing and translation
 
-![LocalScribe transcript editor with local translation, search, range editing, export and privacy details](Documentation/Screenshots/transcript-editor.jpeg)
+![ShengJi transcript editor in English with local translation, search, range editing, export and privacy details](Documentation/Screenshots/transcript-editor-en.png)
 
-The screenshots are from the current macOS app and use non-private test transcript content.
+The screenshots are from version 1.4.0 of the real macOS app and use an isolated profile with non-private test transcript content.
+
+## Settings, updates, and project details
+
+The built-in updater shows the running version, update manifest, and update status without hiding implementation details.
+
+![ShengJi update settings in English](Documentation/Screenshots/updates-en.png)
+
+The About screen identifies the bundled recognition and translation runtimes, their roles, licenses, and source links.
+
+![ShengJi About screen in English with open-source dependencies and documentation links](Documentation/Screenshots/about-en.png)
+
+## Languages
+
+ShengJi follows the preferred language order in macOS automatically. Version 1.4.0 includes complete English and Simplified Chinese interfaces, localized privacy descriptions, menus, model information, progress states, errors, and inspector values. Localization lives in standard language resource directories, so another language can be added without changing feature code.
 
 ## Recognition and translation engines
 

@@ -47,7 +47,7 @@ struct SettingsView: View {
         )) {
             Button("好") { installError = nil }
         } message: {
-            Text(installError ?? "未知错误")
+            Text(installError ?? L10n.text("未知错误"))
         }
         .alert("卸载声迹？", isPresented: $isConfirmingUninstall) {
             Button("取消", role: .cancel) {}
@@ -61,7 +61,7 @@ struct SettingsView: View {
         )) {
             Button("好") { settingsError = nil }
         } message: {
-            Text(settingsError ?? "未知错误")
+            Text(settingsError ?? L10n.text("未知错误"))
         }
     }
 
@@ -237,7 +237,7 @@ struct SettingsView: View {
             openURL(url)
         } label: {
             HStack {
-                Label(title, systemImage: symbol)
+                Label(L10n.text(title), systemImage: symbol)
                 Spacer()
                 Image(systemName: "arrow.up.right.square")
                     .foregroundStyle(.secondary)

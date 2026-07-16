@@ -21,11 +21,11 @@ enum NLLBModelDownloadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidSize(let file, let expected, let actual):
-            "NLLB 模型文件 \(file) 不完整（应为 \(expected) 字节，实际为 \(actual) 字节）。"
+            L10n.format("NLLB 模型文件 %@ 不完整（应为 %lld 字节，实际为 %lld 字节）。", file, expected, actual)
         case .invalidChecksum(let file):
-            "NLLB 模型文件 \(file) 校验失败，请重试。"
+            L10n.format("NLLB 模型文件 %@ 校验失败，请重试。", file)
         case .incompleteInstall:
-            "NLLB 模型安装不完整，请重试。"
+            L10n.text("NLLB 模型安装不完整，请重试。")
         }
     }
 }

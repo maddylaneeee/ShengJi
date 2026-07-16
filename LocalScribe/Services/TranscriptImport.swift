@@ -14,9 +14,9 @@ enum TranscriptImportError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unreadable: "无法读取所选稿件。"
-        case .empty: "稿件中没有可导入的文字。"
-        case .unsupported: "暂不支持这种稿件格式。请选择 SRT、VTT、TXT、Markdown 或声迹 JSON。"
+        case .unreadable: L10n.text("无法读取所选稿件。")
+        case .empty: L10n.text("稿件中没有可导入的文字。")
+        case .unsupported: L10n.text("暂不支持这种稿件格式。请选择 SRT、VTT、TXT、Markdown 或声迹 JSON。")
         }
     }
 }
