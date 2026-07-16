@@ -180,11 +180,21 @@ xattr -dr com.apple.ResourceFork "$EXTRACTED_APP" 2>/dev/null || true
 codesign --verify --deep --strict --verbose=2 "$EXTRACTED_APP"
 [[ "$(shasum -a 256 "$EXTRACTED_APP/Contents/Resources/WhisperVAD/ggml-silero-v6.2.0.bin" | awk '{print $1}')" == "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987" ]]
 
-"$EXTRACTED_APP/Contents/MacOS/LocalScribe" --cli help > "$WORK_ROOT/cli-help.txt"
 set +e
+"$EXTRACTED_APP/Contents/MacOS/LocalScribe" --cli help \
+  > "$WORK_ROOT/cli-help.txt" 2> "$WORK_ROOT/cli-help-error.txt"
+APP_CLI_STATUS=$?
 "$EXTRACTED_APP/Contents/Resources/SherpaOnnx/bin/sherpa-onnx-offline" --help > "$WORK_ROOT/sherpa-help.txt" 2>&1
 SHERPA_STATUS=$?
+"$EXTRACTED_APP/Contents/Resources/NLLBTranslator/runtime/LocalScribeNLLB/LocalScribeNLLB" \
+  < /dev/null > "$WORK_ROOT/nllb-smoke.txt" 2>&1
+NLLB_STATUS=$?
 set -e
+if [[ "$APP_CLI_STATUS" != "0" ]]; then
+  print -u2 "声迹 CLI 启动检查失败（status=$APP_CLI_STATUS）。"
+  cat "$WORK_ROOT/cli-help-error.txt" >&2
+  exit 7
+fi
 if grep -Eqi 'dyld|library not loaded|different Team IDs|code signature.*not valid' "$WORK_ROOT/sherpa-help.txt"; then
   print -u2 "Sherpa helper 无法加载其动态库。"
   cat "$WORK_ROOT/sherpa-help.txt" >&2
@@ -194,7 +204,11 @@ if [[ ! -s "$WORK_ROOT/sherpa-help.txt" ]]; then
   print -u2 "Sherpa helper 未产生帮助或诊断输出（status=$SHERPA_STATUS）。"
   exit 7
 fi
-"$EXTRACTED_APP/Contents/Resources/NLLBTranslator/runtime/LocalScribeNLLB/LocalScribeNLLB" < /dev/null > "$WORK_ROOT/nllb-smoke.txt" 2>&1
+if [[ "$NLLB_STATUS" != "0" ]]; then
+  print -u2 "NLLB helper 启动检查失败（status=$NLLB_STATUS）。"
+  cat "$WORK_ROOT/nllb-smoke.txt" >&2
+  exit 7
+fi
 
 SHA256="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
 print -r -- "$SHA256  $ZIP_NAME" > "$ZIP.sha256"
