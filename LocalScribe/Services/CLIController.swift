@@ -44,37 +44,17 @@ enum CLIController {
             case "translate":
                 try await translate(rest)
             default:
-                throw CLIError.badArguments("未知命令：\(command)")
+                throw CLIError.badArguments(L10n.format("未知命令：%@", command))
             }
             return 0
         } catch {
-            fputs("错误：\(error.localizedDescription)\n", stderr)
+            fputs(L10n.format("错误：%@\n", error.localizedDescription), stderr)
             return 1
         }
     }
 
     private static func printHelp() {
-        print("""
-        声迹 CLI
-
-        用法：
-          LocalScribe --cli models [--json]
-          LocalScribe --cli download <model-id>
-          LocalScribe --cli remove <model-id>
-          LocalScribe --cli transcribe <audio-or-video> [--engine whisper|sensevoice|parakeet] [--model <model-id>] [--compute auto|coreml|metal|cpu] [--language zh_CN] [--translate-to en] [--translation-provider apple|nllb] [--format txt|md|json|pdf|srt|vtt] [--output <path>]
-          LocalScribe --cli translate <text> --source zh_CN --target en [--provider apple|nllb]
-
-        常用模型 ID：
-          whisper.largeV3TurboQ5
-          whisper.largeV3Turbo
-          sensevoice.int8_2025
-          parakeet.tdt06bV3Int8
-
-        说明：
-          CLI 文件转录支持 Whisper、SenseVoice 与 NVIDIA Parakeet。
-          默认自动选择后端并在 stderr 报告实际路径；普通 Whisper Metal 模型不会自动使用 ANE。
-          翻译支持 Apple Translation 与 NLLB；Apple 的无界面 CLI 会话需要 macOS 26，NLLB 可用于 macOS 15.5+。
-        """)
+        print(L10n.text("cli.help"))
     }
 
     private static func printModels(_ arguments: [String]) throws {
@@ -105,32 +85,32 @@ enum CLIController {
 
     private static func downloadModel(_ arguments: [String]) async throws {
         guard let id = arguments.first else {
-            throw CLIError.badArguments("请提供有效 model-id。可用 `models` 查看。")
+            throw CLIError.badArguments(L10n.text("请提供有效 model-id。可用 `models` 查看。"))
         }
         guard let model = ManagedSpeechModel.find(id) else {
-            throw CLIError.badArguments("请提供有效 model-id。可用 `models` 查看。")
+            throw CLIError.badArguments(L10n.text("请提供有效 model-id。可用 `models` 查看。"))
         }
         let progressPrinter = CLIProgressPrinter(modelID: model.id)
         try await SpeechModelStore.install(model) { progress in
             progressPrinter.print(progress: progress)
         }
-        print("已安装：\(model.id)")
+        print(L10n.format("已安装：%@", model.id))
     }
 
     private static func removeModel(_ arguments: [String]) throws {
         guard let id = arguments.first else {
-            throw CLIError.badArguments("请提供有效 model-id。可用 `models` 查看。")
+            throw CLIError.badArguments(L10n.text("请提供有效 model-id。可用 `models` 查看。"))
         }
         guard let model = ManagedSpeechModel.find(id) else {
-            throw CLIError.badArguments("请提供有效 model-id。可用 `models` 查看。")
+            throw CLIError.badArguments(L10n.text("请提供有效 model-id。可用 `models` 查看。"))
         }
         try SpeechModelStore.remove(model)
-        print("已卸载：\(model.id)")
+        print(L10n.format("已卸载：%@", model.id))
     }
 
     private static func transcribe(_ arguments: [String]) async throws {
         guard let input = arguments.first, !input.hasPrefix("--") else {
-            throw CLIError.badArguments("请提供音频或视频路径。")
+            throw CLIError.badArguments(L10n.text("请提供音频或视频路径。"))
         }
         let options = parseOptions(Array(arguments.dropFirst()))
         let inputURL = URL(fileURLWithPath: input)
@@ -148,7 +128,8 @@ enum CLIController {
             computeBackend: computeBackend
         )
         if let status = result.backendStatus {
-            fputs("计算后端：\(status.detail)\(status.fallbackReason.map { "（\($0)）" } ?? "")\n", stderr)
+            let fallback = status.fallbackReason.map { L10n.format("（%@）", $0) } ?? ""
+            fputs(L10n.format("计算后端：%@%@\n", status.detail, fallback), stderr)
         }
         var outputLanguage = Locale.current.localizedString(forIdentifier: language.identifier) ?? language.identifier
         if let targetValue = options["translate-to"] {
@@ -183,19 +164,19 @@ enum CLIController {
         if let output = options["output"] {
             let outputURL = URL(fileURLWithPath: output)
             try data.write(to: outputURL, options: [.atomic])
-            print("已保存：\(outputURL.path)")
+            print(L10n.format("已保存：%@", outputURL.path))
         } else {
             if format == .txt || format == .markdown || format == .json || format == .srt || format == .webVTT {
                 print(String(data: data, encoding: .utf8) ?? result.text)
             } else {
-                throw CLIError.badArguments("PDF 输出请使用 --output 指定保存路径。")
+                throw CLIError.badArguments(L10n.text("PDF 输出请使用 --output 指定保存路径。"))
             }
         }
     }
 
     private static func translate(_ arguments: [String]) async throws {
         guard let text = arguments.first, !text.hasPrefix("--") else {
-            throw CLIError.badArguments("请提供要翻译的文字。")
+            throw CLIError.badArguments(L10n.text("请提供要翻译的文字。"))
         }
         let options = parseOptions(Array(arguments.dropFirst()))
         let source = Locale(identifier: options["source"] ?? "zh_CN")
@@ -219,7 +200,7 @@ enum CLIController {
     ) async throws -> [SegmentTranslation] {
         if provider == .apple {
             guard #available(macOS 26.0, *) else {
-                throw CLIError.badArguments("Apple Translation 的无界面 CLI 会话需要 macOS 26；macOS 15.5–25 请使用 --provider nllb。")
+                throw CLIError.badArguments(L10n.text("Apple Translation 的无界面 CLI 会话需要 macOS 26；macOS 15.5–25 请使用 --provider nllb。"))
             }
             let values = try await AppleTranslationCLI.translate(
                 texts: segments.map(\.text),
@@ -266,7 +247,7 @@ enum CLIController {
         case "de": return .german
         case "pt": return .portuguese
         case "ru": return .russian
-        default: throw CLIError.badArguments("不支持的翻译目标语言：\(value)")
+        default: throw CLIError.badArguments(L10n.format("不支持的翻译目标语言：%@", value))
         }
     }
 
@@ -279,7 +260,7 @@ enum CLIController {
     ) async throws -> CLITranscriptResult {
         switch engine {
         case .apple:
-            throw CLIError.badArguments("Apple Speech CLI 转录暂未开放；请在图形界面使用 Apple 本地识别。")
+            throw CLIError.badArguments(L10n.text("Apple Speech CLI 转录暂未开放；请在图形界面使用 Apple 本地识别。"))
         case .whisper:
             let model = try resolveWhisperModel(modelID)
             let managed: ManagedSpeechModel = .whisper(model)
@@ -389,7 +370,7 @@ enum CLIController {
         case "":
             return nil
         default:
-            throw CLIError.badArguments("未知识别引擎：\(value)")
+            throw CLIError.badArguments(L10n.format("未知识别引擎：%@", value))
         }
     }
 
@@ -400,7 +381,7 @@ enum CLIController {
         case "coreml", "ane": return .coreMLANEPreferred
         case "metal", "gpu": return .metal
         case "cpu": return .cpu
-        default: throw CLIError.badArguments("未知计算后端：\(value)")
+        default: throw CLIError.badArguments(L10n.format("未知计算后端：%@", value))
         }
     }
 
@@ -409,7 +390,7 @@ enum CLIController {
         switch value.lowercased() {
         case "apple": return .apple
         case "nllb": return .nllb
-        default: throw CLIError.badArguments("未知翻译提供方：\(value)")
+        default: throw CLIError.badArguments(L10n.format("未知翻译提供方：%@", value))
         }
     }
 
@@ -459,7 +440,7 @@ private final class CLIProgressPrinter: @unchecked Sendable {
             let bucket = Int(progress * 100) / 5
             guard bucket != lastBucket else { return }
             lastBucket = bucket
-            Swift.print("下载 \(modelID)：\(Int(progress * 100))%")
+            Swift.print(L10n.format("下载 %@：%lld%%", modelID, Int(progress * 100)))
         }
     }
 }

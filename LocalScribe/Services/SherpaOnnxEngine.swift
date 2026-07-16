@@ -11,12 +11,12 @@ enum SherpaOnnxError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .runtimeMissing: "未找到内置 sherpa-onnx 运行时。"
-        case .unsupportedSource: "SenseVoice 与 Parakeet 当前支持文件转录；实时麦克风请使用 Apple 或 Whisper。"
-        case .modelMissing(let name): "尚未安装模型 \(name)。"
-        case .invalidModelLayout(let name): "模型 \(name) 缺少必要文件。"
-        case .processFailed(let message): "第三方模型转录失败：\(message)"
-        case .emptyTranscript: "第三方模型没有返回可用文字。"
+        case .runtimeMissing: L10n.text("未找到内置 sherpa-onnx 运行时。")
+        case .unsupportedSource: L10n.text("SenseVoice 与 Parakeet 当前支持文件转录；实时麦克风请使用 Apple 或 Whisper。")
+        case .modelMissing(let name): L10n.format("尚未安装模型 %@。", name)
+        case .invalidModelLayout(let name): L10n.format("模型 %@ 缺少必要文件。", name)
+        case .processFailed(let message): L10n.format("第三方模型转录失败：%@", message)
+        case .emptyTranscript: L10n.text("第三方模型没有返回可用文字。")
         }
     }
 }
@@ -111,15 +111,15 @@ enum SherpaOnnxFileProcessor {
                 resolved: provider == "coreml" ? .coreMLSystemSelected : .cpu,
                 aneEligible: provider == "coreml",
                 detail: provider == "coreml"
-                    ? "Core ML（系统选择；ANE 可用性不等于实际全程使用）"
+                    ? L10n.text("Core ML（系统选择；ANE 可用性不等于实际全程使用）")
                     : "Sherpa ONNX · CPU",
                 fallbackReason: provider == "cpu" && preference != .cpu
-                    ? (firstFailure ?? (preference == .metal ? "Sherpa ONNX 不支持 Metal provider。" : "Core ML provider 不可用。"))
+                    ? (firstFailure ?? (preference == .metal ? L10n.text("Sherpa ONNX 不支持 Metal provider。") : L10n.text("Core ML provider 不可用。")))
                     : nil
             )
             return (transcript, status)
         }
-        throw SherpaOnnxError.processFailed(firstFailure ?? "所有计算后端均不可用。")
+        throw SherpaOnnxError.processFailed(firstFailure ?? L10n.text("所有计算后端均不可用。"))
     }
 
     private static func arguments(

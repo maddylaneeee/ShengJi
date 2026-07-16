@@ -30,7 +30,7 @@ struct RecoverySnapshot: Codable, Identifiable, Sendable {
 
     var shortPreview: String {
         let text = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return "还没有已识别文字" }
+        guard !text.isEmpty else { return L10n.text("还没有已识别文字") }
         return String(text.prefix(80))
     }
 }

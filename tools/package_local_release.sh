@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IDENTITY="${CODESIGN_IDENTITY:-MLCCS Local Code Signing}"
-VERSION="1.3.6"
-BUILD="18"
+VERSION="1.4.0"
+BUILD="19"
 INSTALL_LOCAL_COPY="${INSTALL_LOCAL_COPY:-0}"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK_ROOT="${TMPDIR:-/tmp}/codex-macos-packager/shengji-${VERSION}-${BUILD}-${RUN_ID}"
@@ -185,7 +185,7 @@ cat > "$OUTPUT/update-manifest-${VERSION}-${BUILD}.json" <<EOF
   "build": "$BUILD",
   "download_url": "file://$ZIP",
   "sha256": "$SHA256",
-  "release_notes": "声迹 1.3.6：实时字幕在句号、逗号或 Apple 最终段落边界后保留已完成内容作为约 2 秒的滑动上下文；后续模型结果仍立即追加并继续滑动，不冻结或瞬间清空。",
+  "release_notes": "声迹 1.4.0：新增完整英文界面，并根据 macOS 首选语言自动切换；本地化资源采用可扩展结构，方便后续继续添加语言。",
   "minimum_system_version": "15.5",
   "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "size_bytes": $(stat -f %z "$ZIP")

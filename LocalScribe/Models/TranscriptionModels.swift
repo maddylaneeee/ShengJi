@@ -11,7 +11,7 @@ enum RecognitionEngine: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .apple: "Apple 本地识别"
+        case .apple: L10n.text("Apple 本地识别")
         case .whisper: "Whisper · Metal"
         case .senseVoice: "SenseVoice"
         case .parakeet: "NVIDIA Parakeet"
@@ -52,8 +52,8 @@ enum ComputeBackendPreference: String, CaseIterable, Codable, Identifiable, Send
 
     var title: String {
         switch self {
-        case .automatic: "自动"
-        case .coreMLANEPreferred: "Core ML（优先 ANE）"
+        case .automatic: L10n.text("自动")
+        case .coreMLANEPreferred: L10n.text("Core ML（优先 ANE）")
         case .metal: "Metal GPU"
         case .cpu: "CPU"
         }
@@ -80,7 +80,7 @@ struct ComputeBackendStatus: Codable, Hashable, Sendable {
             requested: requested,
             resolved: .appleManaged,
             aneEligible: true,
-            detail: "Apple 管理（具体计算单元由系统决定）",
+            detail: L10n.text("Apple 管理（具体计算单元由系统决定）"),
             fallbackReason: nil
         )
     }
@@ -109,12 +109,12 @@ enum WhisperModel: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var detail: String {
         switch self {
-        case .tiny: "最快，适合快速草稿"
-        case .base: "轻量，准确度略高"
-        case .small: "速度与准确度均衡"
-        case .medium: "高准确度，内存占用较高"
-        case .largeV3TurboQ5: "推荐；接近完整精度，体积更小"
-        case .largeV3Turbo: "完整精度，最佳质量"
+        case .tiny: L10n.text("最快，适合快速草稿")
+        case .base: L10n.text("轻量，准确度略高")
+        case .small: L10n.text("速度与准确度均衡")
+        case .medium: L10n.text("高准确度，内存占用较高")
+        case .largeV3TurboQ5: L10n.text("推荐；接近完整精度，体积更小")
+        case .largeV3Turbo: L10n.text("完整精度，最佳质量")
         }
     }
 
@@ -176,10 +176,10 @@ enum SenseVoiceModel: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var detail: String {
         switch self {
-        case .int8_2025: "推荐；中英日韩粤，多语种，体积小"
-        case .int8_2024: "兼容旧版导出，体积小"
-        case .full_2025: "完整精度，多语种，体积较大"
-        case .full_2024: "旧版完整精度，多语种，体积较大"
+        case .int8_2025: L10n.text("推荐；中英日韩粤，多语种，体积小")
+        case .int8_2024: L10n.text("兼容旧版导出，体积小")
+        case .full_2025: L10n.text("完整精度，多语种，体积较大")
+        case .full_2024: L10n.text("旧版完整精度，多语种，体积较大")
         }
     }
 
@@ -240,10 +240,10 @@ enum ParakeetModel: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var detail: String {
         switch self {
-        case .transducer110mInt8: "轻量英文模型，适合快速本地转录"
-        case .tdt06bV3Int8: "推荐；0.6B 英文模型，质量较高"
-        case .tdt06bV2Int8: "0.6B v2 英文模型"
-        case .unified06bInt8: "0.6B unified non-streaming 英文模型"
+        case .transducer110mInt8: L10n.text("轻量英文模型，适合快速本地转录")
+        case .tdt06bV3Int8: L10n.text("推荐；0.6B 英文模型，质量较高")
+        case .tdt06bV2Int8: L10n.text("0.6B v2 英文模型")
+        case .unified06bInt8: L10n.text("0.6B unified non-streaming 英文模型")
         }
     }
 
@@ -431,10 +431,10 @@ struct RecognitionConfiguration: Codable, Hashable, Sendable {
 
     var displayName: String {
         switch engine {
-        case .apple: "Apple 本地识别"
-        case .whisper: "Whisper · \(whisperModel?.title ?? "未选择模型") · Metal"
-        case .senseVoice: "SenseVoice · \(senseVoiceModel?.title ?? "未选择模型")"
-        case .parakeet: "NVIDIA Parakeet · \(parakeetModel?.title ?? "未选择模型")"
+        case .apple: L10n.text("Apple 本地识别")
+        case .whisper: "Whisper · \(whisperModel?.title ?? L10n.text("未选择模型")) · Metal"
+        case .senseVoice: "SenseVoice · \(senseVoiceModel?.title ?? L10n.text("未选择模型"))"
+        case .parakeet: "NVIDIA Parakeet · \(parakeetModel?.title ?? L10n.text("未选择模型"))"
         }
     }
 
@@ -490,7 +490,7 @@ struct SegmentTranslation: Codable, Identifiable, Hashable, Sendable {
         case .translated, .sourceLanguage:
             translatedText
         case .fallback:
-            "【未翻译】\(sourceText)"
+            L10n.format("【未翻译】%@", sourceText)
         }
     }
 
@@ -511,7 +511,7 @@ enum TranscriptionSource: Equatable, Sendable {
 
     var title: String {
         switch self {
-        case .microphone: "麦克风"
+        case .microphone: L10n.text("麦克风")
         case .file(let url): url.lastPathComponent
         case .recovered(let title): title
         }
@@ -538,14 +538,14 @@ enum TranscriptionPhase: Equatable, Sendable {
 
     var label: String {
         switch self {
-        case .preparing: "准备开始"
-        case .loadingModel: "正在加载识别模型"
-        case .preparingAudio: "正在准备音频"
-        case .transcribing: "正在识别语音"
-        case .paused: "已暂停，可编辑"
-        case .finishing: "正在整理文字"
-        case .finished: "转录完成"
-        case .failed: "转录失败"
+        case .preparing: L10n.text("准备开始")
+        case .loadingModel: L10n.text("正在加载识别模型")
+        case .preparingAudio: L10n.text("正在准备音频")
+        case .transcribing: L10n.text("正在识别语音")
+        case .paused: L10n.text("已暂停，可编辑")
+        case .finishing: L10n.text("正在整理文字")
+        case .finished: L10n.text("转录完成")
+        case .failed: L10n.text("转录失败")
         }
     }
 
@@ -629,23 +629,23 @@ enum TranscriptExportFormat: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .txt: "纯文本"
+        case .txt: L10n.text("纯文本")
         case .markdown: "Markdown"
         case .json: "JSON"
-        case .pdf: "PDF 文档"
-        case .srt: "SRT 字幕"
-        case .webVTT: "WebVTT 字幕"
+        case .pdf: L10n.text("PDF 文档")
+        case .srt: L10n.text("SRT 字幕")
+        case .webVTT: L10n.text("WebVTT 字幕")
         }
     }
 
     var detail: String {
         switch self {
-        case .txt: "通用、轻量的纯文字"
-        case .markdown: "带标题和来源信息"
-        case .json: "结构化文字与时间轴"
-        case .pdf: "适合阅读和分享"
-        case .srt: "常见视频字幕格式"
-        case .webVTT: "网页与播放器字幕"
+        case .txt: L10n.text("通用、轻量的纯文字")
+        case .markdown: L10n.text("带标题和来源信息")
+        case .json: L10n.text("结构化文字与时间轴")
+        case .pdf: L10n.text("适合阅读和分享")
+        case .srt: L10n.text("常见视频字幕格式")
+        case .webVTT: L10n.text("网页与播放器字幕")
         }
     }
 

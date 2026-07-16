@@ -9,15 +9,19 @@
 
 声迹是一款原生 macOS 本地语音转录应用。它可以转录麦克风、音频或视频文件以及 Mac 正在播放的声音，并提供本地翻译、稿件编辑、字幕导入导出和可恢复的长任务工作流。
 
-当前源码版本：**1.3.6（18）**
+当前源码版本：**1.4.0（19）**
 
 文档：<https://lixinchen.ca/docs/localscribe/>
 
 ## 界面预览
 
-![声迹首页](Documentation/Screenshots/home.jpeg)
+![声迹英文首页](Documentation/Screenshots/home-en.png)
 
-![转录编辑与翻译](Documentation/Screenshots/transcript-editor.jpeg)
+![英文转录编辑与翻译界面](Documentation/Screenshots/transcript-editor-en.png)
+
+![英文更新设置](Documentation/Screenshots/updates-en.png)
+
+![英文关于与开源依赖界面](Documentation/Screenshots/about-en.png)
 
 ## 项目状态
 

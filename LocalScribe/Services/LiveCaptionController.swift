@@ -16,9 +16,9 @@ enum LiveCaptionInputMode: String, CaseIterable, Identifiable, Codable, Sendable
 
     var title: String {
         switch self {
-        case .microphone: "麦克风"
-        case .systemAudio: "Mac 声音"
-        case .both: "麦克风 + Mac 声音"
+        case .microphone: L10n.text("麦克风")
+        case .systemAudio: L10n.text("Mac 声音")
+        case .both: L10n.text("麦克风 + Mac 声音")
         }
     }
 
@@ -39,7 +39,7 @@ private enum LiveCaptionSource: String, Sendable {
 
     var label: String {
         switch self {
-        case .microphone: "麦克风"
+        case .microphone: L10n.text("麦克风")
         case .systemAudio: "Mac"
         }
     }
@@ -187,16 +187,16 @@ final class LiveCaptionController {
 
     var statusText: String {
         if let errorMessage { return errorMessage }
-        if isPreparingTranslation { return "正在准备 Apple Translation…" }
-        if isPaused { return "实时字幕已暂停" }
+        if isPreparingTranslation { return L10n.text("正在准备 Apple Translation…") }
+        if isPaused { return L10n.text("实时字幕已暂停") }
         return isRunning
-            ? "正在监听 \(inputMode.title)"
-            : "以悬浮窗显示本地实时字幕"
+            ? L10n.format("正在监听 %@", inputMode.title)
+            : L10n.text("以悬浮窗显示本地实时字幕")
     }
 
     var primaryText: String {
         if isLiveTranslationActive {
-            return LiveCaptionDisplayFormatter.normalized(latestTranslatedText ?? "正在等待 Apple Translation…")
+            return LiveCaptionDisplayFormatter.normalized(latestTranslatedText ?? L10n.text("正在等待 Apple Translation…"))
         }
         return LiveCaptionReadabilityPolicy.displayText(
             held: heldCompletedText,
@@ -212,7 +212,7 @@ final class LiveCaptionController {
     }
 
     var secondaryTextLabel: String? {
-        isLiveTranslationActive && showsOriginalText ? "原文" : nil
+        isLiveTranslationActive && showsOriginalText ? L10n.text("原文") : nil
     }
 
     func toggle(locale: Locale) async {
@@ -515,7 +515,7 @@ final class LiveCaptionController {
     }
 
     private var latestOriginalText: String {
-        lines.last?.text ?? "等待声音…"
+        lines.last?.text ?? L10n.text("等待声音…")
     }
 
     private var latestTranslatedText: String? {
@@ -570,13 +570,13 @@ private enum LiveCaptionError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedLanguage(let language): "本机不支持 \(language) 的 Apple 本地实时字幕。"
-        case .noCompatibleAudioFormat: "无法找到兼容的实时字幕音频格式。"
-        case .microphonePermissionDenied: "未获得麦克风权限。请在系统设置中允许声迹访问麦克风。"
-        case .noMicrophone: "没有找到可用麦克风。"
-        case .noDisplay: "未找到可采集的显示器。"
-        case .invalidSystemAudio: "无法读取 Mac 系统声音。"
-        case .requiresMacOS26: "Apple 本地实时字幕需要 macOS 26。"
+        case .unsupportedLanguage(let language): L10n.format("本机不支持 %@ 的 Apple 本地实时字幕。", language)
+        case .noCompatibleAudioFormat: L10n.text("无法找到兼容的实时字幕音频格式。")
+        case .microphonePermissionDenied: L10n.text("未获得麦克风权限。请在系统设置中允许声迹访问麦克风。")
+        case .noMicrophone: L10n.text("没有找到可用麦克风。")
+        case .noDisplay: L10n.text("未找到可采集的显示器。")
+        case .invalidSystemAudio: L10n.text("无法读取 Mac 系统声音。")
+        case .requiresMacOS26: L10n.text("Apple 本地实时字幕需要 macOS 26。")
         }
     }
 }
@@ -1040,7 +1040,7 @@ private final class LiveCaptionPanelPresenter {
             backing: .buffered,
             defer: false
         )
-        panel.title = "实时字幕"
+        panel.title = L10n.text("实时字幕")
         panel.isFloatingPanel = true
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]

@@ -85,7 +85,7 @@ enum TranslationService {
                     configuration: configuration
                 )
             } catch is CancellationError {
-                return units.map { fallback($0, error: "翻译已取消") }
+                return units.map { fallback($0, error: L10n.text("翻译已取消")) }
             } catch {
                 batchError = error
                 if attempt == 0 { try? await Task.sleep(for: .milliseconds(250)) }
@@ -204,9 +204,9 @@ private enum TranslationBatchError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidCount(let expected, let actual):
-            "翻译结果数量不匹配（预期 \(expected)，实际 \(actual)）。"
+            L10n.format("翻译结果数量不匹配（预期 %lld，实际 %lld）。", expected, actual)
         case .emptyTranslation:
-            "翻译服务返回了空译文。"
+            L10n.text("翻译服务返回了空译文。")
         }
     }
 }
@@ -318,24 +318,24 @@ actor NLLBTranslationProcess {
         )
         let response: NLLBResponse = try send(request)
         guard response.ok else {
-            throw NLLBTranslationError.runtime(response.error ?? "NLLB 返回了无效响应。")
+            throw NLLBTranslationError.runtime(response.error ?? L10n.text("NLLB 返回了无效响应。"))
         }
         let translations: [String]
         if let results = response.results {
             let indexed = Dictionary(uniqueKeysWithValues: results.map { ($0.id, $0.text) })
             translations = try lineBatch.requestIDs.map { id in
                 guard let value = indexed[id] else {
-                    throw NLLBTranslationError.runtime("NLLB 返回的译文缺少请求 ID：\(id)")
+                    throw NLLBTranslationError.runtime(L10n.format("NLLB 返回的译文缺少请求 ID：%@", id))
                 }
                 return value
             }
         } else if let positional = response.translations {
             translations = positional
         } else {
-            throw NLLBTranslationError.runtime("NLLB 返回了无效响应。")
+            throw NLLBTranslationError.runtime(L10n.text("NLLB 返回了无效响应。"))
         }
         guard translations.count == lineBatch.requestTexts.count else {
-            throw NLLBTranslationError.runtime("NLLB 返回的译文数量不完整。")
+            throw NLLBTranslationError.runtime(L10n.text("NLLB 返回的译文数量不完整。"))
         }
         return try lineBatch.reconstruct(translations: translations)
     }
@@ -363,12 +363,12 @@ actor NLLBTranslationProcess {
 
         let ready: NLLBResponse = try readResponse()
         guard ready.ok else {
-            throw NLLBTranslationError.runtime(ready.error ?? "NLLB 运行时启动失败。")
+            throw NLLBTranslationError.runtime(ready.error ?? L10n.text("NLLB 运行时启动失败。"))
         }
     }
 
     private func send<T: Encodable>(_ request: T) throws -> NLLBResponse {
-        guard let input else { throw NLLBTranslationError.runtime("NLLB 运行时未启动。") }
+        guard let input else { throw NLLBTranslationError.runtime(L10n.text("NLLB 运行时未启动。")) }
         let data = try JSONEncoder.nllb.encode(request)
         input.write(data)
         input.write(Data([0x0A]))
@@ -376,7 +376,7 @@ actor NLLBTranslationProcess {
     }
 
     private func readResponse() throws -> NLLBResponse {
-        guard let output else { throw NLLBTranslationError.runtime("NLLB 运行时没有输出管道。") }
+        guard let output else { throw NLLBTranslationError.runtime(L10n.text("NLLB 运行时没有输出管道。")) }
         while true {
             if let newline = outputBuffer.firstIndex(of: 0x0A) {
                 let data = outputBuffer.prefix(upTo: newline)
@@ -392,7 +392,7 @@ actor NLLBTranslationProcess {
             if chunk.isEmpty {
                 let message = readStderr()
                 terminate()
-                throw NLLBTranslationError.runtime(message.isEmpty ? "NLLB 运行时提前退出。" : message)
+                throw NLLBTranslationError.runtime(message.isEmpty ? L10n.text("NLLB 运行时提前退出。") : message)
             }
             outputBuffer.append(chunk)
         }
@@ -466,7 +466,7 @@ struct NLLBLineBatch: Sendable {
 
     func reconstruct(translations: [String]) throws -> [String] {
         guard translations.count == requestTexts.count else {
-            throw NLLBTranslationError.runtime("NLLB 行级译文数量不完整。")
+            throw NLLBTranslationError.runtime(L10n.text("NLLB 行级译文数量不完整。"))
         }
         return translationSlots.map { slots in
             slots.map { slot in
@@ -544,11 +544,11 @@ enum NLLBTranslationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .runtimeNotBundled:
-            "NLLB 运行时未包含在当前应用中。"
+            L10n.text("NLLB 运行时未包含在当前应用中。")
         case .modelNotInstalled(let path):
-            "尚未安装 NLLB 模型。请将 CTranslate2 格式模型放到：\(path)"
+            L10n.format("尚未安装 NLLB 模型。请将 CTranslate2 格式模型放到：%@", path)
         case .unsupportedLanguage(let language):
-            "NLLB 暂不支持当前语言：\(language)。"
+            L10n.format("NLLB 暂不支持当前语言：%@。", language)
         case .runtime(let message):
             message
         }
