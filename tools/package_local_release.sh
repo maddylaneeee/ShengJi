@@ -49,7 +49,7 @@ plutil -lint \
   "$ROOT/LocalScribe/Resources/LocalScribe.entitlements" \
   "$ROOT/LocalScribe/Resources/LocalScribeHelper.entitlements"
 
-if [[ "$IDENTITY" != "-" ]] && ! security find-identity -v -p codesigning | rg -Fq "\"$IDENTITY\""; then
+if [[ "$IDENTITY" != "-" ]] && ! security find-identity -v -p codesigning | grep -Fq "\"$IDENTITY\""; then
   print -u2 "找不到代码签名证书：$IDENTITY"
   exit 2
 fi
@@ -124,11 +124,11 @@ codesign -d --entitlements :- "$SHERPA_HELPER" > "$WORK_ROOT/sherpa-entitlements
 codesign -d --entitlements :- "$NLLB_HELPER" > "$WORK_ROOT/nllb-entitlements.plist" 2>/dev/null
 codesign -d --entitlements :- "$APP" > "$WORK_ROOT/app-entitlements.plist" 2>/dev/null
 plutil -p "$WORK_ROOT/sherpa-entitlements.plist" | \
-  rg -q '"com\.apple\.security\.cs\.disable-library-validation" => true'
+  grep -Eq '"com\.apple\.security\.cs\.disable-library-validation" => true'
 plutil -p "$WORK_ROOT/nllb-entitlements.plist" | \
-  rg -q '"com\.apple\.security\.cs\.disable-library-validation" => true'
+  grep -Eq '"com\.apple\.security\.cs\.disable-library-validation" => true'
 if plutil -p "$WORK_ROOT/app-entitlements.plist" | \
-  rg -q '"com\.apple\.security\.cs\.disable-library-validation" => true'; then
+  grep -Eq '"com\.apple\.security\.cs\.disable-library-validation" => true'; then
   print -u2 "主 App 不应禁用 library validation。"
   exit 4
 fi
@@ -142,7 +142,7 @@ VAD_MODEL="$APP/Contents/Resources/WhisperVAD/ggml-silero-v6.2.0.bin"
 [[ "$(stat -f %z "$VAD_MODEL")" == "885098" ]]
 [[ "$(shasum -a 256 "$VAD_MODEL" | awk '{print $1}')" == "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987" ]]
 
-if find "$APP" -type f \( -name '*.swift' -o -name '*.c' -o -name '*.cpp' -o -name 'translate_helper.py' \) -print -quit | rg -q .; then
+if find "$APP" -type f \( -name '*.swift' -o -name '*.c' -o -name '*.cpp' -o -name 'translate_helper.py' \) -print -quit | grep -q .; then
   print -u2 "发布包中发现不应包含的源码。"
   exit 5
 fi
@@ -185,7 +185,7 @@ set +e
 "$EXTRACTED_APP/Contents/Resources/SherpaOnnx/bin/sherpa-onnx-offline" --help > "$WORK_ROOT/sherpa-help.txt" 2>&1
 SHERPA_STATUS=$?
 set -e
-if rg -qi 'dyld|library not loaded|different Team IDs|code signature.*not valid' "$WORK_ROOT/sherpa-help.txt"; then
+if grep -Eqi 'dyld|library not loaded|different Team IDs|code signature.*not valid' "$WORK_ROOT/sherpa-help.txt"; then
   print -u2 "Sherpa helper 无法加载其动态库。"
   cat "$WORK_ROOT/sherpa-help.txt" >&2
   exit 7
