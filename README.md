@@ -8,18 +8,22 @@
 [![CI](https://github.com/maddylaneeee/ShengJi/actions/workflows/ci.yml/badge.svg)](https://github.com/maddylaneeee/ShengJi/actions/workflows/ci.yml)
 [![Download for macOS](https://img.shields.io/badge/download-macOS%20DMG-0A84FF?logo=github)](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg)
 
-Native, local-first transcription, live captions, transcript editing, and optional on-device translation for Apple silicon Macs.
+**Turn microphones, media files, and the sound playing on your Mac into editable text and subtitles—locally.**
 
 LocalScribe can transcribe microphones, audio and video files, and audio playing on your Mac. It combines Apple Speech, whisper.cpp, SenseVoice, NVIDIA Parakeet, Apple Translation, and NLLB behind one native SwiftUI interface.
 
+Current version: **1.4.0 (19)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+
 > [!IMPORTANT]
-> **Developer Beta — testers wanted.** The current source version is **1.4.0 (19)**. GitHub Releases provides an ad-hoc signed, unnotarized Apple silicon build. A Developer ID-signed and notarized binary is not available yet. Please report results and hardware details in [GitHub Discussions](https://github.com/maddylaneeee/ShengJi/discussions) or [Issues](https://github.com/maddylaneeee/ShengJi/issues).
+> **Apple SpeechAnalyzer recognition and floating live captions require macOS 26.** The app itself supports macOS 15.5 or later. On macOS 15.5–25, manually select Whisper, SenseVoice, or Parakeet on the home screen. SenseVoice and Parakeet currently support file transcription only.
 
 ## Download and install
 
 1. [Download the latest DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg).
 2. Open it and drag ShengJi to Applications.
 3. The first launch will be blocked. After trying once, open System Settings → Privacy & Security, click Open Anyway, then confirm Open.
+
+For illustrated steps, troubleshooting, and SHA-256 verification, see the [Download and Installation Guide](Documentation/DOWNLOAD.md).
 
 > [!WARNING]
 > This build has an ad-hoc integrity signature only. It is neither Developer ID signed nor notarized by Apple. Override the warning only if you trust this repository and its Release. SHA-256 files are included with every Release.
@@ -37,19 +41,9 @@ LocalScribe can transcribe microphones, audio and video files, and audio playing
 
 ## Transcript editing and translation
 
-![ShengJi transcript editor in English with local translation, search, range editing, export and privacy details](Documentation/Screenshots/transcript-editor-en.png)
+![ShengJi transcript editor in Simplified Chinese with local translation, search, range editing, export and privacy details](Documentation/Screenshots/transcript-editor-zh-CN.png)
 
-The screenshots are from version 1.4.0 of the real macOS app and use an isolated profile with non-private test transcript content.
-
-## Settings, updates, and project details
-
-The built-in updater shows the running version, update manifest, and update status without hiding implementation details.
-
-![ShengJi update settings in English](Documentation/Screenshots/updates-en.png)
-
-The About screen identifies the bundled recognition and translation runtimes, their roles, licenses, and source links.
-
-![ShengJi About screen in English with open-source dependencies and documentation links](Documentation/Screenshots/about-en.png)
+The screenshots are from version 1.4.0 of the real macOS app and use an isolated profile with non-private test transcript content. ShengJi includes complete English and Simplified Chinese interfaces and follows the preferred macOS language order.
 
 ## Languages
 
@@ -144,9 +138,11 @@ The built-in updater reads `update.json` from the latest GitHub Release, downloa
 ## Documentation
 
 - [User documentation](https://lixinchen.ca/docs/localscribe/)
+- [Download and Installation Guide](Documentation/DOWNLOAD.md)
 - [Acceptance and regression notes](https://lixinchen.ca/docs/localscribe/acceptance.html)
 - [SherpaOnnx build notes](https://lixinchen.ca/docs/localscribe/sherpa-onnx.html)
-- [GitHub Discussions](https://github.com/maddylaneeee/ShengJi/discussions)
+- [Report an issue](https://github.com/maddylaneeee/ShengJi/issues)
+- [Media and recommendation kit](Documentation/MediaKit/README.md)
 
 ## License
 
