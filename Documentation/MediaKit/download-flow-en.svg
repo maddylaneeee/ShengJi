@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#111827"/><stop offset="1" stop-color="#1e1b4b"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#000" flood-opacity=".28"/></filter>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/><circle cx="1500" cy="-40" r="300" fill="#4f46e5" opacity=".18"/><circle cx="80" cy="870" r="260" fill="#0ea5e9" opacity=".12"/>
+  <g font-family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif">
+    <text x="100" y="110" fill="#fff" font-size="58" font-weight="700">Install ShengJi in 4 steps</text>
+    <text x="102" y="164" fill="#cbd5e1" font-size="27">Apple silicon · macOS 15.5+ · no source build required</text>
+    <g filter="url(#shadow)"><rect x="90" y="225" width="335" height="475" rx="34" fill="#fff"/><rect x="450" y="225" width="335" height="475" rx="34" fill="#fff"/><rect x="810" y="225" width="335" height="475" rx="34" fill="#fff"/><rect x="1170" y="225" width="335" height="475" rx="34" fill="#fff"/></g>
+    <g font-size="26" font-weight="700" text-anchor="middle"><circle cx="145" cy="285" r="30" fill="url(#accent)"/><text x="145" y="295" fill="#fff">1</text><circle cx="505" cy="285" r="30" fill="url(#accent)"/><text x="505" y="295" fill="#fff">2</text><circle cx="865" cy="285" r="30" fill="url(#accent)"/><text x="865" y="295" fill="#fff">3</text><circle cx="1225" cy="285" r="30" fill="url(#accent)"/><text x="1225" y="295" fill="#fff">4</text></g>
+    <g text-anchor="middle">
+      <path d="M220 355h75v68h-75z M205 423h105l-18 24h-69z" fill="#dbeafe" stroke="#2563eb" stroke-width="5"/><path d="M258 340v62m-22-23 22 23 22-23" fill="none" stroke="#2563eb" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><text x="257" y="500" fill="#111827" font-size="31" font-weight="700">Download the DMG</text><text x="257" y="548" fill="#475569" font-size="22">Get the arm64 installer</text><text x="257" y="580" fill="#475569" font-size="22">from GitHub Releases</text>
+      <rect x="538" y="349" width="160" height="112" rx="16" fill="#ede9fe" stroke="#7c3aed" stroke-width="5"/><circle cx="578" cy="392" r="23" fill="#8b5cf6"/><path d="M637 385h35m-17-17 17 17-17 17" fill="none" stroke="#7c3aed" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/><text x="617" y="500" fill="#111827" font-size="31" font-weight="700">Move to Applications</text><text x="617" y="548" fill="#475569" font-size="22">Open the DMG and drag ShengJi</text><text x="617" y="580" fill="#475569" font-size="22">Do not run it from the DMG</text>
+      <path d="M940 348l65 24v46c0 49-30 77-65 92-35-15-65-43-65-92v-46z" fill="#fee2e2" stroke="#dc2626" stroke-width="5"/><path d="M940 382v54m0 27v2" fill="none" stroke="#dc2626" stroke-width="11" stroke-linecap="round"/><text x="977" y="540" fill="#111827" font-size="31" font-weight="700">First launch is blocked</text><text x="977" y="588" fill="#475569" font-size="22">Try to open it once</text><text x="977" y="620" fill="#475569" font-size="22">Expected for this unnotarized build</text>
+      <rect x="1255" y="354" width="165" height="106" rx="18" fill="#dcfce7" stroke="#16a34a" stroke-width="5"/><path d="M1286 408l27 27 65-67" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/><text x="1337" y="500" fill="#111827" font-size="31" font-weight="700">Open Anyway</text><text x="1337" y="548" fill="#475569" font-size="22">System Settings → Privacy &amp; Security</text><text x="1337" y="580" fill="#475569" font-size="22">Click Open Anyway and confirm</text>
+    </g>
+    <rect x="155" y="755" width="1290" height="82" rx="24" fill="#fff" opacity=".1" stroke="#fff" stroke-opacity=".18"/><text x="800" y="807" fill="#e2e8f0" font-size="24" text-anchor="middle">macOS 26: Apple recognition and live captions · macOS 15.5–25: manually select a third-party model</text>
+  </g>
+</svg>
