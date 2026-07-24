@@ -1,4 +1,4 @@
-# ShengJi · LocalScribe
+# ShengJi (LocalScribe)
 
 **English** | [Chinese (Simplified)](README.zh-CN.md)
 
@@ -10,7 +10,7 @@
 
 **Turn microphones, media files, and the sound playing on your Mac into editable text and subtitles—locally.**
 
-LocalScribe can transcribe microphones, audio and video files, and audio playing on your Mac. It combines Apple Speech, whisper.cpp, SenseVoice, NVIDIA Parakeet, Apple Translation, and NLLB behind one native SwiftUI interface.
+ShengJi is a free, open-source native macOS app with no account required. It can transcribe microphones, audio and video files, and audio playing on your Mac. It combines Apple Speech, whisper.cpp, SenseVoice, NVIDIA Parakeet, Apple Translation, and NLLB behind one SwiftUI interface.
 
 Current version: **1.4.0 (19)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
@@ -30,7 +30,7 @@ For illustrated steps, troubleshooting, and SHA-256 verification, see the [Downl
 
 ![ShengJi home screen in English with model selection, import, translation and live-caption controls](Documentation/Screenshots/home-en.png)
 
-## Why LocalScribe?
+## Why ShengJi?
 
 - **Local by default.** Recognition and optional translation run on the Mac; input audio and imported transcripts are not uploaded by the app.
 - **More than dictation.** Use microphone input, media files, Mac audio, floating live captions, transcript editing, recovery, and subtitle export in one workflow.
@@ -141,11 +141,13 @@ The built-in updater reads `update.json` from the latest GitHub Release, downloa
 - [Download and Installation Guide](Documentation/DOWNLOAD.md)
 - [Acceptance and regression notes](https://lixinchen.ca/docs/localscribe/acceptance.html)
 - [SherpaOnnx build notes](https://lixinchen.ca/docs/localscribe/sherpa-onnx.html)
+- [Roadmap](ROADMAP.md)
+- [Contributing](CONTRIBUTING.md)
 - [Report an issue](https://github.com/maddylaneeee/ShengJi/issues)
 - [Media and recommendation kit](Documentation/MediaKit/README.md)
 
 ## License
 
-LocalScribe source code is available under the [MIT License](LICENSE). Third-party components and models retain their original licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the license files under `Vendor`.
+ShengJi source code is available under the [MIT License](LICENSE). Third-party components and models retain their original licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the license files under `Vendor`.
 
 The optional NLLB model is distributed upstream under CC-BY-NC-4.0.
