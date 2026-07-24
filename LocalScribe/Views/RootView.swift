@@ -7,8 +7,8 @@ struct RootView: View {
     @State private var translationPreferences = AppleTranslationPreferences()
     @State private var liveCaptions = LiveCaptionController()
     @State private var session: TranscriptionSessionModel?
-    @State private var isChoosingFile = false
-    @State private var isChoosingTranscript = false
+    @State private var isShowingFileImporter = false
+    @State private var fileImporterKind: FileImporterKind = .transcriptionMedia
     @State private var isShowingImportOptions = false
     @State private var pendingImportedTranscript: ImportedTranscript?
     @State private var importError: String?
@@ -22,8 +22,8 @@ struct RootView: View {
                 liveCaptions: liveCaptions,
                 recoverySnapshot: recoverySnapshot,
                 startMicrophone: startMicrophone,
-                chooseFile: { isChoosingFile = true },
-                chooseTranscript: { isChoosingTranscript = true },
+                chooseFile: { showFileImporter(.transcriptionMedia) },
+                chooseTranscript: { showFileImporter(.transcript) },
                 restoreRecovery: restoreRecovery,
                 clearRecovery: clearRecovery
             )
@@ -66,31 +66,21 @@ struct RootView: View {
 #endif
         }
         .fileImporter(
-            isPresented: $isChoosingFile,
-            allowedContentTypes: [.audio, .movie, .mpeg4Movie, .quickTimeMovie],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                startSession(.file(url))
-            }
-        }
-        .fileImporter(
-            isPresented: $isChoosingTranscript,
-            allowedContentTypes: [
-                .plainText,
-                .json,
-                UTType(filenameExtension: "md") ?? .plainText,
-                UTType(filenameExtension: "srt") ?? .plainText,
-                UTType(filenameExtension: "vtt") ?? .plainText
-            ],
+            isPresented: $isShowingFileImporter,
+            allowedContentTypes: fileImporterKind.allowedContentTypes,
             allowsMultipleSelection: false
         ) { result in
             guard case .success(let urls) = result, let url = urls.first else { return }
-            do {
-                pendingImportedTranscript = try TranscriptImporter.load(url: url)
-                isShowingImportOptions = true
-            } catch {
-                importError = error.localizedDescription
+            switch fileImporterKind {
+            case .transcriptionMedia:
+                startSession(.file(url))
+            case .transcript:
+                do {
+                    pendingImportedTranscript = try TranscriptImporter.load(url: url)
+                    isShowingImportOptions = true
+                } catch {
+                    importError = error.localizedDescription
+                }
             }
         }
         .confirmationDialog(
@@ -114,8 +104,13 @@ struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .chooseTranscriptionFile)) { _ in
             guard session == nil else { return }
-            isChoosingFile = true
+            showFileImporter(.transcriptionMedia)
         }
+    }
+
+    private func showFileImporter(_ kind: FileImporterKind) {
+        fileImporterKind = kind
+        isShowingFileImporter = true
     }
 
     private func startMicrophone() {
@@ -185,6 +180,26 @@ struct RootView: View {
                 )
                 session = model
             }
+        }
+    }
+}
+
+private enum FileImporterKind {
+    case transcriptionMedia
+    case transcript
+
+    var allowedContentTypes: [UTType] {
+        switch self {
+        case .transcriptionMedia:
+            [.audio, .movie, .mpeg4Movie, .quickTimeMovie]
+        case .transcript:
+            [
+                .plainText,
+                .json,
+                UTType(filenameExtension: "md") ?? .plainText,
+                UTType(filenameExtension: "srt") ?? .plainText,
+                UTType(filenameExtension: "vtt") ?? .plainText
+            ]
         }
     }
 }

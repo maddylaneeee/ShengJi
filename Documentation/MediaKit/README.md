@@ -6,6 +6,8 @@ This directory contains reusable screenshots, installation graphics, project car
 
 ## Assets
 
+- [`shengji-demo.gif`](shengji-demo.gif): 30-second silent demo from opening an audio file to editable local text.
+- [`shengji-demo-poster.png`](shengji-demo-poster.png): 16:9 poster showing the completed local transcript.
 - [`social-card-en.png`](social-card-en.png): 16:9 English project card.
 - [`download-flow-en.png`](download-flow-en.png): four-step English installation graphic.
 - [`../Screenshots/home-en.png`](../Screenshots/home-en.png): real English home-screen capture.

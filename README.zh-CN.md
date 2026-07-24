@@ -12,7 +12,13 @@
 
 ShengJi 是一款面向 Apple silicon Mac 的免费、开源原生转录应用，无需注册账号。它把本地识别、悬浮实时字幕、稿件编辑、离线翻译、字幕导入导出和长任务恢复整合在一个 SwiftUI 界面中。识别音频和导入稿件不会由应用上传。
 
-当前版本：**1.4.0（19）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+当前版本：**1.4.1（20）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+
+## 实际演示
+
+![声迹打开音频文件、选择本地转录设置并生成可编辑文字](Documentation/MediaKit/shengji-demo.gif)
+
+打开 App → 选择音频 → 设置语言与模型 → 得到可编辑的本地转录文字。演示仅使用非私人测试内容。
 
 > [!IMPORTANT]
 > **Apple SpeechAnalyzer 本地识别和悬浮实时字幕需要 macOS 26。** App 本身支持 macOS 15.5+；在 macOS 15.5–25 上，请在首页手动选择 Whisper、SenseVoice 或 Parakeet。SenseVoice 和 Parakeet 当前仅支持文件转录。

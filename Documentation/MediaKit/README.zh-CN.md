@@ -6,6 +6,8 @@
 
 ## 素材
 
+- [`shengji-demo.gif`](shengji-demo.gif)：30 秒无声演示，从打开音频到得到可编辑的本地转录文字。
+- [`shengji-demo-poster.png`](shengji-demo-poster.png)：展示本地转录完成结果的 16:9 封面图。
 - [`social-card-zh-CN.png`](social-card-zh-CN.png)：中文 16:9 项目介绍卡。
 - [`download-flow-zh-CN.png`](download-flow-zh-CN.png)：中文四步安装图。
 - [`../Screenshots/home-zh-CN.png`](../Screenshots/home-zh-CN.png)：中文首页实机截图。
