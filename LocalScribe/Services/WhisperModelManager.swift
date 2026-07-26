@@ -20,6 +20,13 @@ final class RecognitionPreferences {
         didSet { UserDefaults.standard.set(selectedParakeetModel.rawValue, forKey: Self.parakeetModelKey) }
     }
 
+    var advancedOptions: RecognitionAdvancedOptions {
+        didSet {
+            guard let data = try? JSONEncoder().encode(advancedOptions.normalized) else { return }
+            UserDefaults.standard.set(data, forKey: Self.advancedOptionsKey)
+        }
+    }
+
     private(set) var installedModels: Set<ManagedSpeechModel> = []
     private(set) var downloadState: ModelDownloadState = .idle
 
@@ -28,6 +35,7 @@ final class RecognitionPreferences {
     private static let whisperModelKey = "WhisperModel"
     private static let senseVoiceModelKey = "SenseVoiceModel"
     private static let parakeetModelKey = "ParakeetModel"
+    private static let advancedOptionsKey = "RecognitionAdvancedOptions"
     private static let lastThirdPartyEngineKey = "LastThirdPartyRecognitionEngine"
     private var lastThirdPartyEngine: RecognitionEngine
 
@@ -38,11 +46,15 @@ final class RecognitionPreferences {
             .flatMap(SenseVoiceModel.init(rawValue:)) ?? .int8_2025
         let savedParakeet = UserDefaults.standard.string(forKey: Self.parakeetModelKey)
             .flatMap(ParakeetModel.init(rawValue:)) ?? .tdt06bV3Int8
+        let savedAdvancedOptions = UserDefaults.standard.data(forKey: Self.advancedOptionsKey)
+            .flatMap { try? JSONDecoder().decode(RecognitionAdvancedOptions.self, from: $0) }
+            ?? .default
 
         let detectedInstalledModels = SpeechModelStore.installedModels()
         selectedWhisperModel = savedWhisper
         selectedSenseVoiceModel = savedSenseVoice
         selectedParakeetModel = savedParakeet
+        advancedOptions = savedAdvancedOptions.normalized
         lastThirdPartyEngine = UserDefaults.standard.string(forKey: Self.lastThirdPartyEngineKey)
             .flatMap(RecognitionEngine.init(rawValue:))
             .flatMap { $0 == .apple ? nil : $0 } ?? .whisper
@@ -74,8 +86,22 @@ final class RecognitionPreferences {
             whisperModel: engine == .whisper ? selectedWhisperModel : nil,
             senseVoiceModel: engine == .senseVoice ? selectedSenseVoiceModel : nil,
             parakeetModel: engine == .parakeet ? selectedParakeetModel : nil,
-            computeBackend: .automatic
+            computeBackend: .automatic,
+            advancedOptions: advancedOptions.normalized
         )
+    }
+
+    func resetAdvancedOptions(for selectedEngine: RecognitionEngine? = nil) {
+        switch selectedEngine ?? engine {
+        case .apple:
+            advancedOptions = .default
+        case .whisper:
+            advancedOptions.whisper = .default
+        case .senseVoice:
+            advancedOptions.senseVoice = .default
+        case .parakeet:
+            advancedOptions.parakeet = .default
+        }
     }
 
     func chooseEngine(_ newEngine: RecognitionEngine) {

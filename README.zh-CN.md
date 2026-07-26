@@ -12,7 +12,7 @@
 
 ShengJi 是一款面向 Apple silicon Mac 的免费、开源原生转录应用，无需注册账号。它把本地识别、悬浮实时字幕、稿件编辑、离线翻译、字幕导入导出和长任务恢复整合在一个 SwiftUI 界面中。识别音频和导入稿件不会由应用上传。
 
-当前版本：**1.4.1（20）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+当前版本：**1.5.0（21）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
 
 ## 实际演示
 
@@ -79,6 +79,12 @@ Apple Speech 和 Apple Translation 首次使用某些语言时，可能由 macOS
 | NLLB | 可选转录后翻译 | CTranslate2 CPU/int8 |
 
 Whisper 文件转录使用模型内部滑动窗口；较长素材会在适合时启用内置 Silero VAD v6.2.0。过滤逻辑综合静音、置信度、机械重复和已知幻觉模板，同时尽量保留真实说出的结尾语句。
+
+### 高级转写设置
+
+使用受支持的第三方引擎时，右侧检查器会显示默认收起的“高级”区域。Whisper 可设置模型提示词、Temperature 与回退、Beam 或贪心搜索、上下文长度、静音与置信度过滤、VAD，以及带防误用设计的自动推理线程。SenseVoice 和 Parakeet 只显示其本地运行时真实支持的选项；文件专属和麦克风专属设置只会出现在对应任务中。
+
+带数值的选项既可使用键盘直接输入，也可通过滑块或步进器调节，并带范围校验和简短的鼠标悬停说明。应用会记住上次使用的引擎、模型和高级配置；“恢复模型默认参数”只重置当前所选引擎。
 
 ## 隐私与联网行为
 

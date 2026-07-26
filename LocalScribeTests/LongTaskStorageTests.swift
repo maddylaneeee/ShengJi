@@ -5,7 +5,13 @@ final class LongTaskStorageTests: XCTestCase {
     @MainActor
     func testRecognitionPreferencesDefaultToAppleAndRestoreExplicitChoice() {
         let defaults = UserDefaults.standard
-        let keys = ["RecognitionEngine", "LastThirdPartyRecognitionEngine"]
+        let keys = [
+            "RecognitionEngine",
+            "LastThirdPartyRecognitionEngine",
+            "WhisperModel",
+            "SenseVoiceModel",
+            "ParakeetModel"
+        ]
         let previous = Dictionary(uniqueKeysWithValues: keys.map { ($0, defaults.object(forKey: $0)) })
         defer {
             for key in keys {
@@ -22,7 +28,15 @@ final class LongTaskStorageTests: XCTestCase {
 
         defaults.set(RecognitionEngine.parakeet.rawValue, forKey: "RecognitionEngine")
         defaults.set(RecognitionEngine.parakeet.rawValue, forKey: "LastThirdPartyRecognitionEngine")
-        XCTAssertEqual(RecognitionPreferences().engine, .parakeet)
+        defaults.set(WhisperModel.medium.rawValue, forKey: "WhisperModel")
+        defaults.set(SenseVoiceModel.full_2024.rawValue, forKey: "SenseVoiceModel")
+        defaults.set(ParakeetModel.unified06bInt8.rawValue, forKey: "ParakeetModel")
+
+        let restored = RecognitionPreferences()
+        XCTAssertEqual(restored.engine, .parakeet)
+        XCTAssertEqual(restored.selectedWhisperModel, .medium)
+        XCTAssertEqual(restored.selectedSenseVoiceModel, .full_2024)
+        XCTAssertEqual(restored.selectedParakeetModel, .unified06bInt8)
     }
 
     func testFloatRingBufferMaintainsOrderAcrossCompaction() {
@@ -38,6 +52,114 @@ final class LongTaskStorageTests: XCTestCase {
         let data = Data(#"{"engine":"whisper","whisperModel":"tiny"}"#.utf8)
         let configuration = try JSONDecoder().decode(RecognitionConfiguration.self, from: data)
         XCTAssertEqual(configuration.computeBackend, .automatic)
+        XCTAssertEqual(configuration.advancedOptions, .default)
+    }
+
+    @MainActor
+    func testAdvancedOptionsPersistAcrossPreferenceInstancesAndCanReset() {
+        let defaults = UserDefaults.standard
+        let key = "RecognitionAdvancedOptions"
+        let previous = defaults.object(forKey: key)
+        defer {
+            if let previous {
+                defaults.set(previous, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+
+        defaults.removeObject(forKey: key)
+        let first = RecognitionPreferences()
+        first.advancedOptions.whisper.initialPrompt = "Persistent terminology"
+        first.advancedOptions.whisper.temperature = 0.45
+
+        let restored = RecognitionPreferences()
+        XCTAssertEqual(restored.advancedOptions.whisper.initialPrompt, "Persistent terminology")
+        XCTAssertEqual(restored.advancedOptions.whisper.temperature, 0.45)
+
+        restored.resetAdvancedOptions(for: .whisper)
+        XCTAssertEqual(restored.advancedOptions.whisper, .default)
+    }
+
+    func testAdvancedOptionsRoundTripAndClampUnsafePersistedValues() throws {
+        let data = Data(#"""
+        {
+          "engine": "whisper",
+          "whisperModel": "tiny",
+          "advancedOptions": {
+            "whisper": {
+              "initialPrompt": "ShengJi terminology",
+              "temperature": 7,
+              "beamSize": 99,
+              "threadCount": -4
+            },
+            "parakeet": {
+              "decodingMethod": "modifiedBeamSearch",
+              "maxActivePaths": 200,
+              "blankPenalty": -2,
+              "threadCount": 999
+            }
+          }
+        }
+        """#.utf8)
+        let configuration = try JSONDecoder().decode(RecognitionConfiguration.self, from: data)
+        XCTAssertEqual(configuration.advancedOptions.whisper.initialPrompt, "ShengJi terminology")
+        XCTAssertEqual(configuration.advancedOptions.whisper.temperature, 1)
+        XCTAssertEqual(configuration.advancedOptions.whisper.beamSize, 20)
+        XCTAssertEqual(configuration.advancedOptions.whisper.threadCount, 0)
+        XCTAssertEqual(configuration.advancedOptions.parakeet.decodingMethod, .modifiedBeamSearch)
+        XCTAssertEqual(configuration.advancedOptions.parakeet.maxActivePaths, 64)
+        XCTAssertEqual(configuration.advancedOptions.parakeet.blankPenalty, 0)
+        XCTAssertEqual(
+            configuration.advancedOptions.parakeet.threadCount,
+            RecognitionThreadPolicy.maximumManualCount
+        )
+
+        let roundTripped = try JSONDecoder().decode(
+            RecognitionConfiguration.self,
+            from: JSONEncoder().encode(configuration)
+        )
+        XCTAssertEqual(roundTripped, configuration)
+    }
+
+    func testSherpaArgumentsUseOnlySupportedAdvancedOptions() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LocalScribe-AdvancedOptions-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        for name in ["model.onnx", "tokens.txt", "encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx"] {
+            try Data().write(to: directory.appendingPathComponent(name))
+        }
+
+        var advanced = RecognitionAdvancedOptions.default
+        advanced.senseVoice.useInverseTextNormalization = false
+        advanced.senseVoice.threadCount = 3
+        let senseVoice = try SherpaOnnxFileProcessor.arguments(
+            for: .senseVoice(.full_2025),
+            modelURL: directory,
+            languageCode: "zh",
+            provider: "cpu",
+            advancedOptions: advanced
+        )
+        XCTAssertTrue(senseVoice.contains("--sense-voice-use-itn=false"))
+        XCTAssertTrue(senseVoice.contains("--num-threads=3"))
+
+        advanced.parakeet.decodingMethod = .modifiedBeamSearch
+        advanced.parakeet.maxActivePaths = 12
+        advanced.parakeet.blankPenalty = 0.7
+        advanced.parakeet.threadCount = 5
+        let parakeet = try SherpaOnnxFileProcessor.arguments(
+            for: .parakeet(.tdt06bV3Int8),
+            modelURL: directory,
+            languageCode: "en",
+            provider: "coreml",
+            advancedOptions: advanced
+        )
+        XCTAssertTrue(parakeet.contains("--decoding-method=modified_beam_search"))
+        XCTAssertTrue(parakeet.contains("--max-active-paths=12"))
+        XCTAssertTrue(parakeet.contains("--blank-penalty=0.7"))
+        XCTAssertTrue(parakeet.contains("--num-threads=5"))
     }
 
     func testRepositoryReplaysPagesThatAreNoLongerInTheMemoryTail() async throws {

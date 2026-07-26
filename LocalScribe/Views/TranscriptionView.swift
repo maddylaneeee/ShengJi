@@ -26,6 +26,7 @@ struct TranscriptionView: View {
     @State private var firstEditNode: NSRange?
     @State private var secondEditNode: NSRange?
     @State private var editStatus: String?
+    @State private var isAdvancedExpanded = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -83,11 +84,13 @@ struct TranscriptionView: View {
             Text(exportError ?? L10n.text("未知错误"))
         }
         .onAppear {
+            isAdvancedExpanded = false
             nllbModelManager.refresh()
             syncPendingConfiguration()
         }
         .onChange(of: catalog.selectedLocaleIdentifier) { _, _ in syncPendingConfiguration() }
         .onChange(of: recognitionPreferences.configuration) { _, _ in syncPendingConfiguration() }
+        .onChange(of: recognitionPreferences.advancedOptions) { _, _ in syncPendingConfiguration() }
         .onChange(of: translationPreferences.targetLanguage) { _, newTarget in
             handleTranslationTargetChange(newTarget)
         }
@@ -776,6 +779,34 @@ struct TranscriptionView: View {
                 }
             }
 
+            if !session.isImportedTranscript, advancedEngine != .apple {
+                Section {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            isAdvancedExpanded.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .rotationEffect(.degrees(isAdvancedExpanded ? 90 : 0))
+                                .foregroundStyle(.secondary)
+                            Label("高级", systemImage: "slider.horizontal.3")
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityValue(isAdvancedExpanded ? L10n.text("已展开") : L10n.text("已折叠"))
+
+                    if isAdvancedExpanded {
+                        advancedOptionsControls
+                            .padding(.top, 6)
+                    }
+                }
+                .disabled(!session.canStart)
+            }
+
             if case .microphone = session.source, session.phase == .transcribing {
                 Section("输入电平") {
                     AudioLevelMeter(level: session.audioLevel)
@@ -815,6 +846,395 @@ struct TranscriptionView: View {
         }
         .formStyle(.grouped)
         .inspectorColumnWidth(min: 240, ideal: 280, max: 340)
+    }
+
+    private var advancedEngine: RecognitionEngine {
+        session.canStart ? recognitionPreferences.engine : session.configuration.engine
+    }
+
+    @ViewBuilder
+    private var advancedOptionsControls: some View {
+        switch advancedEngine {
+        case .apple:
+            EmptyView()
+        case .whisper:
+            whisperAdvancedControls
+        case .senseVoice:
+            senseVoiceAdvancedControls
+        case .parakeet:
+            parakeetAdvancedControls
+        }
+    }
+
+    private var whisperAdvancedControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("模型提示词")
+                    .font(.caption.weight(.medium))
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: promptBinding)
+                        .font(.body)
+                        .frame(minHeight: 68, maxHeight: 96)
+                        .scrollContentBackground(.hidden)
+                        .padding(4)
+                        .background(.background, in: RoundedRectangle(cornerRadius: 6))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(.separator, lineWidth: 1)
+                        }
+                        .accessibilityLabel("模型提示词")
+                    if recognitionPreferences.advancedOptions.whisper.initialPrompt.isEmpty {
+                        Text("输入专有名词、人物名或上下文")
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 9)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .help(L10n.text("提供术语或上下文，帮助模型优先识别这些词；不会自动加入转写结果。"))
+                Toggle(
+                    "每个解码窗口都携带提示词",
+                    isOn: $recognitionPreferences.advancedOptions.whisper.carryInitialPrompt
+                )
+                .help(L10n.text("开启后，长音频的每个解码窗口都会重复使用提示词。"))
+            }
+
+            Divider()
+            Text("解码")
+                .font(.caption.weight(.semibold))
+
+            advancedSlider(
+                "Temperature",
+                value: $recognitionPreferences.advancedOptions.whisper.temperature,
+                range: 0...1,
+                step: 0.05,
+                help: "越低输出越稳定。通常保持 0；提高可增加候选多样性，也可能增加错误。"
+            )
+            if isFileSource {
+                advancedSlider(
+                    "温度回退增量",
+                    value: $recognitionPreferences.advancedOptions.whisper.temperatureIncrement,
+                    range: 0...1,
+                    step: 0.05,
+                    help: "文件转写质量不佳时，逐次提高 Temperature 重试。0 表示关闭回退。"
+                )
+                advancedStepper(
+                    "Beam size",
+                    value: $recognitionPreferences.advancedOptions.whisper.beamSize,
+                    range: 1...20,
+                    help: "同时比较的文字候选路径数。较大可能更准确，但会变慢；通常保持 5。"
+                )
+            }
+            if isMicrophoneSource {
+                advancedStepper(
+                    "Best of",
+                    value: $recognitionPreferences.advancedOptions.whisper.greedyBestOf,
+                    range: 1...10,
+                    help: "每次麦克风解码比较的候选数。较大可能更稳定，但会增加延迟；通常保持 3。"
+                )
+            }
+            advancedStepper(
+                "上下文 token 数",
+                value: $recognitionPreferences.advancedOptions.whisper.maxTextContextTokens,
+                range: 0...224,
+                step: 16,
+                help: "保留上一段文字作为后续识别的上下文。0 表示不保留；通常保持默认值。"
+            )
+            threadCountControl(value: $recognitionPreferences.advancedOptions.whisper.threadCount)
+
+            Divider()
+            Text("过滤与静音")
+                .font(.caption.weight(.semibold))
+
+            Toggle(
+                "抑制空白输出",
+                isOn: $recognitionPreferences.advancedOptions.whisper.suppressBlank
+            )
+            Toggle(
+                "抑制非语音 token",
+                isOn: $recognitionPreferences.advancedOptions.whisper.suppressNonSpeechTokens
+            )
+            advancedSlider(
+                "压缩比阈值",
+                value: $recognitionPreferences.advancedOptions.whisper.compressionRatioThreshold,
+                range: 0...5,
+                step: 0.1,
+                help: "用于拒绝过度重复的输出。数值越低越严格；不确定时保持默认值。"
+            )
+            advancedSlider(
+                "平均对数概率阈值",
+                value: $recognitionPreferences.advancedOptions.whisper.logProbabilityThreshold,
+                range: -5...0,
+                step: 0.1,
+                help: "用于拒绝低置信度输出。越接近 0 越严格；不确定时保持默认值。"
+            )
+            if isFileSource {
+                advancedSlider(
+                    "无语音阈值",
+                    value: $recognitionPreferences.advancedOptions.whisper.noSpeechThreshold,
+                    range: 0...1,
+                    step: 0.05,
+                    help: "高于此概率时将片段视为无语音。调高可减少幻听，但可能漏掉较轻的说话声。"
+                )
+
+                Divider()
+                Text("语音活动检测")
+                    .font(.caption.weight(.semibold))
+
+                Toggle(
+                    "长文件启用 VAD",
+                    isOn: $recognitionPreferences.advancedOptions.whisper.useVAD
+                )
+                .help(L10n.text("先检测长文件中的说话区域，减少静音段的无效识别。"))
+                advancedSlider(
+                    "VAD 阈值",
+                    value: $recognitionPreferences.advancedOptions.whisper.vadThreshold,
+                    range: 0...1,
+                    step: 0.05,
+                    help: "判定为说话的灵敏度。调高可减少噪声误检，但可能漏掉轻声说话。"
+                )
+                .disabled(!recognitionPreferences.advancedOptions.whisper.useVAD)
+                advancedStepper(
+                    "最短静音（毫秒）",
+                    value: $recognitionPreferences.advancedOptions.whisper.vadMinimumSilenceMilliseconds,
+                    range: 100...2_000,
+                    step: 50,
+                    help: "达到这个静音时长后才切分语音。太短可能切碎句子，太长会延迟分段。"
+                )
+                .disabled(!recognitionPreferences.advancedOptions.whisper.useVAD)
+            } else if isMicrophoneSource {
+                advancedSlider(
+                    "无语音阈值",
+                    value: $recognitionPreferences.advancedOptions.whisper.realtimeNoSpeechThreshold,
+                    range: 0...1,
+                    step: 0.05,
+                    help: "高于此概率时将片段视为无语音。调高可减少实时幻听，但可能漏掉较轻的说话声。"
+                )
+            }
+
+            resetAdvancedOptionsButton
+        }
+    }
+
+    private var senseVoiceAdvancedControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(
+                "逆文本归一化（ITN）",
+                isOn: $recognitionPreferences.advancedOptions.senseVoice.useInverseTextNormalization
+            )
+            .help(L10n.text("将口语中的数字、日期等转换为更易阅读的书写形式。"))
+            threadCountControl(value: $recognitionPreferences.advancedOptions.senseVoice.threadCount)
+            resetAdvancedOptionsButton
+        }
+    }
+
+    private var parakeetAdvancedControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker(
+                "解码方式",
+                selection: $recognitionPreferences.advancedOptions.parakeet.decodingMethod
+            ) {
+                ForEach(ParakeetDecodingMethod.allCases) { method in
+                    Text(method.title).tag(method)
+                }
+            }
+            .help(L10n.text("贪心搜索速度更快；改进束搜索会比较多条候选路径，可能更准确但更慢。"))
+            if recognitionPreferences.advancedOptions.parakeet.decodingMethod == .modifiedBeamSearch {
+                advancedStepper(
+                    "最大有效路径数",
+                    value: $recognitionPreferences.advancedOptions.parakeet.maxActivePaths,
+                    range: 1...64,
+                    help: "束搜索保留的候选路径数。较大可能更准确，但会占用更多计算资源。"
+                )
+            }
+            advancedSlider(
+                "空白 token 惩罚",
+                value: $recognitionPreferences.advancedOptions.parakeet.blankPenalty,
+                range: 0...5,
+                step: 0.1,
+                help: "提高后模型更不容易输出空白，可能减少漏字，但过高会增加误插入。"
+            )
+            threadCountControl(value: $recognitionPreferences.advancedOptions.parakeet.threadCount)
+            resetAdvancedOptionsButton
+        }
+    }
+
+    private func advancedSlider(
+        _ title: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double,
+        help: String
+    ) -> some View {
+        let safeValue = clampedBinding(value, to: range)
+        return VStack(alignment: .leading, spacing: 5) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(L10n.text(title))
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 4)
+                    advancedDoubleField(title, value: safeValue)
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(L10n.text(title))
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        Spacer(minLength: 0)
+                        advancedDoubleField(title, value: safeValue)
+                    }
+                }
+            }
+            Slider(value: safeValue, in: range, step: step)
+                .accessibilityLabel(L10n.text(title))
+        }
+        .help(L10n.text(help))
+    }
+
+    private func advancedStepper(
+        _ title: String,
+        value: Binding<Int>,
+        range: ClosedRange<Int>,
+        step: Int = 1,
+        help: String
+    ) -> some View {
+        let safeValue = clampedBinding(value, to: range)
+        return ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 8) {
+                Text(L10n.text(title))
+                    .fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 4)
+                advancedIntegerControls(title, value: safeValue, range: range, step: step)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(L10n.text(title))
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Spacer(minLength: 0)
+                    advancedIntegerControls(title, value: safeValue, range: range, step: step)
+                }
+            }
+        }
+        .help(L10n.text(help))
+    }
+
+    private func advancedDoubleField(
+        _ title: String,
+        value: Binding<Double>
+    ) -> some View {
+        TextField(
+            value: value,
+            format: .number.precision(.fractionLength(0...2))
+        ) {
+            Text(L10n.text(title))
+        }
+        .labelsHidden()
+        .textFieldStyle(.roundedBorder)
+        .multilineTextAlignment(.trailing)
+        .monospacedDigit()
+        .frame(minWidth: 56, idealWidth: 64, maxWidth: 72)
+    }
+
+    private func advancedIntegerControls(
+        _ title: String,
+        value: Binding<Int>,
+        range: ClosedRange<Int>,
+        step: Int
+    ) -> some View {
+        HStack(spacing: 6) {
+            TextField(value: value, format: .number) {
+                Text(L10n.text(title))
+            }
+            .labelsHidden()
+            .textFieldStyle(.roundedBorder)
+            .multilineTextAlignment(.trailing)
+            .monospacedDigit()
+            .frame(minWidth: 56, idealWidth: 64, maxWidth: 72)
+
+            Stepper("", value: value, in: range, step: step)
+                .labelsHidden()
+                .accessibilityLabel(L10n.text(title))
+                .fixedSize()
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func threadCountControl(value: Binding<Int>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("自动选择推理线程（推荐）", isOn: Binding(
+                get: { value.wrappedValue == 0 },
+                set: { usesAutomaticThreads in
+                    value.wrappedValue = usesAutomaticThreads ? 0 : recommendedManualThreadCount
+                }
+            ))
+            .help(L10n.text("控制识别时使用的 CPU 线程数。自动模式会根据这台 Mac 选择合适数量，通常最稳定。"))
+
+            if value.wrappedValue != 0 {
+                advancedStepper(
+                    "线程数",
+                    value: value,
+                    range: 1...maximumManualThreadCount,
+                    help: "更多线程不一定更快，过高可能造成资源争用。如果不确定，请重新开启自动模式。"
+                )
+            }
+        }
+    }
+
+    private var promptBinding: Binding<String> {
+        Binding(
+            get: { recognitionPreferences.advancedOptions.whisper.initialPrompt },
+            set: { recognitionPreferences.advancedOptions.whisper.initialPrompt = String($0.prefix(2_000)) }
+        )
+    }
+
+    private func clampedBinding(
+        _ value: Binding<Double>,
+        to range: ClosedRange<Double>
+    ) -> Binding<Double> {
+        Binding(
+            get: { min(max(value.wrappedValue, range.lowerBound), range.upperBound) },
+            set: { newValue in
+                guard newValue.isFinite else { return }
+                value.wrappedValue = min(max(newValue, range.lowerBound), range.upperBound)
+            }
+        )
+    }
+
+    private func clampedBinding(
+        _ value: Binding<Int>,
+        to range: ClosedRange<Int>
+    ) -> Binding<Int> {
+        Binding(
+            get: { min(max(value.wrappedValue, range.lowerBound), range.upperBound) },
+            set: { value.wrappedValue = min(max($0, range.lowerBound), range.upperBound) }
+        )
+    }
+
+    private var isMicrophoneSource: Bool {
+        if case .microphone = session.source { return true }
+        return false
+    }
+
+    private var isFileSource: Bool {
+        if case .file = session.source { return true }
+        return false
+    }
+
+    private var maximumManualThreadCount: Int {
+        RecognitionThreadPolicy.maximumManualCount
+    }
+
+    private var recommendedManualThreadCount: Int {
+        RecognitionThreadPolicy.automaticCount
+    }
+
+    private var resetAdvancedOptionsButton: some View {
+        Button("恢复模型默认参数", systemImage: "arrow.counterclockwise") {
+            recognitionPreferences.resetAdvancedOptions(for: advancedEngine)
+        }
+        .buttonStyle(.borderless)
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
     private var exportSheet: some View {

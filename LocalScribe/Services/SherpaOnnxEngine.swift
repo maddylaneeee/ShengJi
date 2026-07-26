@@ -52,7 +52,8 @@ enum SherpaOnnxFileProcessor {
             model: model,
             wavURL: wav.url,
             languageCode: sherpaLanguageCode(for: locale),
-            preference: configuration.computeBackend
+            preference: configuration.computeBackend,
+            advancedOptions: configuration.advancedOptions
         )
         progressHandler(1, wav.duration)
         return SherpaTranscriptionResult(
@@ -65,7 +66,8 @@ enum SherpaOnnxFileProcessor {
         model: ManagedSpeechModel,
         wavURL: URL,
         languageCode: String,
-        preference: ComputeBackendPreference
+        preference: ComputeBackendPreference,
+        advancedOptions: RecognitionAdvancedOptions
     ) async throws -> (text: String, status: ComputeBackendStatus) {
         let runtimeURL = try runtimeExecutableURL()
         let modelURL = SpeechModelStore.installURL(for: model)
@@ -89,7 +91,8 @@ enum SherpaOnnxFileProcessor {
                 for: model,
                 modelURL: modelURL,
                 languageCode: languageCode,
-                provider: provider
+                provider: provider,
+                advancedOptions: advancedOptions
             ) + [wavURL.path]
             let result = try await SherpaSubprocess().run(
                 executableURL: runtimeURL,
@@ -122,17 +125,20 @@ enum SherpaOnnxFileProcessor {
         throw SherpaOnnxError.processFailed(firstFailure ?? L10n.text("所有计算后端均不可用。"))
     }
 
-    private static func arguments(
+    static func arguments(
         for model: ManagedSpeechModel,
         modelURL: URL,
         languageCode: String,
-        provider: String
+        provider: String,
+        advancedOptions: RecognitionAdvancedOptions
     ) throws -> [String] {
-        let threads = max(2, min(ProcessInfo.processInfo.activeProcessorCount - 2, 8))
+        let automaticThreadCount = RecognitionThreadPolicy.automaticCount
         switch model {
         case .whisper:
             throw SherpaOnnxError.invalidModelLayout(model.title)
         case .senseVoice(let senseVoice):
+            let options = advancedOptions.senseVoice.normalized
+            let threads = options.threadCount == 0 ? automaticThreadCount : options.threadCount
             let modelFile = modelURL.appendingPathComponent(senseVoice.modelFileName)
             let tokens = modelURL.appendingPathComponent("tokens.txt")
             guard FileManager.default.fileExists(atPath: modelFile.path),
@@ -143,13 +149,15 @@ enum SherpaOnnxFileProcessor {
                 "--tokens=\(tokens.path)",
                 "--sense-voice-model=\(modelFile.path)",
                 "--sense-voice-language=\(languageCode)",
-                "--sense-voice-use-itn=true",
+                "--sense-voice-use-itn=\(options.useInverseTextNormalization)",
                 "--model-type=sense_voice",
                 "--num-threads=\(threads)",
                 "--provider=\(provider)",
                 "--print-args=false"
             ]
         case .parakeet:
+            let options = advancedOptions.parakeet.normalized
+            let threads = options.threadCount == 0 ? automaticThreadCount : options.threadCount
             let encoder = firstExisting(in: modelURL, names: ["encoder.int8.onnx", "encoder.onnx"])
             let decoder = firstExisting(in: modelURL, names: ["decoder.int8.onnx", "decoder.onnx"])
             let joiner = firstExisting(in: modelURL, names: ["joiner.int8.onnx", "joiner.onnx"])
@@ -158,17 +166,22 @@ enum SherpaOnnxFileProcessor {
                   FileManager.default.fileExists(atPath: tokens.path) else {
                 throw SherpaOnnxError.invalidModelLayout(model.title)
             }
-            return [
+            var arguments = [
                 "--encoder=\(encoder.path)",
                 "--decoder=\(decoder.path)",
                 "--joiner=\(joiner.path)",
                 "--tokens=\(tokens.path)",
                 "--model-type=nemo_transducer",
-                "--decoding-method=greedy_search",
+                "--decoding-method=\(options.decodingMethod == .greedySearch ? "greedy_search" : "modified_beam_search")",
+                "--blank-penalty=\(options.blankPenalty)",
                 "--num-threads=\(threads)",
                 "--provider=\(provider)",
                 "--print-args=false"
             ]
+            if options.decodingMethod == .modifiedBeamSearch {
+                arguments.append("--max-active-paths=\(options.maxActivePaths)")
+            }
+            return arguments
         }
     }
 

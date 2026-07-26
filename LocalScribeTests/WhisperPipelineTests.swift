@@ -1,7 +1,53 @@
 import XCTest
+import WhisperMetal
 @testable import LocalScribe
 
 final class WhisperPipelineTests: XCTestCase {
+    func testAdvancedOptionsMapToWhisperCppParametersForFileAndMicrophone() {
+        var options = WhisperAdvancedOptions.default
+        options.temperature = 0.35
+        options.temperatureIncrement = 0.15
+        options.beamSize = 9
+        options.greedyBestOf = 6
+        options.maxTextContextTokens = 160
+        options.suppressBlank = false
+        options.suppressNonSpeechTokens = false
+        options.compressionRatioThreshold = 3.1
+        options.logProbabilityThreshold = -0.7
+        options.noSpeechThreshold = 0.62
+        options.realtimeNoSpeechThreshold = 0.38
+        options.carryInitialPrompt = true
+        options.threadCount = 4
+
+        let file = WhisperModelContext.decodingParameters(
+            options: options,
+            preserveContext: true,
+            mode: .accurate
+        )
+        XCTAssertEqual(file.strategy, WHISPER_SAMPLING_BEAM_SEARCH)
+        XCTAssertEqual(file.temperature, 0.35, accuracy: 0.001)
+        XCTAssertEqual(file.temperature_inc, 0.15, accuracy: 0.001)
+        XCTAssertEqual(file.beam_search.beam_size, 9)
+        XCTAssertEqual(file.n_max_text_ctx, 160)
+        XCTAssertEqual(file.n_threads, 4)
+        XCTAssertFalse(file.suppress_blank)
+        XCTAssertFalse(file.suppress_nst)
+        XCTAssertEqual(file.entropy_thold, 3.1, accuracy: 0.001)
+        XCTAssertEqual(file.logprob_thold, -0.7, accuracy: 0.001)
+        XCTAssertEqual(file.no_speech_thold, 0.62, accuracy: 0.001)
+        XCTAssertTrue(file.carry_initial_prompt)
+
+        let microphone = WhisperModelContext.decodingParameters(
+            options: options,
+            preserveContext: true,
+            mode: .realtime
+        )
+        XCTAssertEqual(microphone.strategy, WHISPER_SAMPLING_GREEDY)
+        XCTAssertEqual(microphone.greedy.best_of, 6)
+        XCTAssertEqual(microphone.temperature_inc, 0, accuracy: 0.001)
+        XCTAssertEqual(microphone.no_speech_thold, 0.38, accuracy: 0.001)
+    }
+
     func testBundledVADModelIsPresentWithExpectedSize() throws {
         let url = try XCTUnwrap(WhisperVADResource.modelURL)
         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
@@ -132,6 +178,37 @@ final class WhisperPipelineTests: XCTestCase {
             trailingSilenceCount: WhisperAudio.sampleRate / 2
         )
         XCTAssertEqual(paused?.count, WhisperAudio.sampleRate * 18 / 5)
+    }
+
+    func testNonEmptyPromptRunsThroughRealWhisperCppWhenLocalModelIsAvailable() async throws {
+        let modelURL = SpeechModelStore.url(for: .whisper(.largeV3TurboQ5))
+        let audioURL = LocalScribePaths.applicationSupportDirectory
+            .appendingPathComponent("声迹/Models/sensevoice.full_2025/test_wavs/en.wav")
+        guard SpeechModelStore.isInstalled(.whisper(.largeV3TurboQ5)),
+              FileManager.default.fileExists(atPath: audioURL.path) else {
+            throw XCTSkip("Local Whisper smoke-test model or audio fixture is not installed.")
+        }
+
+        let context = try WhisperModelContext(
+            model: .largeV3TurboQ5,
+            modelURL: modelURL,
+            preference: .metal
+        )
+        var options = WhisperAdvancedOptions.default
+        options.initialPrompt = "Sherpa ONNX, NVIDIA Parakeet, ShengJi."
+        options.temperature = 0.1
+        options.beamSize = 3
+        let result = try await WhisperFileProcessor.process(
+            url: audioURL,
+            context: context,
+            languageCode: "en",
+            options: options,
+            gate: PauseGate(),
+            incrementalSegmentHandler: { _ in },
+            stageHandler: { _ in },
+            progressHandler: { _, _ in }
+        )
+        XCTAssertFalse(result.isEmpty)
     }
 
     @MainActor

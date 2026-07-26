@@ -91,6 +91,7 @@ actor WhisperModelContext {
     func transcribe(
         samples: [Float],
         languageCode: String,
+        options: WhisperAdvancedOptions = .default,
         preserveContext: Bool = true,
         mode: DecodingMode = .accurate,
         progressHandler: (@Sendable (Double) -> Void)? = nil
@@ -99,6 +100,7 @@ actor WhisperModelContext {
             try transcribe(
                 sampleBuffer: $0,
                 languageCode: languageCode,
+                options: options,
                 preserveContext: preserveContext,
                 mode: mode,
                 progressHandler: progressHandler
@@ -109,6 +111,7 @@ actor WhisperModelContext {
     func transcribe(
         mappedPCMData: Data,
         languageCode: String,
+        options: WhisperAdvancedOptions = .default,
         preserveContext: Bool = true,
         incrementalSegmentHandler: (@Sendable ([TranscriptSegment]) -> Void)? = nil,
         progressHandler: (@Sendable (Double) -> Void)? = nil
@@ -120,6 +123,7 @@ actor WhisperModelContext {
             try transcribe(
                 sampleBuffer: rawBuffer.bindMemory(to: Float.self),
                 languageCode: languageCode,
+                options: options,
                 preserveContext: preserveContext,
                 mode: .accurate,
                 incrementalSegmentHandler: incrementalSegmentHandler,
@@ -128,21 +132,19 @@ actor WhisperModelContext {
         }
     }
 
-    private func transcribe(
-        sampleBuffer samples: UnsafeBufferPointer<Float>,
-        languageCode: String,
+    nonisolated static func decodingParameters(
+        options requestedOptions: WhisperAdvancedOptions,
         preserveContext: Bool,
-        mode: DecodingMode,
-        incrementalSegmentHandler: (@Sendable ([TranscriptSegment]) -> Void)? = nil,
-        progressHandler: (@Sendable (Double) -> Void)?
-    ) throws -> [TranscriptSegment] {
-        guard samples.count >= WhisperAudio.sampleRate / 3 else { return [] }
-        guard samples.count <= Int(Int32.max) else { throw WhisperEngineError.invalidAudio }
+        mode: DecodingMode
+    ) -> whisper_full_params {
+        let options = requestedOptions.normalized
         let strategy = mode == .accurate ? WHISPER_SAMPLING_BEAM_SEARCH : WHISPER_SAMPLING_GREEDY
         var parameters = whisper_full_default_params(strategy)
-        parameters.n_threads = Int32(max(2, min(ProcessInfo.processInfo.activeProcessorCount - 2, 8)))
+        parameters.n_threads = Int32(
+            options.threadCount == 0 ? RecognitionThreadPolicy.automaticCount : options.threadCount
+        )
         parameters.translate = false
-        parameters.no_context = !preserveContext
+        parameters.no_context = !preserveContext || options.maxTextContextTokens == 0
         parameters.no_timestamps = false
         parameters.single_segment = false
         parameters.print_special = false
@@ -150,23 +152,44 @@ actor WhisperModelContext {
         parameters.print_realtime = false
         parameters.print_timestamps = false
         parameters.token_timestamps = false
-        parameters.suppress_blank = true
-        parameters.suppress_nst = true
-        parameters.temperature = 0
-        // Match the upstream fallback strategy: retry low-confidence or highly
-        // repetitive windows instead of committing the first failed decode.
-        parameters.temperature_inc = mode == .accurate ? 0.2 : 0
-        parameters.entropy_thold = 2.4
-        parameters.logprob_thold = -1.0
-        parameters.no_speech_thold = mode == .realtime ? 0.45 : 0.55
-        parameters.max_initial_ts = 1.0
-        parameters.n_max_text_ctx = preserveContext ? 224 : 0
+        parameters.suppress_blank = options.suppressBlank
+        parameters.suppress_nst = options.suppressNonSpeechTokens
+        parameters.temperature = Float(options.temperature)
+        parameters.temperature_inc = mode == .accurate ? Float(options.temperatureIncrement) : 0
+        parameters.entropy_thold = Float(options.compressionRatioThreshold)
+        parameters.logprob_thold = Float(options.logProbabilityThreshold)
+        parameters.no_speech_thold = mode == .realtime
+            ? Float(options.realtimeNoSpeechThreshold)
+            : Float(options.noSpeechThreshold)
+        parameters.max_initial_ts = 1
+        parameters.n_max_text_ctx = preserveContext ? Int32(options.maxTextContextTokens) : 0
+        parameters.carry_initial_prompt = options.carryInitialPrompt
         if mode == .accurate {
-            parameters.beam_search.beam_size = 5
+            parameters.beam_search.beam_size = Int32(options.beamSize)
             parameters.beam_search.patience = 1
         } else {
-            parameters.greedy.best_of = 3
+            parameters.greedy.best_of = Int32(options.greedyBestOf)
         }
+        return parameters
+    }
+
+    private func transcribe(
+        sampleBuffer samples: UnsafeBufferPointer<Float>,
+        languageCode: String,
+        options requestedOptions: WhisperAdvancedOptions,
+        preserveContext: Bool,
+        mode: DecodingMode,
+        incrementalSegmentHandler: (@Sendable ([TranscriptSegment]) -> Void)? = nil,
+        progressHandler: (@Sendable (Double) -> Void)?
+    ) throws -> [TranscriptSegment] {
+        guard samples.count >= WhisperAudio.sampleRate / 3 else { return [] }
+        guard samples.count <= Int(Int32.max) else { throw WhisperEngineError.invalidAudio }
+        let options = requestedOptions.normalized
+        var parameters = Self.decodingParameters(
+            options: options,
+            preserveContext: preserveContext,
+            mode: mode
+        )
 
         let progressObserver = progressHandler.map(WhisperProgressObserver.init)
         if let progressObserver {
@@ -190,27 +213,40 @@ actor WhisperModelContext {
             parameters.new_segment_callback_user_data = Unmanaged.passUnretained(segmentObserver).toOpaque()
         }
 
-        let useVAD = mode == .accurate
+        let useVAD = options.useVAD
+            && mode == .accurate
             && WhisperVADResource.shouldUse(forSampleCount: samples.count)
             && WhisperVADResource.modelURL != nil
         if useVAD {
             parameters.vad = true
-            parameters.vad_params.threshold = 0.50
+            parameters.vad_params.threshold = Float(options.vadThreshold)
             parameters.vad_params.min_speech_duration_ms = 250
-            parameters.vad_params.min_silence_duration_ms = 500
+            parameters.vad_params.min_silence_duration_ms = Int32(options.vadMinimumSilenceMilliseconds)
             parameters.vad_params.max_speech_duration_s = 28
             parameters.vad_params.speech_pad_ms = 250
             parameters.vad_params.samples_overlap = 0.25
         }
 
-        let result: Int32 = languageCode.withCString { language in
-            parameters.language = language
-            guard useVAD, let vadModelURL = WhisperVADResource.modelURL else {
-                return whisper_full(context, parameters, samples.baseAddress, Int32(samples.count))
+        let runInference = {
+            languageCode.withCString { language in
+                parameters.language = language
+                guard useVAD, let vadModelURL = WhisperVADResource.modelURL else {
+                    return whisper_full(self.context, parameters, samples.baseAddress, Int32(samples.count))
+                }
+                return vadModelURL.path.withCString { vadPath in
+                    parameters.vad_model_path = vadPath
+                    return whisper_full(self.context, parameters, samples.baseAddress, Int32(samples.count))
+                }
             }
-            return vadModelURL.path.withCString { vadPath in
-                parameters.vad_model_path = vadPath
-                return whisper_full(context, parameters, samples.baseAddress, Int32(samples.count))
+        }
+        let prompt = options.initialPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result: Int32
+        if prompt.isEmpty {
+            result = runInference()
+        } else {
+            result = prompt.withCString { promptPointer in
+                parameters.initial_prompt = promptPointer
+                return runInference()
             }
         }
         guard result == 0 else { throw WhisperEngineError.inferenceFailed(result) }
@@ -578,6 +614,7 @@ enum WhisperFileProcessor {
         url: URL,
         context: WhisperModelContext,
         languageCode: String,
+        options: WhisperAdvancedOptions = .default,
         gate: PauseGate,
         incrementalSegmentHandler: @escaping @Sendable ([TranscriptSegment]) -> Void,
         stageHandler: @escaping @Sendable (Stage) -> Void,
@@ -634,6 +671,7 @@ enum WhisperFileProcessor {
             let segments = try await context.transcribe(
                 mappedPCMData: mappedPCM,
                 languageCode: languageCode,
+                options: options,
                 preserveContext: true,
                 incrementalSegmentHandler: incrementalSegmentHandler,
                 progressHandler: { progress in

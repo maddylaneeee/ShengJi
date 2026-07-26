@@ -12,7 +12,7 @@
 
 ShengJi is a free, open-source native macOS app with no account required. It can transcribe microphones, audio and video files, and audio playing on your Mac. It combines Apple Speech, whisper.cpp, SenseVoice, NVIDIA Parakeet, Apple Translation, and NLLB behind one SwiftUI interface.
 
-Current version: **1.4.1 (20)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current version: **1.5.0 (21)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 ## See it in action
 
@@ -67,6 +67,12 @@ ShengJi follows the preferred language order in macOS automatically. Version 1.4
 | NLLB | Optional post-transcription translation | CTranslate2 CPU/int8 |
 
 Whisper file transcription uses the model's internal sliding windows rather than fixed, non-overlapping application chunks. For longer media, the bundled Silero VAD can skip silence while retaining speech padding and overlap. Output filtering considers silence, confidence, repetition, and known hallucination patterns.
+
+### Advanced transcription controls
+
+For supported third-party engines, the right inspector includes an Advanced section that is collapsed when a task opens. Whisper exposes a model prompt, temperature and fallback controls, beam or greedy search settings, context length, silence and confidence filters, VAD, and a guarded automatic thread policy. SenseVoice and Parakeet expose the options their local runtimes actually support. File-only and microphone-only settings appear only for the matching source.
+
+Numeric options support both direct keyboard entry and sliders or steppers, with range validation and short hover explanations. The app remembers the last engine, model, and advanced configuration for the next task; Restore Model Defaults resets only the selected engine.
 
 ## Highlights
 
@@ -124,7 +130,7 @@ The local packaging script creates ZIP and DMG artifacts and validates nested si
 ./tools/package_local_release.sh
 ```
 
-By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` to make the same ad-hoc package produced by GitHub Actions. Pushing a tag that matches the version in `Info.plist` (for example, `v1.4.0`) runs `release-unsigned.yml`, verifies the package, and creates the GitHub Release without storing a certificate or password in GitHub Secrets. Developer ID signing, timestamping, notarization, and stapling remain the preferred public distribution path.
+By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` to make the same ad-hoc package produced by GitHub Actions. Pushing a tag that matches the version in `Info.plist` (for example, `v1.5.0`) runs `release-unsigned.yml`, verifies the package, and creates the GitHub Release without storing a certificate or password in GitHub Secrets. Developer ID signing, timestamping, notarization, and stapling remain the preferred public distribution path.
 
 ## CLI
 

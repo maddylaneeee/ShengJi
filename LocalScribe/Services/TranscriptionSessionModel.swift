@@ -779,8 +779,9 @@ final class TranscriptionSessionModel {
 
         let owner = self
         let language = whisperLanguageCode
+        let options = configuration.advancedOptions.whisper
         let initialTimeOffset = recognitionTimelineOffset
-        whisperTask = Task.detached(priority: .userInitiated) { [owner, context, liveBuffer] in
+        whisperTask = Task.detached(priority: .userInitiated) { [owner, context, liveBuffer, options] in
             var timeOffset = initialTimeOffset
             do {
                 while !Task.isCancelled {
@@ -798,6 +799,7 @@ final class TranscriptionSessionModel {
                         let relative = try await context.transcribe(
                             samples: chunk,
                             languageCode: language,
+                            options: options,
                             preserveContext: true,
                             mode: .realtime
                         )
@@ -863,13 +865,15 @@ final class TranscriptionSessionModel {
         let owner = self
         let gate = pauseGate
         let language = whisperLanguageCode
+        let options = configuration.advancedOptions.whisper
         let progressLimiter = EventRateLimiter()
-        whisperTask = Task.detached(priority: .userInitiated) { [owner, context, gate, progressLimiter] in
+        whisperTask = Task.detached(priority: .userInitiated) { [owner, context, gate, progressLimiter, options] in
             do {
                 let finalSegments = try await WhisperFileProcessor.process(
                     url: prepared.url,
                     context: context,
                     languageCode: language,
+                    options: options,
                     gate: gate,
                     incrementalSegmentHandler: { segments in
                         Task { @MainActor in owner.receiveWhisperPreviewSegments(segments) }

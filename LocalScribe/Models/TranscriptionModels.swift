@@ -68,6 +68,229 @@ enum ComputeBackend: String, Codable, Sendable {
     case cpu
 }
 
+enum ParakeetDecodingMethod: String, CaseIterable, Codable, Identifiable, Sendable {
+    case greedySearch
+    case modifiedBeamSearch
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .greedySearch: L10n.text("贪心搜索")
+        case .modifiedBeamSearch: L10n.text("改进束搜索")
+        }
+    }
+}
+
+enum RecognitionThreadPolicy {
+    static var automaticCount: Int {
+        max(2, min(ProcessInfo.processInfo.activeProcessorCount - 2, 8))
+    }
+
+    static var maximumManualCount: Int {
+        max(2, min(ProcessInfo.processInfo.activeProcessorCount, 16))
+    }
+
+    static func normalized(_ requestedCount: Int) -> Int {
+        requestedCount.clamped(to: 0...maximumManualCount)
+    }
+}
+
+struct WhisperAdvancedOptions: Codable, Hashable, Sendable {
+    var initialPrompt: String = ""
+    var carryInitialPrompt = false
+    var temperature: Double = 0
+    var temperatureIncrement: Double = 0.2
+    var beamSize = 5
+    var greedyBestOf = 3
+    var maxTextContextTokens = 224
+    var suppressBlank = true
+    var suppressNonSpeechTokens = true
+    var compressionRatioThreshold: Double = 2.4
+    var logProbabilityThreshold: Double = -1
+    var noSpeechThreshold: Double = 0.55
+    var realtimeNoSpeechThreshold: Double = 0.45
+    var useVAD = true
+    var vadThreshold: Double = 0.5
+    var vadMinimumSilenceMilliseconds = 500
+    var threadCount = 0
+
+    static let `default` = Self()
+
+    private enum CodingKeys: String, CodingKey {
+        case initialPrompt
+        case carryInitialPrompt
+        case temperature
+        case temperatureIncrement
+        case beamSize
+        case greedyBestOf
+        case maxTextContextTokens
+        case suppressBlank
+        case suppressNonSpeechTokens
+        case compressionRatioThreshold
+        case logProbabilityThreshold
+        case noSpeechThreshold
+        case realtimeNoSpeechThreshold
+        case useVAD
+        case vadThreshold
+        case vadMinimumSilenceMilliseconds
+        case threadCount
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let defaults = Self.default
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        initialPrompt = try container.decodeIfPresent(String.self, forKey: .initialPrompt) ?? defaults.initialPrompt
+        carryInitialPrompt = try container.decodeIfPresent(Bool.self, forKey: .carryInitialPrompt) ?? defaults.carryInitialPrompt
+        temperature = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? defaults.temperature
+        temperatureIncrement = try container.decodeIfPresent(Double.self, forKey: .temperatureIncrement) ?? defaults.temperatureIncrement
+        beamSize = try container.decodeIfPresent(Int.self, forKey: .beamSize) ?? defaults.beamSize
+        greedyBestOf = try container.decodeIfPresent(Int.self, forKey: .greedyBestOf) ?? defaults.greedyBestOf
+        maxTextContextTokens = try container.decodeIfPresent(Int.self, forKey: .maxTextContextTokens) ?? defaults.maxTextContextTokens
+        suppressBlank = try container.decodeIfPresent(Bool.self, forKey: .suppressBlank) ?? defaults.suppressBlank
+        suppressNonSpeechTokens = try container.decodeIfPresent(Bool.self, forKey: .suppressNonSpeechTokens) ?? defaults.suppressNonSpeechTokens
+        compressionRatioThreshold = try container.decodeIfPresent(Double.self, forKey: .compressionRatioThreshold) ?? defaults.compressionRatioThreshold
+        logProbabilityThreshold = try container.decodeIfPresent(Double.self, forKey: .logProbabilityThreshold) ?? defaults.logProbabilityThreshold
+        noSpeechThreshold = try container.decodeIfPresent(Double.self, forKey: .noSpeechThreshold) ?? defaults.noSpeechThreshold
+        realtimeNoSpeechThreshold = try container.decodeIfPresent(
+            Double.self,
+            forKey: .realtimeNoSpeechThreshold
+        ) ?? defaults.realtimeNoSpeechThreshold
+        useVAD = try container.decodeIfPresent(Bool.self, forKey: .useVAD) ?? defaults.useVAD
+        vadThreshold = try container.decodeIfPresent(Double.self, forKey: .vadThreshold) ?? defaults.vadThreshold
+        vadMinimumSilenceMilliseconds = try container.decodeIfPresent(Int.self, forKey: .vadMinimumSilenceMilliseconds) ?? defaults.vadMinimumSilenceMilliseconds
+        threadCount = try container.decodeIfPresent(Int.self, forKey: .threadCount) ?? defaults.threadCount
+        self = normalized
+    }
+
+    var normalized: Self {
+        var copy = self
+        copy.initialPrompt = String(initialPrompt.prefix(2_000))
+        copy.temperature = temperature.clamped(to: 0...1)
+        copy.temperatureIncrement = temperatureIncrement.clamped(to: 0...1)
+        copy.beamSize = beamSize.clamped(to: 1...20)
+        copy.greedyBestOf = greedyBestOf.clamped(to: 1...10)
+        copy.maxTextContextTokens = maxTextContextTokens.clamped(to: 0...224)
+        copy.compressionRatioThreshold = compressionRatioThreshold.clamped(to: 0...5)
+        copy.logProbabilityThreshold = logProbabilityThreshold.clamped(to: -5...0)
+        copy.noSpeechThreshold = noSpeechThreshold.clamped(to: 0...1)
+        copy.realtimeNoSpeechThreshold = realtimeNoSpeechThreshold.clamped(to: 0...1)
+        copy.vadThreshold = vadThreshold.clamped(to: 0...1)
+        copy.vadMinimumSilenceMilliseconds = vadMinimumSilenceMilliseconds.clamped(to: 100...2_000)
+        copy.threadCount = RecognitionThreadPolicy.normalized(threadCount)
+        return copy
+    }
+}
+
+struct SenseVoiceAdvancedOptions: Codable, Hashable, Sendable {
+    var useInverseTextNormalization = true
+    var threadCount = 0
+
+    static let `default` = Self()
+
+    private enum CodingKeys: String, CodingKey {
+        case useInverseTextNormalization
+        case threadCount
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let defaults = Self.default
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        useInverseTextNormalization = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .useInverseTextNormalization
+        ) ?? defaults.useInverseTextNormalization
+        threadCount = try container.decodeIfPresent(Int.self, forKey: .threadCount) ?? defaults.threadCount
+        self = normalized
+    }
+
+    var normalized: Self {
+        var copy = self
+        copy.threadCount = RecognitionThreadPolicy.normalized(threadCount)
+        return copy
+    }
+}
+
+struct ParakeetAdvancedOptions: Codable, Hashable, Sendable {
+    var decodingMethod: ParakeetDecodingMethod = .greedySearch
+    var maxActivePaths = 4
+    var blankPenalty: Double = 0
+    var threadCount = 0
+
+    static let `default` = Self()
+
+    private enum CodingKeys: String, CodingKey {
+        case decodingMethod
+        case maxActivePaths
+        case blankPenalty
+        case threadCount
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let defaults = Self.default
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        decodingMethod = try container.decodeIfPresent(
+            ParakeetDecodingMethod.self,
+            forKey: .decodingMethod
+        ) ?? defaults.decodingMethod
+        maxActivePaths = try container.decodeIfPresent(Int.self, forKey: .maxActivePaths) ?? defaults.maxActivePaths
+        blankPenalty = try container.decodeIfPresent(Double.self, forKey: .blankPenalty) ?? defaults.blankPenalty
+        threadCount = try container.decodeIfPresent(Int.self, forKey: .threadCount) ?? defaults.threadCount
+        self = normalized
+    }
+
+    var normalized: Self {
+        var copy = self
+        copy.maxActivePaths = maxActivePaths.clamped(to: 1...64)
+        copy.blankPenalty = blankPenalty.clamped(to: 0...5)
+        copy.threadCount = RecognitionThreadPolicy.normalized(threadCount)
+        return copy
+    }
+}
+
+struct RecognitionAdvancedOptions: Codable, Hashable, Sendable {
+    var whisper = WhisperAdvancedOptions()
+    var senseVoice = SenseVoiceAdvancedOptions()
+    var parakeet = ParakeetAdvancedOptions()
+
+    static let `default` = Self()
+
+    private enum CodingKeys: String, CodingKey {
+        case whisper
+        case senseVoice
+        case parakeet
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        whisper = try container.decodeIfPresent(WhisperAdvancedOptions.self, forKey: .whisper) ?? .default
+        senseVoice = try container.decodeIfPresent(SenseVoiceAdvancedOptions.self, forKey: .senseVoice) ?? .default
+        parakeet = try container.decodeIfPresent(ParakeetAdvancedOptions.self, forKey: .parakeet) ?? .default
+    }
+
+    var normalized: Self {
+        var copy = self
+        copy.whisper = whisper.normalized
+        copy.senseVoice = senseVoice.normalized
+        copy.parakeet = parakeet.normalized
+        return copy
+    }
+}
+
+private extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
 struct ComputeBackendStatus: Codable, Hashable, Sendable {
     var requested: ComputeBackendPreference
     var resolved: ComputeBackend
@@ -397,6 +620,7 @@ struct RecognitionConfiguration: Codable, Hashable, Sendable {
     var senseVoiceModel: SenseVoiceModel?
     var parakeetModel: ParakeetModel?
     var computeBackend: ComputeBackendPreference
+    var advancedOptions: RecognitionAdvancedOptions
 
     private enum CodingKeys: String, CodingKey {
         case engine
@@ -404,6 +628,7 @@ struct RecognitionConfiguration: Codable, Hashable, Sendable {
         case senseVoiceModel
         case parakeetModel
         case computeBackend
+        case advancedOptions
     }
 
     init(
@@ -411,13 +636,15 @@ struct RecognitionConfiguration: Codable, Hashable, Sendable {
         whisperModel: WhisperModel? = nil,
         senseVoiceModel: SenseVoiceModel? = nil,
         parakeetModel: ParakeetModel? = nil,
-        computeBackend: ComputeBackendPreference = .automatic
+        computeBackend: ComputeBackendPreference = .automatic,
+        advancedOptions: RecognitionAdvancedOptions = .default
     ) {
         self.engine = engine
         self.whisperModel = whisperModel
         self.senseVoiceModel = senseVoiceModel
         self.parakeetModel = parakeetModel
         self.computeBackend = computeBackend
+        self.advancedOptions = advancedOptions.normalized
     }
 
     init(from decoder: Decoder) throws {
@@ -427,6 +654,10 @@ struct RecognitionConfiguration: Codable, Hashable, Sendable {
         senseVoiceModel = try container.decodeIfPresent(SenseVoiceModel.self, forKey: .senseVoiceModel)
         parakeetModel = try container.decodeIfPresent(ParakeetModel.self, forKey: .parakeetModel)
         computeBackend = try container.decodeIfPresent(ComputeBackendPreference.self, forKey: .computeBackend) ?? .automatic
+        advancedOptions = try container.decodeIfPresent(
+            RecognitionAdvancedOptions.self,
+            forKey: .advancedOptions
+        ) ?? .default
     }
 
     var displayName: String {
