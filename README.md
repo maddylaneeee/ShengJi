@@ -16,7 +16,7 @@ Current version: **1.4.1 (20)** · [Download DMG](https://github.com/maddylaneee
 
 ## See it in action
 
-![ShengJi opening an audio file, choosing local transcription settings, and producing editable text](Documentation/MediaKit/shengji-demo.gif)
+![ShengJi opening an audio file, choosing local transcription settings, and producing editable text in English](Documentation/MediaKit/shengji-demo-en.gif)
 
 Open app → choose audio → select language and model → get editable local text. The demo uses non-private sample content.
 
@@ -47,9 +47,9 @@ For illustrated steps, troubleshooting, and SHA-256 verification, see the [Downl
 
 ## Transcript editing and translation
 
-![ShengJi transcript editor in Simplified Chinese with local translation, search, range editing, export and privacy details](Documentation/Screenshots/transcript-editor-zh-CN.png)
+![ShengJi transcript editor in English with local translation, search, range editing, export and privacy details](Documentation/Screenshots/transcript-editor-en.png)
 
-The screenshots are from version 1.4.0 of the real macOS app and use an isolated profile with non-private test transcript content. ShengJi includes complete English and Simplified Chinese interfaces and follows the preferred macOS language order.
+The screenshots are from version 1.4.1 of the real macOS app and use an isolated profile with non-private test transcript content. ShengJi includes complete English and Simplified Chinese interfaces and follows the preferred macOS language order.
 
 ## Languages
 
