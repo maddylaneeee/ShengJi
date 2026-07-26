@@ -257,7 +257,7 @@ cat > "$UPDATE_MANIFEST" <<EOF
   "build": "$BUILD",
   "download_url": "$DOWNLOAD_URL",
   "sha256": "$SHA256",
-  "release_notes": "ShengJi 1.5.0 adds model-specific advanced transcription controls, direct numeric input, remembered settings, and an adaptive inspector layout.",
+  "release_notes": "ShengJi 1.5.1 adds model-specific advanced transcription controls, direct numeric input, remembered settings, and an adaptive inspector layout.",
   "minimum_system_version": "15.5",
   "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "size_bytes": $(stat -f %z "$ZIP")

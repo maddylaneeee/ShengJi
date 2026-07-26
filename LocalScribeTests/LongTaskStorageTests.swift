@@ -143,7 +143,7 @@ final class LongTaskStorageTests: XCTestCase {
             advancedOptions: advanced
         )
         XCTAssertTrue(senseVoice.contains("--sense-voice-use-itn=false"))
-        XCTAssertTrue(senseVoice.contains("--num-threads=3"))
+        XCTAssertTrue(senseVoice.contains("--num-threads=\(RecognitionThreadPolicy.normalized(3))"))
 
         advanced.parakeet.decodingMethod = .modifiedBeamSearch
         advanced.parakeet.maxActivePaths = 12
@@ -159,7 +159,7 @@ final class LongTaskStorageTests: XCTestCase {
         XCTAssertTrue(parakeet.contains("--decoding-method=modified_beam_search"))
         XCTAssertTrue(parakeet.contains("--max-active-paths=12"))
         XCTAssertTrue(parakeet.contains("--blank-penalty=0.7"))
-        XCTAssertTrue(parakeet.contains("--num-threads=5"))
+        XCTAssertTrue(parakeet.contains("--num-threads=\(RecognitionThreadPolicy.normalized(5))"))
     }
 
     func testRepositoryReplaysPagesThatAreNoLongerInTheMemoryTail() async throws {

@@ -29,7 +29,7 @@ final class WhisperPipelineTests: XCTestCase {
         XCTAssertEqual(file.temperature_inc, 0.15, accuracy: 0.001)
         XCTAssertEqual(file.beam_search.beam_size, 9)
         XCTAssertEqual(file.n_max_text_ctx, 160)
-        XCTAssertEqual(file.n_threads, 4)
+        XCTAssertEqual(file.n_threads, Int32(RecognitionThreadPolicy.normalized(4)))
         XCTAssertFalse(file.suppress_blank)
         XCTAssertFalse(file.suppress_nst)
         XCTAssertEqual(file.entropy_thold, 3.1, accuracy: 0.001)
