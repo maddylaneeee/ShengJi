@@ -35,24 +35,66 @@ enum AppUpdateState: Equatable {
     case failed(String)
 }
 
+typealias UpdateProgressHandler = @Sendable (Double) -> Void
+typealias UpdateManifestFetcher = @Sendable (URL) async throws -> AppUpdateManifest
+
+struct UpdateProgressReporter: Sendable {
+    let handler: UpdateProgressHandler
+
+    func callAsFunction(_ progress: Double) {
+        handler(progress)
+    }
+}
+
+typealias UpdatePreparer = @Sendable (AppUpdateManifest, UpdateProgressReporter) async throws -> URL
+
 @MainActor
 @Observable
 final class AppUpdateController {
-    var manifestURLString: String {
-        didSet {
-            if let url = URL(string: manifestURLString) {
-                AppInfo.updateManifestURL = url
-            }
-        }
-    }
+    static let automaticUpdatesDefaultsKey = "AutomaticUpdatesEnabled"
+    static let automaticCheckInterval = Duration.seconds(6 * 60 * 60)
+
+    let manifestURLString: String
 
     private(set) var state: AppUpdateState = .idle
     private(set) var downloadedAppURL: URL?
+    private(set) var automaticUpdatesEnabled: Bool
     private var currentManifest: AppUpdateManifest?
-    @ObservationIgnored private let preparation = UpdatePreparationActor()
+    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let currentVersion: String
+    @ObservationIgnored private let currentBuild: String
+    @ObservationIgnored private let manifestFetcher: UpdateManifestFetcher
+    @ObservationIgnored private let updatePreparer: UpdatePreparer
+    @ObservationIgnored private var automaticUpdateTask: Task<Void, Never>?
 
-    init() {
+    init(
+        defaults: UserDefaults = .standard,
+        currentVersion: String = AppInfo.version,
+        currentBuild: String = AppInfo.build,
+        manifestFetcher: UpdateManifestFetcher? = nil,
+        updatePreparer: UpdatePreparer? = nil
+    ) {
+        self.defaults = defaults
+        self.currentVersion = currentVersion
+        self.currentBuild = currentBuild
         manifestURLString = AppInfo.updateManifestURL.absoluteString
+        automaticUpdatesEnabled = defaults.object(forKey: Self.automaticUpdatesDefaultsKey) as? Bool ?? true
+        self.manifestFetcher = manifestFetcher ?? { url in
+            try await Self.fetchManifest(from: url)
+        }
+        if let updatePreparer {
+            self.updatePreparer = updatePreparer
+        } else {
+            let preparation = UpdatePreparationActor()
+            self.updatePreparer = { manifest, reporter in
+                let packageURL = try await Self.downloadPackage(manifest) { reporter($0) }
+                return try await preparation.prepare(
+                    packageURL: packageURL,
+                    manifest: manifest,
+                    expectedBundleIdentifier: AppInfo.bundleIdentifier
+                )
+            }
+        }
     }
 
     var statusText: String {
@@ -72,6 +114,51 @@ final class AppUpdateController {
         return false
     }
 
+    func setAutomaticUpdatesEnabled(_ enabled: Bool) {
+        guard automaticUpdatesEnabled != enabled else { return }
+        automaticUpdatesEnabled = enabled
+        defaults.set(enabled, forKey: Self.automaticUpdatesDefaultsKey)
+        if enabled {
+            startAutomaticUpdates()
+        } else {
+            stopAutomaticUpdates()
+        }
+    }
+
+    func startAutomaticUpdates() {
+        guard automaticUpdatesEnabled, automaticUpdateTask == nil else { return }
+        automaticUpdateTask = Task { [weak self] in
+            guard let self else { return }
+            await runAutomaticUpdateCycle()
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: Self.automaticCheckInterval)
+                } catch {
+                    break
+                }
+                await runAutomaticUpdateCycle()
+            }
+        }
+    }
+
+    func stopAutomaticUpdates() {
+        automaticUpdateTask?.cancel()
+        automaticUpdateTask = nil
+    }
+
+    func runAutomaticUpdateCycle() async {
+        guard automaticUpdatesEnabled else { return }
+        switch state {
+        case .checking, .downloading, .ready:
+            return
+        case .idle, .available, .upToDate, .failed:
+            break
+        }
+        await checkForUpdates()
+        guard !Task.isCancelled, case .available = state else { return }
+        await downloadAvailableUpdate()
+    }
+
     func checkForUpdates() async {
         guard let manifestURL = URL(string: manifestURLString) else {
             state = .failed(L10n.text("更新地址无效。"))
@@ -80,21 +167,15 @@ final class AppUpdateController {
 
         state = .checking
         do {
-            var request = URLRequest(url: manifestURL)
-            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode ?? 200 < 400 else {
-                throw UpdateError.invalidResponse
-            }
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let manifest = try decoder.decode(AppUpdateManifest.self, from: data)
+            let manifest = try await manifestFetcher(manifestURL)
             currentManifest = manifest
             if isNewer(manifest) {
                 state = .available(manifest)
             } else {
                 state = .upToDate
             }
+        } catch is CancellationError {
+            state = .idle
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -114,14 +195,17 @@ final class AppUpdateController {
 
         state = .downloading(0)
         do {
-            let packageURL = try await downloadPackage(manifest)
-            let appURL = try await preparation.prepare(
-                packageURL: packageURL,
-                manifest: manifest,
-                expectedBundleIdentifier: AppInfo.bundleIdentifier
-            )
+            let reporter = UpdateProgressReporter { [weak self] progress in
+                Task { @MainActor in
+                    guard let self, case .downloading = self.state else { return }
+                    self.state = .downloading(progress)
+                }
+            }
+            let appURL = try await updatePreparer(manifest, reporter)
             downloadedAppURL = appURL
             state = .ready(manifest)
+        } catch is CancellationError {
+            state = .idle
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -144,20 +228,33 @@ final class AppUpdateController {
     }
 
     private func isNewer(_ manifest: AppUpdateManifest) -> Bool {
-        if manifest.version.compare(AppInfo.version, options: .numeric) == .orderedDescending {
+        if manifest.version.compare(currentVersion, options: .numeric) == .orderedDescending {
             return true
         }
-        if manifest.version == AppInfo.version {
-            return manifest.build.compare(AppInfo.build, options: .numeric) == .orderedDescending
+        if manifest.version == currentVersion {
+            return manifest.build.compare(currentBuild, options: .numeric) == .orderedDescending
         }
         return false
     }
 
-    private func downloadPackage(_ manifest: AppUpdateManifest) async throws -> URL {
-        let (temporaryURL, response) = try await URLSession.shared.download(from: manifest.downloadURL) { [weak self] progress in
-            Task { @MainActor in
-                self?.state = .downloading(progress.fractionCompleted)
-            }
+    private static func fetchManifest(from manifestURL: URL) async throws -> AppUpdateManifest {
+        var request = URLRequest(url: manifestURL)
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode ?? 200 < 400 else {
+            throw UpdateError.invalidResponse
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(AppUpdateManifest.self, from: data)
+    }
+
+    private static func downloadPackage(
+        _ manifest: AppUpdateManifest,
+        progress: @escaping UpdateProgressHandler
+    ) async throws -> URL {
+        let (temporaryURL, response) = try await URLSession.shared.download(from: manifest.downloadURL) { downloadProgress in
+            progress(downloadProgress.fractionCompleted)
         }
         guard (response as? HTTPURLResponse)?.statusCode ?? 200 < 400 else {
             throw UpdateError.invalidResponse

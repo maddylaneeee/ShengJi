@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct StartView: View {
+    @Environment(\.locale) private var interfaceLocale
     @Bindable var catalog: LanguageCatalog
     @Bindable var preferences: RecognitionPreferences
     @Bindable var liveCaptions: LiveCaptionController
@@ -35,7 +36,6 @@ struct StartView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button("选择文件", systemImage: "plus") { chooseFile() }
                     .disabled(!canChooseFile)
-                    .mainMenuHoverFeedback(isEnabled: canChooseFile)
             }
         }
         .onAppear { syncLiveCaptionLanguageSelection() }
@@ -68,10 +68,8 @@ struct StartView: View {
 
             Button("清除") { clearRecovery() }
                 .controlSize(.small)
-                .mainMenuHoverFeedback()
             Button("恢复") { restoreRecovery() }
-                .buttonStyle(.borderedProminent)
-                .mainMenuHoverFeedback()
+                .primaryActionStyle()
         }
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -104,9 +102,10 @@ struct StartView: View {
     }
 
     private var actionGrid: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) { actionButtons }
-            VStack(spacing: 12) { actionButtons }
+        Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+            GridRow {
+                actionButtons
+            }
         }
     }
 
@@ -153,16 +152,14 @@ struct StartView: View {
                         Task { await liveCaptions.stop() }
                     }
                     .buttonStyle(.bordered)
-                    .mainMenuHoverFeedback()
                 } else {
                     Button("开启字幕", systemImage: "captions.bubble") {
                         Task {
                             await liveCaptions.start(locale: liveCaptionLocale)
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .primaryActionStyle()
                     .disabled(!canStartLiveCaptions)
-                    .mainMenuHoverFeedback(isEnabled: canStartLiveCaptions)
                 }
             }
 
@@ -210,14 +207,26 @@ struct StartView: View {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
             Picker("字幕语言", selection: $liveCaptions.localeIdentifier) {
-                ForEach(catalog.languages) { language in
-                    Text(language.displayName).tag(language.id)
+                if !catalog.languages.contains(where: { $0.id == liveCaptions.localeIdentifier }) {
+                    Text(liveCaptions.localeIdentifier).tag(liveCaptions.localeIdentifier)
+                }
+                Section("推荐语言") {
+                    ForEach(catalog.recommendedLanguages) { language in
+                        Text(language.displayName).tag(language.id)
+                    }
+                }
+                if !catalog.otherLanguages.isEmpty {
+                    Section("所有语言") {
+                        ForEach(catalog.otherLanguages) { language in
+                            Text(language.displayName).tag(language.id)
+                        }
+                    }
                 }
             }
+            .id("caption-language-\(interfaceLocale.identifier)")
             .labelsHidden()
             .frame(maxWidth: .infinity, alignment: .leading)
             .disabled(catalog.isLoading || liveCaptions.isRunning)
-            .mainMenuHoverFeedback(isEnabled: !catalog.isLoading && !liveCaptions.isRunning)
         }
     }
 
@@ -231,11 +240,11 @@ struct StartView: View {
                     Label(mode.title, systemImage: mode.symbol).tag(mode)
                 }
             }
+            .id("caption-input-\(interfaceLocale.identifier)")
             .labelsHidden()
             .pickerStyle(.segmented)
             .frame(maxWidth: .infinity)
             .disabled(liveCaptions.isRunning)
-            .mainMenuHoverFeedback(isEnabled: !liveCaptions.isRunning)
         }
     }
 
@@ -270,7 +279,7 @@ struct StartView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Label("转录后翻译", systemImage: "translate")
                         .font(.headline)
-                    Text("结果页默认使用 Apple 翻译，也可切换到本机 NLLB。实时字幕翻译暂时关闭。")
+                    Text("转录完成后可生成译文，也可选择完全离线的翻译方式。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -280,24 +289,32 @@ struct StartView: View {
                     .accessibilityLabel("Apple 默认")
             }
 
-            HStack(spacing: 12) {
-                Label("首次使用某个语言组合时，macOS 可能下载语言资源。", systemImage: "info.circle")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Label("本机处理 · 可选 NLLB", systemImage: "lock.shield")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    Label("首次使用某个语言组合时，macOS 可能下载语言资源。", systemImage: "info.circle")
+                    Spacer()
+                    Label("在这台 Mac 上处理", systemImage: "lock.shield")
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("首次使用某个语言组合时，macOS 可能下载语言资源。", systemImage: "info.circle")
+                    Label("在这台 Mac 上处理", systemImage: "lock.shield")
+                }
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 90, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
         .padding(18)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var importAndTranslationRow: some View {
-        HStack(alignment: .top, spacing: 12) {
-            importPanel.frame(maxWidth: .infinity)
-            translationPanel.frame(maxWidth: .infinity)
+        Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+            GridRow(alignment: .top) {
+                importPanel
+                translationPanel
+            }
         }
     }
 
@@ -313,34 +330,34 @@ struct StartView: View {
                 }
                 Spacer()
                 Button("导入…", systemImage: "square.and.arrow.down") { chooseTranscript() }
-                    .buttonStyle(.borderedProminent)
-                    .mainMenuHoverFeedback()
+                    .buttonStyle(.bordered)
             }
 
             Label("可直接编辑，也可保留现有文字并继续麦克风转录。", systemImage: "text.append")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 90, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
         .padding(18)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var enginePanel: some View {
         VStack(alignment: .leading, spacing: 14) {
+            enginePanelTitle
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
-                    enginePanelTitle
-                    Spacer(minLength: 12)
                     recognitionSourcePicker
                     if preferences.engine.usesManagedModel { thirdPartyModelMenu }
+                    Spacer(minLength: 0)
                 }
                 VStack(alignment: .leading, spacing: 10) {
-                    enginePanelTitle
                     recognitionSourcePicker
                     if preferences.engine.usesManagedModel { thirdPartyModelMenu }
                 }
             }
+            .frame(minHeight: 32, alignment: .leading)
 
             if preferences.engine.usesManagedModel {
                 Divider()
@@ -366,7 +383,7 @@ struct StartView: View {
         VStack(alignment: .leading, spacing: 3) {
             Label("识别模型", systemImage: "cpu")
                 .font(.headline)
-            Text("默认使用 Apple Speech Framework；第三方模型仅在手动选择后启用。")
+            Text("使用 macOS 内置识别，或手动选择可离线使用的第三方模型。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -383,7 +400,6 @@ struct StartView: View {
         .pickerStyle(.segmented)
         .frame(width: 270)
         .labelsHidden()
-        .mainMenuHoverFeedback()
     }
 
     private var thirdPartyModelMenu: some View {
@@ -411,7 +427,6 @@ struct StartView: View {
         }
         .menuStyle(.button)
         .disabled(preferences.downloadState.isDownloading)
-        .mainMenuHoverFeedback(isEnabled: !preferences.downloadState.isDownloading)
     }
 
     private func thirdPartyModelButton(_ model: ManagedSpeechModel) -> some View {
@@ -465,7 +480,6 @@ struct StartView: View {
         }
         .controlSize(.small)
         .disabled(preferences.downloadState.isDownloading)
-        .mainMenuHoverFeedback(isEnabled: !preferences.downloadState.isDownloading)
     }
 
     @ViewBuilder
@@ -480,7 +494,6 @@ struct StartView: View {
                         .font(.callout)
                     Button("卸载") { try? preferences.remove(selected) }
                         .controlSize(.small)
-                        .mainMenuHoverFeedback()
                 }
             } else {
                 Label("选择后自动下载 \(selected.sizeLabel)", systemImage: "arrow.down.circle")
@@ -496,7 +509,6 @@ struct StartView: View {
                     .monospacedDigit()
                 Button("取消") { preferences.cancelDownload() }
                     .controlSize(.small)
-                    .mainMenuHoverFeedback()
             }
         case .failed(let model, let message):
             HStack(spacing: 8) {
@@ -506,7 +518,6 @@ struct StartView: View {
                     .lineLimit(1)
                 Button("重试") { preferences.download(model) }
                     .controlSize(.small)
-                    .mainMenuHoverFeedback()
             }
         }
     }
@@ -515,11 +526,11 @@ struct StartView: View {
     private var engineBadge: some View {
         switch preferences.engine {
         case .whisper:
-            Label("Metal GPU", systemImage: "checkmark.seal.fill")
+            Label("GPU 加速", systemImage: "checkmark.seal.fill")
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.green)
         case .senseVoice, .parakeet:
-            Label("文件转录 · CLI", systemImage: "terminal")
+            Label("仅支持文件", systemImage: "doc.waveform")
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
         case .apple:
@@ -554,8 +565,9 @@ private struct StartActionButton: View {
     let isEnabled: Bool
     let action: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var isHovering = false
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         Button(action: action) {
@@ -564,6 +576,7 @@ private struct StartActionButton: View {
                     .font(.system(size: 22, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
                     .frame(width: 30)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
                         .font(.headline)
@@ -579,46 +592,32 @@ private struct StartActionButton: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .focused($isFocused)
         .disabled(!isEnabled)
         .foregroundStyle(isEnabled ? Color.primary : Color.secondary)
-        .background {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isHovering && isEnabled ? AnyShapeStyle(Color.accentColor.opacity(0.12)) : AnyShapeStyle(.quaternary))
-                .shadow(color: isHovering && isEnabled ? Color.accentColor.opacity(0.12) : .clear, radius: 8, y: 3)
-        }
+        .background { cardBackground }
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(isHovering && isEnabled ? Color.accentColor.opacity(0.40) : Color.primary.opacity(0.08))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(
+                    isFocused ? Color.accentColor : Color.primary.opacity(isHovering && isEnabled ? 0.18 : 0.08),
+                    lineWidth: isFocused ? 2 : 1
+                )
         }
-        .scaleEffect(isHovering && isEnabled && !reduceMotion ? 1.012 : 1)
-        .animation(.snappy(duration: 0.18), value: isHovering)
+        .shadow(color: .black.opacity(isHovering && isEnabled ? 0.10 : 0.04), radius: 10, y: 4)
+        .animation(.easeOut(duration: 0.14), value: isHovering)
         .onHover { isHovering = $0 }
+        .accessibilityLabel(title)
+        .accessibilityHint(detail)
     }
-}
 
-private extension View {
-    func mainMenuHoverFeedback(isEnabled: Bool = true) -> some View {
-        modifier(MainMenuHoverFeedback(isEnabled: isEnabled))
-    }
-}
-
-private struct MainMenuHoverFeedback: ViewModifier {
-    let isEnabled: Bool
-    @State private var isHovering = false
-
-    func body(content: Content) -> some View {
-        content
-            .background {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isHovering && isEnabled ? Color.accentColor.opacity(0.10) : .clear)
-                    .padding(-4)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(isHovering && isEnabled ? Color.accentColor.opacity(0.28) : .clear)
-                    .padding(-4)
-            }
-            .animation(.easeOut(duration: 0.14), value: isHovering)
-            .onHover { isHovering = $0 }
+    @ViewBuilder
+    private var cardBackground: some View {
+        if #available(macOS 26.0, *), !reduceTransparency {
+            Color.clear
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
+        } else {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.regularMaterial)
+        }
     }
 }

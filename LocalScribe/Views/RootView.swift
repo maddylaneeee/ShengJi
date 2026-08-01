@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct RootView: View {
+    @Bindable var updateController: AppUpdateController
     @State private var catalog = LanguageCatalog()
     @State private var preferences = RecognitionPreferences()
     @State private var translationPreferences = AppleTranslationPreferences()
@@ -13,6 +14,8 @@ struct RootView: View {
     @State private var pendingImportedTranscript: ImportedTranscript?
     @State private var importError: String?
     @State private var recoverySnapshot: RecoverySnapshot?
+    @State private var isShowingPreparedUpdate = false
+    @State private var updateInstallError: String?
 
     var body: some View {
         NavigationStack {
@@ -102,9 +105,42 @@ struct RootView: View {
         } message: {
             Text(importError ?? L10n.text("未知错误"))
         }
+        .alert("更新已下载", isPresented: $isShowingPreparedUpdate) {
+            Button("稍后", role: .cancel) {}
+            Button("安装并重新打开") {
+                do {
+                    try updateController.installAndRelaunch()
+                } catch {
+                    updateInstallError = error.localizedDescription
+                }
+            }
+        } message: {
+            Text("更新包已完成校验。确认后，声迹会安装更新并重新打开。")
+        }
+        .alert("无法安装更新", isPresented: Binding(
+            get: { updateInstallError != nil },
+            set: { if !$0 { updateInstallError = nil } }
+        )) {
+            Button("好") { updateInstallError = nil }
+        } message: {
+            Text(updateInstallError ?? L10n.text("未知错误"))
+        }
+        .onChange(of: updateController.state) { _, state in
+            guard case .ready = state else { return }
+            NSApp.requestUserAttention(.informationalRequest)
+            isShowingPreparedUpdate = true
+        }
         .onReceive(NotificationCenter.default.publisher(for: .chooseTranscriptionFile)) { _ in
             guard session == nil else { return }
             showFileImporter(.transcriptionMedia)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .startMicrophoneTranscription)) { _ in
+            guard session == nil else { return }
+            startMicrophone()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .chooseTranscriptFile)) { _ in
+            guard session == nil else { return }
+            showFileImporter(.transcript)
         }
     }
 

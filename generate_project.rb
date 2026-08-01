@@ -22,6 +22,9 @@ source_files = %w[
   Models/TranscriptionModels.swift
   Services/LanguageCatalog.swift
   Services/Localization.swift
+  Services/AppPresentationPreferences.swift
+  Services/ApplicationMenuLocalizer.swift
+  Services/PermissionCenter.swift
   Services/AudioPipeline.swift
   Services/AppStoragePaths.swift
   Services/AppInfo.swift
@@ -42,6 +45,7 @@ source_files = %w[
   Services/NLLBModelManager.swift
   Services/LiveCaptionController.swift
   Views/RootView.swift
+  Views/InterfaceStyles.swift
   Views/StartView.swift
   Views/TranscriptionView.swift
   Views/TranscriptEditingView.swift
@@ -63,6 +67,7 @@ test_target.add_dependency(target)
   WhisperPipelineTests.swift
   TranscriptImportAndEditingTests.swift
   LocalizationTests.swift
+  AppUpdateControllerTests.swift
 ].each do |relative_path|
   reference = tests_group.new_file(relative_path)
   test_target.source_build_phase.add_file_reference(reference)
@@ -154,5 +159,8 @@ target.build_configurations.each do |config|
   settings["LD_RUNPATH_SEARCH_PATHS"] = "$(inherited) @executable_path/../Frameworks"
 end
 
+# The target dependency path includes its proxy UUID, so a second pass is
+# required after the proxy itself receives its deterministic UUID.
+2.times { project.predictabilize_uuids }
 project.save
 puts "Created #{project_path}"

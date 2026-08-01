@@ -12,7 +12,7 @@
 
 ShengJi is a free, open-source native macOS app with no account required. It can transcribe microphones, audio and video files, and audio playing on your Mac. It combines Apple Speech, whisper.cpp, SenseVoice, NVIDIA Parakeet, Apple Translation, and NLLB behind one SwiftUI interface.
 
-Current version: **1.5.1 (22)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current version: **1.6.0 (23)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 ## See it in action
 
@@ -49,11 +49,11 @@ For illustrated steps, troubleshooting, and SHA-256 verification, see the [Downl
 
 ![ShengJi transcript editor in English with local translation, search, range editing, export and privacy details](Documentation/Screenshots/transcript-editor-en.png)
 
-The screenshots are from version 1.4.1 of the real macOS app and use an isolated profile with non-private test transcript content. ShengJi includes complete English and Simplified Chinese interfaces and follows the preferred macOS language order.
+The screenshots are from version 1.6.0 of the real macOS app and use an isolated profile with non-private test transcript content. ShengJi includes complete English and Simplified Chinese interfaces.
 
 ## Languages
 
-ShengJi follows the preferred language order in macOS automatically. Version 1.4.0 includes complete English and Simplified Chinese interfaces, localized privacy descriptions, menus, model information, progress states, errors, and inspector values. Localization lives in standard language resource directories, so another language can be added without changing feature code.
+ShengJi follows the preferred language order in macOS by default. You can also switch the app immediately between English and Simplified Chinese in Settings without changing the system language; the menu bar and live-caption source controls update at the same time. Recognition-language menus place English and the Mac's language in a deduplicated Recommended Languages section. Settings also provide System, Light, and Dark appearance choices, plus current microphone, speech-recognition, and system-audio permission status.
 
 ## Recognition and translation engines
 
@@ -130,7 +130,7 @@ The local packaging script creates ZIP and DMG artifacts and validates nested si
 ./tools/package_local_release.sh
 ```
 
-By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` to make the same ad-hoc package produced by GitHub Actions. Pushing a tag that matches the version in `Info.plist` (for example, `v1.5.1`) runs `release-unsigned.yml`, verifies the package, and creates the GitHub Release without storing a certificate or password in GitHub Secrets. Developer ID signing, timestamping, notarization, and stapling remain the preferred public distribution path.
+By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` to make the same ad-hoc package produced by GitHub Actions. Pushing a tag that matches the version in `Info.plist` (for example, `v1.6.0`) runs `release-unsigned.yml`, verifies the package, and creates the GitHub Release without storing a certificate or password in GitHub Secrets. Developer ID signing, timestamping, notarization, and stapling remain the preferred public distribution path.
 
 ## CLI
 
@@ -143,9 +143,9 @@ ShengJi.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
 
 ## Privacy and updates
 
-LocalScribe does not upload recognition audio or imported transcripts. Network access is used for user-initiated model downloads, update checks, and opening external documentation.
+LocalScribe does not upload recognition audio or imported transcripts. Network access is used for model downloads, automatic or manual update checks and downloads, and opening external documentation. Automatic updates can be disabled in Settings.
 
-The built-in updater reads `update.json` from the latest GitHub Release, downloads its ZIP, verifies SHA-256, checks the bundle identifier and version, and asks before replacing the app. This update path is not a substitute for a notarized public release.
+The built-in updater checks at launch and every six hours by default, reads `update.json` from the latest GitHub Release, downloads its ZIP, verifies SHA-256, checks the bundle identifier and version, and asks before replacing and relaunching the app. This update path is not a substitute for a notarized public release.
 
 ## Documentation
 

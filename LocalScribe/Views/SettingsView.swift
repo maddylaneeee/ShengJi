@@ -4,7 +4,9 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var updateController: AppUpdateController
+    @Bindable var presentationPreferences: AppPresentationPreferences
     @Environment(\.openURL) private var openURL
+    @State private var permissionCenter = PermissionCenter()
     @State private var isConfirmingInstall = false
     @State private var installError: String?
     @State private var settingsError: String?
@@ -18,6 +20,11 @@ struct SettingsView: View {
                     Label("通用", systemImage: "gearshape")
                 }
 
+            permissionsTab
+                .tabItem {
+                    Label("权限", systemImage: "hand.raised")
+                }
+
             updatesTab
                 .tabItem {
                     Label("更新", systemImage: "arrow.triangle.2.circlepath")
@@ -28,7 +35,7 @@ struct SettingsView: View {
                     Label("关于", systemImage: "info.circle")
                 }
         }
-        .frame(width: 620, height: 500)
+        .frame(minWidth: 620, idealWidth: 680, minHeight: 500, idealHeight: 560)
         .alert("安装更新？", isPresented: $isConfirmingInstall) {
             Button("稍后", role: .cancel) {}
             Button("安装并重新打开") {
@@ -63,10 +70,31 @@ struct SettingsView: View {
         } message: {
             Text(settingsError ?? L10n.text("未知错误"))
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            permissionCenter.refresh()
+        }
     }
 
     private var generalTab: some View {
         Form {
+            Section("外观与语言") {
+                Picker("程序语言", selection: $presentationPreferences.language) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(language.title).tag(language)
+                    }
+                }
+                .id("language-\(presentationPreferences.language.rawValue)")
+                Picker("外观", selection: $presentationPreferences.appearance) {
+                    ForEach(AppAppearance.allCases) { appearance in
+                        Text(appearance.title).tag(appearance)
+                    }
+                }
+                .id("appearance-\(presentationPreferences.language.rawValue)")
+                Text("语言和外观更改会立即应用到声迹的所有窗口。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("应用") {
                 Toggle("登录时自动启动声迹", isOn: Binding(
                     get: { launchesAtLogin },
@@ -82,7 +110,7 @@ struct SettingsView: View {
 
             Section("隐私") {
                 Label("语音识别、翻译和导出均在本机完成", systemImage: "lock.shield")
-                Text("检查更新时访问设置中的更新地址；下载模型时访问对应模型仓库。音频和转录文本不会由声迹上传。")
+                Text("检查更新时访问官方 GitHub Release；下载模型时访问对应模型仓库。音频和转录文本不会由声迹上传。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -91,17 +119,62 @@ struct SettingsView: View {
         .padding(20)
     }
 
-    private var updatesTab: some View {
+    private var permissionsTab: some View {
         Form {
-            Section("当前版本") {
-                LabeledContent("版本", value: "\(AppInfo.version) (\(AppInfo.build))")
-                LabeledContent("应用标识", value: AppInfo.bundleIdentifier)
+            Section("录音与识别") {
+                permissionRow(
+                    title: "麦克风",
+                    detail: "用于麦克风转录和麦克风实时字幕。",
+                    symbol: "mic",
+                    state: permissionCenter.microphone,
+                    request: { Task { await permissionCenter.requestMicrophone() } },
+                    openSettings: { permissionCenter.openSystemSettings(for: .microphone) }
+                )
+                permissionRow(
+                    title: "语音识别",
+                    detail: "用于 Apple 本地识别和实时字幕。",
+                    symbol: "waveform",
+                    state: permissionCenter.speechRecognition,
+                    request: { Task { await permissionCenter.requestSpeechRecognition() } },
+                    openSettings: { permissionCenter.openSystemSettings(for: .speechRecognition) }
+                )
+                permissionRow(
+                    title: "屏幕与系统音频录制",
+                    detail: "仅在采集 Mac 正在播放的声音时使用。声迹不会录制屏幕画面。",
+                    symbol: "speaker.wave.2",
+                    state: permissionCenter.screenRecording,
+                    request: { permissionCenter.requestScreenRecording() },
+                    openSettings: { permissionCenter.openSystemSettings(for: .screenRecording) }
+                )
             }
 
-            Section("更新来源") {
-                TextField("更新说明地址", text: $updateController.manifestURLString)
-                    .textFieldStyle(.roundedBorder)
-                Text("更新说明是一个 JSON manifest，包含版本号、下载地址和 SHA-256。")
+            Section("文件") {
+                Label("打开或导出时由你选择文件和保存位置", systemImage: "folder.badge.questionmark")
+                Text("声迹不会请求访问整个文件夹；macOS 只授予你所选项目所需的访问权限。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .padding(20)
+        .onAppear { permissionCenter.refresh() }
+    }
+
+    private var updatesTab: some View {
+        Form {
+            Section("自动更新") {
+                Toggle("自动检查并下载更新", isOn: Binding(
+                    get: { updateController.automaticUpdatesEnabled },
+                    set: { updateController.setAutomaticUpdatesEnabled($0) }
+                ))
+                Text("开启后，声迹会在启动时及每隔六小时检查并下载更新；安装和重新打开应用前仍会征求你的确认。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("当前版本") {
+                LabeledContent("版本", value: "\(AppInfo.version) (\(AppInfo.build))")
+                Text("更新由 ShengJi 的官方 GitHub Release 提供。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -133,7 +206,7 @@ struct SettingsView: View {
                             .frame(width: 52, height: 52)
                             .cornerRadius(10)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(AppInfo.displayName)
+                            Text("声迹")
                                 .font(.title3.weight(.semibold))
                             Text("版本 \(AppInfo.version) (\(AppInfo.build))")
                                 .foregroundStyle(.secondary)
@@ -167,14 +240,47 @@ struct SettingsView: View {
 
                 Section("相关文档") {
                     webButton("使用说明", url: AppInfo.documentationURL, symbol: "book")
-                    webButton("验收记录", url: AppInfo.acceptanceURL, symbol: "checkmark.seal")
-                    webButton("SherpaOnnx 构建说明", url: AppInfo.sherpaBuildURL, symbol: "wrench.and.screwdriver")
                     webButton("GitHub 页面", url: AppInfo.githubURL, symbol: "chevron.left.forwardslash.chevron.right")
                 }
             }
             .formStyle(.grouped)
         }
         .padding(20)
+    }
+
+    private func permissionRow(
+        title: String,
+        detail: String,
+        symbol: String,
+        state: AppPermissionState,
+        request: @escaping () -> Void,
+        openSettings: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: symbol)
+                .font(.title3)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(L10n.text(title))
+                    .font(.callout.weight(.medium))
+                Text(L10n.text(detail))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            Label(state.title, systemImage: state.symbol)
+                .foregroundStyle(state == .authorized ? .green : .secondary)
+                .labelStyle(.titleAndIcon)
+                .accessibilityLabel("\(L10n.text(title))：\(state.title)")
+            if state.canRequest {
+                Button("请求权限", action: request)
+            } else if state.shouldOpenSettings {
+                Button("打开系统设置", action: openSettings)
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -212,12 +318,12 @@ struct SettingsView: View {
             Button("下载更新", systemImage: "arrow.down.circle") {
                 Task { await updateController.downloadAvailableUpdate() }
             }
-            .buttonStyle(.borderedProminent)
+            .primaryActionStyle()
         case .ready:
             Button("安装并重新打开", systemImage: "checkmark.circle") {
                 isConfirmingInstall = true
             }
-            .buttonStyle(.borderedProminent)
+            .primaryActionStyle()
         case .failed:
             Button("重置状态") { updateController.reset() }
         default:

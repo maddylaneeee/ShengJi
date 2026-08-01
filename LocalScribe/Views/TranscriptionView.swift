@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TranscriptionView: View {
+    @Environment(\.locale) private var interfaceLocale
     @Bindable var session: TranscriptionSessionModel
     @Bindable var catalog: LanguageCatalog
     @Bindable var recognitionPreferences: RecognitionPreferences
@@ -264,10 +265,23 @@ struct TranscriptionView: View {
 
     private var preflightLanguagePicker: some View {
         Picker("识别语言", selection: $catalog.selectedLocaleIdentifier) {
-            ForEach(catalog.languages) { language in
-                Text(language.displayName).tag(language.id)
+            if !catalog.languages.contains(where: { $0.id == catalog.selectedLocaleIdentifier }) {
+                Text(catalog.selectedLocaleIdentifier).tag(catalog.selectedLocaleIdentifier)
+            }
+            Section("推荐语言") {
+                ForEach(catalog.recommendedLanguages) { language in
+                    Text(language.displayName).tag(language.id)
+                }
+            }
+            if !catalog.otherLanguages.isEmpty {
+                Section("所有语言") {
+                    ForEach(catalog.otherLanguages) { language in
+                        Text(language.displayName).tag(language.id)
+                    }
+                }
             }
         }
+        .id("recognition-language-\(interfaceLocale.identifier)")
         .frame(minWidth: 180, maxWidth: 260)
         .disabled(catalog.isLoading)
     }
@@ -275,11 +289,11 @@ struct TranscriptionView: View {
     private var computePreferenceHint: String {
         switch recognitionPreferences.engine {
         case .apple:
-            L10n.text("Apple 框架自行管理计算单元。")
+            L10n.text("macOS 会自动为内置识别选择合适的性能设置。")
         case .whisper:
-            L10n.text("当前 GGML 模型支持 Metal/CPU；没有 Core ML encoder 时不会使用 ANE。")
+            L10n.text("可用时自动使用 GPU 加速，否则回退到 CPU。")
         case .senseVoice, .parakeet:
-            L10n.text("自动按 Core ML（优先 ANE）→ CPU 回退；实际计算单元由系统决定。")
+            L10n.text("声迹会自动选择适合这台 Mac 的处理方式。")
         }
     }
 
@@ -603,7 +617,7 @@ struct TranscriptionView: View {
                     provider: translationPreferences.provider
                 )
             }
-            .buttonStyle(.borderedProminent)
+            .primaryActionStyle()
             .disabled(session.isTranslating || selectedTranslationTargetMatchesSource || !selectedTranslationProviderReady)
         }
     }
@@ -650,18 +664,18 @@ struct TranscriptionView: View {
     @ViewBuilder
     private var nllbModelStatus: some View {
         if !NLLBTranslationRuntime.isRuntimeBundled {
-            Label("NLLB 运行时不可用", systemImage: "exclamationmark.octagon.fill")
+            Label("此版本无法使用离线翻译", systemImage: "exclamationmark.octagon.fill")
                 .font(.caption)
                 .foregroundStyle(.red)
         } else {
             switch nllbModelManager.state {
             case .idle:
                 if nllbModelManager.isInstalled {
-                    Label("NLLB 模型已安装", systemImage: "checkmark.circle.fill")
+                    Label("离线翻译已就绪", systemImage: "checkmark.circle.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Label("NLLB 模型未安装 · \(NLLBModelStore.sizeLabel)", systemImage: "exclamationmark.triangle.fill")
+                    Label("需下载离线翻译模型 · \(NLLBModelStore.sizeLabel)", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
@@ -669,7 +683,7 @@ struct TranscriptionView: View {
                 HStack(spacing: 6) {
                     ProgressView(value: progress)
                         .frame(width: 80)
-                    Text("下载 NLLB · \(progress.formatted(.percent.precision(.fractionLength(0))))")
+                    Text("下载离线翻译模型 · \(progress.formatted(.percent.precision(.fractionLength(0))))")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -720,7 +734,7 @@ struct TranscriptionView: View {
                     Task { await session.start() }
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+                .primaryActionStyle()
                 .disabled(!canStartSession)
             } else if session.canPause {
                 Button("暂停", systemImage: "pause.fill") { session.pause() }
@@ -728,7 +742,7 @@ struct TranscriptionView: View {
             } else if session.canResume {
                 Button("继续", systemImage: "play.fill") { Task { await session.resume() } }
                     .keyboardShortcut(.space, modifiers: [])
-                    .buttonStyle(.borderedProminent)
+                    .primaryActionStyle()
             }
 
             if session.canStop {
@@ -740,7 +754,7 @@ struct TranscriptionView: View {
                     isConfirmingRestart = true
                 }
                 Button("导出转录", systemImage: "square.and.arrow.up") { isShowingExport = true }
-                    .buttonStyle(.borderedProminent)
+                    .primaryActionStyle()
             }
         }
         .controlSize(.large)
@@ -763,14 +777,6 @@ struct TranscriptionView: View {
                     LabeledContent("类型", value: L10n.text("导入稿件"))
                 } else {
                     LabeledContent("引擎", value: session.configuration.displayName)
-                }
-                if !session.isImportedTranscript, let status = session.computeBackendStatus {
-                    LabeledContent("计算后端", value: status.detail)
-                    if let fallback = status.fallbackReason {
-                        Text(fallback)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
                 }
                 LabeledContent("时长", value: session.elapsed.formattedDuration)
                 LabeledContent("文字") {
@@ -802,9 +808,19 @@ struct TranscriptionView: View {
                     if isAdvancedExpanded {
                         advancedOptionsControls
                             .padding(.top, 6)
+                            .disabled(!session.canStart)
+                        if let status = session.computeBackendStatus {
+                            Divider()
+                                .padding(.vertical, 4)
+                            LabeledContent("处理方式", value: status.detail)
+                            if let fallback = status.fallbackReason {
+                                Text(fallback)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
-                .disabled(!session.canStart)
             }
 
             if case .microphone = session.source, session.phase == .transcribing {
@@ -1289,7 +1305,7 @@ struct TranscriptionView: View {
                 }
                 Button("选择保存位置…") { prepareExport() }
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
+                    .primaryActionStyle()
             }
         }
         .padding(24)
@@ -1505,7 +1521,7 @@ private struct TranscriptStreamView: View {
                     } label: {
                         Label("回到最新内容", systemImage: "arrow.down.to.line")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .primaryActionStyle()
                     .padding(18)
                 }
             }

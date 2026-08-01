@@ -12,7 +12,7 @@
 
 ShengJi 是一款面向 Apple silicon Mac 的免费、开源原生转录应用，无需注册账号。它把本地识别、悬浮实时字幕、稿件编辑、离线翻译、字幕导入导出和长任务恢复整合在一个 SwiftUI 界面中。识别音频和导入稿件不会由应用上传。
 
-当前版本：**1.5.1（22）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+当前版本：**1.6.0（23）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
 
 ## 实际演示
 
@@ -67,6 +67,8 @@ ShengJi 是一款面向 Apple silicon Mac 的免费、开源原生转录应用�
 
 Apple Speech 和 Apple Translation 首次使用某些语言时，可能由 macOS 下载对应语言资源。第三方模型只在用户主动选择后下载和启用。
 
+声迹默认跟随 macOS 的语言和外观，也可在设置中即时切换 English / 简体中文，以及系统 / 浅色 / 深色外观；顶部菜单和实时字幕声音来源会同步热切换。识别语言菜单在顶部提供去重后的“推荐语言”，优先列出英语和设备语言；设备语言为英语时只列一次。权限页会显示麦克风、语音识别与系统音频录制状态，并只在你主动点击时请求权限。
+
 ## 识别与翻译引擎
 
 | 引擎 | 用途 | 运行方式 |
@@ -88,7 +90,7 @@ Whisper 文件转录使用模型内部滑动窗口；较长素材会在适合时
 
 ## 隐私与联网行为
 
-声迹不会上传识别音频或导入稿件。网络仅用于用户主动触发的模型下载、应用更新检查，以及打开外部文档。NLLB 和第三方识别模型会在使用前明确显示下载状态。
+声迹不会上传识别音频或导入稿件。网络仅用于模型下载、自动或手动更新检查与下载，以及打开外部文档；自动更新可在设置中关闭。默认会在启动时和每隔六小时检查并下载新版，完成校验后仍会在安装和重新打开前征求确认。NLLB 和第三方识别模型会在使用前明确显示下载状态。
 
 ## 从源码构建
 

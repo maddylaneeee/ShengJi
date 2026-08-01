@@ -5,6 +5,7 @@ import Translation
 @main
 struct LocalScribeApp: App {
     @State private var updateController = AppUpdateController()
+    @State private var presentationPreferences = AppPresentationPreferences()
 
     init() {
         CLIController.runIfRequested()
@@ -12,8 +13,19 @@ struct LocalScribeApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            RootView(updateController: updateController)
                 .frame(minWidth: 840, minHeight: 600)
+                .environment(\.locale, presentationPreferences.language.locale)
+                .preferredColorScheme(presentationPreferences.appearance.colorScheme)
+                .onAppear {
+                    ApplicationMenuLocalizer.apply(presentationPreferences.language)
+                    if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+                        updateController.startAutomaticUpdates()
+                    }
+                }
+                .onChange(of: presentationPreferences.language) { _, language in
+                    ApplicationMenuLocalizer.apply(language)
+                }
                 .translationTask(AppleTranslationCoordinator.shared.configuration) { session in
                     await AppleTranslationCoordinator.shared.run(session: session)
                 }
@@ -21,25 +33,48 @@ struct LocalScribeApp: App {
         .defaultSize(width: 1080, height: 720)
         .windowResizability(.contentMinSize)
         .commands {
-            CommandGroup(after: .newItem) {
-                Button("从文件转录…") {
-                    NotificationCenter.default.post(name: .chooseTranscriptionFile, object: nil)
-                }
-                .keyboardShortcut("o", modifiers: .command)
-            }
-            CommandGroup(after: .appSettings) {
-                Button("检查更新…") {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                }
-            }
+            LocalizedAppCommands(language: presentationPreferences.language)
         }
 
         Settings {
-            SettingsView(updateController: updateController)
+            SettingsView(
+                updateController: updateController,
+                presentationPreferences: presentationPreferences
+            )
+            .environment(\.locale, presentationPreferences.language.locale)
+            .preferredColorScheme(presentationPreferences.appearance.colorScheme)
+        }
+    }
+}
+
+private struct LocalizedAppCommands: Commands {
+    let language: AppLanguage
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button(L10n.text("麦克风转录", languageCode: language.languageCode)) {
+                NotificationCenter.default.post(name: .startMicrophoneTranscription, object: nil)
+            }
+            .keyboardShortcut("n", modifiers: .command)
+            Button(L10n.text("从文件转录…", languageCode: language.languageCode)) {
+                NotificationCenter.default.post(name: .chooseTranscriptionFile, object: nil)
+            }
+            .keyboardShortcut("o", modifiers: .command)
+            Button(L10n.text("导入稿件…", languageCode: language.languageCode)) {
+                NotificationCenter.default.post(name: .chooseTranscriptFile, object: nil)
+            }
+            .keyboardShortcut("o", modifiers: [.command, .shift])
+        }
+        CommandGroup(after: .appSettings) {
+            Button(L10n.text("检查更新…", languageCode: language.languageCode)) {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
         }
     }
 }
 
 extension Notification.Name {
+    static let startMicrophoneTranscription = Notification.Name("startMicrophoneTranscription")
     static let chooseTranscriptionFile = Notification.Name("chooseTranscriptionFile")
+    static let chooseTranscriptFile = Notification.Name("chooseTranscriptFile")
 }

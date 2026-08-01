@@ -2,6 +2,17 @@
 
 This document summarizes the public acceptance and regression history in English. The complete earlier record is preserved in [Chinese (Simplified)](ACCEPTANCE.zh-CN.md).
 
+## 1.6.0 (23): adaptive interface, accessibility, and app settings
+
+- Primary actions use native Liquid Glass on macOS 26 with a system-material fallback on macOS 15.5–25; secondary controls no longer receive a custom blue hover treatment.
+- The home model controls remain on one row at normal window widths, and the four main content areas reflow without clipping in English or Chinese.
+- Settings can switch the app immediately between System, English, and Simplified Chinese, and between System, Light, and Dark appearances.
+- A dedicated Permissions tab shows microphone, speech-recognition, and screen/system-audio status without prompting until the user requests access.
+- Keyboard commands, focus presentation, VoiceOver labels, and reduced-transparency behavior cover the main transcription workflows.
+- Developer-oriented update and backend details are removed from default views or placed behind advanced disclosure while user-relevant model size, license, and troubleshooting information remains available.
+- Live-caption input choices and the macOS menu bar follow in-app language changes immediately; recognition-language menus recommend English and the device language without duplicates.
+- Automatic update checks and verified downloads run at launch and every six hours by default, can be disabled persistently, and still require confirmation before installation and relaunch.
+
 ## 1.4.0 (19): English interface and public distribution
 
 - The complete interface is available in English and Simplified Chinese and follows the preferred macOS language order automatically.

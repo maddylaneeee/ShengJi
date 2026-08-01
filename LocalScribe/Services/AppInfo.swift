@@ -19,25 +19,16 @@ enum AppInfo {
         Bundle.main.bundleIdentifier ?? "ca.lixinchen.localscribe"
     }
 
-    static var updateManifestURL: URL {
-        get {
-            if let value = UserDefaults.standard.string(forKey: "UpdateManifestURL"),
-               let url = URL(string: value) {
-                return url
-            }
-            return URL(string: "https://github.com/maddylaneeee/ShengJi/releases/latest/download/update.json")!
-        }
-        set {
-            UserDefaults.standard.set(newValue.absoluteString, forKey: "UpdateManifestURL")
-        }
-    }
+    static let updateManifestURL = URL(
+        string: "https://github.com/maddylaneeee/ShengJi/releases/latest/download/update.json"
+    )!
 
     static let documentationURL = URL(string: "https://lixinchen.ca/docs/localscribe/")!
     static let acceptanceURL = URL(string: "https://lixinchen.ca/docs/localscribe/acceptance.html")!
     static let sherpaBuildURL = URL(string: "https://lixinchen.ca/docs/localscribe/sherpa-onnx.html")!
     static let githubURL = URL(string: "https://github.com/maddylaneeee/ShengJi")!
 
-    static let dependencies: [OpenSourceDependency] = [
+    static var dependencies: [OpenSourceDependency] { [
         OpenSourceDependency(
             name: "Apple SpeechAnalyzer / SpeechTranscriber",
             role: L10n.text("Apple 本地语音识别与实时字幕"),
@@ -80,7 +71,7 @@ enum AppInfo {
             license: "CC-BY-NC-4.0 / MIT / Apache-2.0",
             url: URL(string: "https://huggingface.co/osa911/nllb-200-distilled-600M-ct2-int8")!
         )
-    ]
+    ] }
 }
 
 struct OpenSourceDependency: Identifiable, Hashable {
