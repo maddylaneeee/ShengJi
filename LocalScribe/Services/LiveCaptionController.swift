@@ -752,7 +752,10 @@ private final class AppleLiveCaptionPipeline: LiveCaptionPipeline {
     }
 
     private func startSystemAudio(targetFormat: AVAudioFormat) async throws {
-        let content = try await SCShareableContent.current
+        let content = try await SCShareableContent.excludingDesktopWindows(
+            false,
+            onScreenWindowsOnly: false
+        )
         guard let display = content.displays.first else { throw LiveCaptionError.noDisplay }
         let excludedApplications = content.applications.filter {
             $0.bundleIdentifier == Bundle.main.bundleIdentifier
@@ -941,7 +944,10 @@ private final class WhisperLiveCaptionPipeline: LiveCaptionPipeline {
     }
 
     private func startSystemAudio(buffer: WhisperLiveSampleBuffer) async throws {
-        let content = try await SCShareableContent.current
+        let content = try await SCShareableContent.excludingDesktopWindows(
+            false,
+            onScreenWindowsOnly: false
+        )
         guard let display = content.displays.first else { throw LiveCaptionError.noDisplay }
         let excludedApplications = content.applications.filter { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
         let filter = SCContentFilter(

@@ -2,4 +2,5 @@
 "CFBundleName" = "声迹";
 "NSFileProviderDomainUsageDescription" = "读取你选择的音频或视频，并将转录结果保存到指定位置。";
 "NSMicrophoneUsageDescription" = "使用麦克风在这台 Mac 上实时转写你说的话。";
+"NSScreenCaptureUsageDescription" = "采集这台 Mac 正在播放的系统音频，用于本地实时字幕；不会保存屏幕画面。";
 "NSSpeechRecognitionUsageDescription" = "使用 Apple 本地语音识别在这台 Mac 上生成转录和实时字幕。";

@@ -257,7 +257,7 @@ cat > "$UPDATE_MANIFEST" <<EOF
   "build": "$BUILD",
   "download_url": "$DOWNLOAD_URL",
   "sha256": "$SHA256",
-  "release_notes": "ShengJi 1.6.0 adds Liquid Glass primary actions on macOS 26, keyboard and accessibility improvements, adaptive layouts, instant app-language and appearance controls, localized menus, recommended recognition languages, permission management, and optional automatic update downloads.",
+  "release_notes": "ShengJi 1.6.1 restores the full Whisper recognition-language catalog on macOS 15.5–25, correctly handles Javanese language selection, and improves the permissions and content discovery used for live captions from system audio.",
   "minimum_system_version": "15.5",
   "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "size_bytes": $(stat -f %z "$ZIP")
