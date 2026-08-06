@@ -1110,7 +1110,7 @@ final class TranscriptionSessionModel {
     }
 
     private var whisperLanguageCode: String {
-        locale.language.languageCode?.identifier ?? "auto"
+        WhisperLanguageCodeMapper.whisperCode(for: locale)
     }
 
     @available(macOS 26.0, *)

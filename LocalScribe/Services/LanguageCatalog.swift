@@ -24,9 +24,17 @@ final class LanguageCatalog {
         isLoading = true
         guard #available(macOS 26.0, *) else {
             isSpeechAvailable = false
-            languages = [LanguageOption(locale: Locale.current, isInstalled: false)]
+            // On macOS 15.5–25 SpeechTranscriber is unavailable, but the
+            // bundled third-party engines (Whisper, SenseVoice, Parakeet)
+            // still support many languages. Fall back to the Whisper
+            // multilingual catalog so the language picker stays useful.
+            languages = Self.whisperSupportedLanguages
             recommendedLanguages = Self.recommendations(from: languages, deviceLocale: .current)
-            selectedLocaleIdentifier = Locale.current.identifier
+            if let device = Self.bestMatch(for: .current, in: languages) {
+                selectedLocaleIdentifier = device.id
+            } else if let first = languages.first {
+                selectedLocaleIdentifier = first.id
+            }
             isLoading = false
             return
         }
@@ -51,6 +59,30 @@ final class LanguageCatalog {
     var otherLanguages: [LanguageOption] {
         let recommendedIDs = Set(recommendedLanguages.map(\.id))
         return languages.filter { !recommendedIDs.contains($0.id) }
+    }
+
+    /// Language codes supported by whisper.cpp multilingual models
+    /// (ISO 639, matching whisper's built-in language table). Used as the
+    /// recognition language catalog on macOS 15.5–25 where SpeechTranscriber
+    /// supportedLocales is unavailable.
+    static let whisperLanguageIdentifiers: [String] = [
+        "en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr",
+        "pl", "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi",
+        "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no",
+        "th", "ur", "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk",
+        "te", "fa", "lv", "bn", "sr", "az", "sl", "kn", "et", "mk",
+        "br", "eu", "is", "hy", "ne", "mn", "bs", "kk", "sq", "sw",
+        "gl", "mr", "pa", "si", "km", "sn", "yo", "so", "af", "oc",
+        "ka", "be", "tg", "sd", "gu", "am", "yi", "lo", "uz", "fo",
+        "ht", "ps", "tk", "nn", "mt", "sa", "lb", "my", "bo", "tl",
+        "mg", "as", "tt", "haw", "ln", "ha", "ba", "jw", "su", "yue",
+    ]
+
+    /// Whisper's multilingual catalog, sorted by localized display name.
+    static var whisperSupportedLanguages: [LanguageOption] {
+        whisperLanguageIdentifiers
+            .map { LanguageOption(locale: Locale(identifier: $0), isInstalled: true) }
+            .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
     }
 
     static func recommendations(

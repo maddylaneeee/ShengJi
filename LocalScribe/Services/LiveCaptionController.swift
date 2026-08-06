@@ -841,7 +841,7 @@ private final class WhisperLiveCaptionPipeline: LiveCaptionPipeline {
 
         let owner = self
         let source = self.source
-        let language = locale.language.languageCode?.identifier ?? "auto"
+        let language = WhisperLanguageCodeMapper.whisperCode(for: locale)
         let context = self.context
         inferenceTask = Task.detached(priority: .userInitiated) { [owner, source, context, buffer] in
             do {
