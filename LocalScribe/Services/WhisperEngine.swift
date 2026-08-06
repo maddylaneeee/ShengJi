@@ -21,6 +21,18 @@ enum WhisperEngineError: LocalizedError {
     }
 }
 
+/// Maps Foundation locale language codes to whisper.cpp language codes.
+/// Foundation canonicalizes legacy codes (e.g. "jw" becomes "jv"), while
+/// whisper.cpp's built-in language table still expects its legacy codes.
+enum WhisperLanguageCodeMapper {
+    private static let overrides = ["jv": "jw"]
+
+    static func whisperCode(for locale: Locale) -> String {
+        let code = locale.language.languageCode?.identifier ?? "auto"
+        return overrides[code] ?? code
+    }
+}
+
 actor WhisperModelContext {
     enum DecodingMode: Equatable, Sendable {
         case realtime
