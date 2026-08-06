@@ -278,7 +278,7 @@ enum CLIController {
             let segments = try await WhisperFileProcessor.process(
                 url: prepared.url,
                 context: context,
-                languageCode: locale.language.languageCode?.identifier ?? "auto",
+                languageCode: WhisperLanguageCodeMapper.whisperCode(for: locale),
                 gate: gate,
                 incrementalSegmentHandler: { _ in },
                 stageHandler: { _ in },
