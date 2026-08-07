@@ -1,5 +1,14 @@
 import Foundation
 
+/// Coarse-grained progress reported while a transcript is being translated.
+enum TranslationProgress: Sendable, Equatable {
+    /// The provider is warming up: Apple Translation may be downloading
+    /// language assets, NLLB may be launching its runtime and loading the model.
+    case preparing
+    /// `completed` of `total` translation units have finished.
+    case translating(completed: Int, total: Int)
+}
+
 enum TranslationService {
     private static let batchSize = 64
 
@@ -28,7 +37,8 @@ enum TranslationService {
     static func translate(
         units: [TranslationUnit],
         sourceLocale: Locale,
-        configuration: TranslationConfiguration
+        configuration: TranslationConfiguration,
+        onProgress: (@Sendable (TranslationProgress) -> Void)? = nil
     ) async -> [SegmentTranslation] {
         if configuration.targetLanguage.isEquivalent(to: sourceLocale) {
             return units.map {
@@ -46,6 +56,7 @@ enum TranslationService {
             }
         }
 
+        onProgress?(.preparing)
         var output: [SegmentTranslation] = []
         output.reserveCapacity(units.count)
         var cursor = 0
@@ -58,6 +69,7 @@ enum TranslationService {
                 configuration: configuration
             ))
             cursor = end
+            onProgress?(.translating(completed: cursor, total: units.count))
         }
         return output.sorted { $0.ordinal < $1.ordinal }
     }

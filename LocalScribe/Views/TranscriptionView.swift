@@ -131,10 +131,19 @@ struct TranscriptionView: View {
             }
             Spacer()
             if session.isTranslating {
-                ProgressView().controlSize(.small)
-                Text("\(activeTranslationProviderTitle)正在翻译")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                if case .translating(let completed, let total) = session.translationProgress {
+                    ProgressView(value: Double(completed), total: Double(total))
+                        .frame(width: 90)
+                    Text("\(activeTranslationProviderTitle)正在翻译 \(completed)/\(total)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } else {
+                    ProgressView().controlSize(.small)
+                    Text("正在准备翻译环境…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
             } else if !session.translatedText.isEmpty {
                 Picker("显示内容", selection: $isShowingTranslation) {
                     Text("原文").tag(false)
@@ -636,7 +645,23 @@ struct TranscriptionView: View {
                 .foregroundStyle(.orange)
                 .lineLimit(1)
         } else if session.isTranslating {
-            ProgressView().controlSize(.small)
+            if case .translating(let completed, let total) = session.translationProgress {
+                HStack(spacing: 6) {
+                    ProgressView(value: Double(completed), total: Double(total))
+                        .frame(width: 80)
+                    Text("已翻译 \(completed)/\(total) 个片段")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            } else {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("正在准备翻译环境…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         } else {
             Text(translationPreferences.provider == .apple
                 ? "Apple 本地翻译；首次使用可能需要下载语言包"
@@ -853,7 +878,17 @@ struct TranscriptionView: View {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
                     } else if session.isTranslating {
-                        ProgressView("正在本地翻译…")
+                        if case .translating(let completed, let total) = session.translationProgress {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ProgressView(value: Double(completed), total: Double(total))
+                                Text("已翻译 \(completed)/\(total) 个片段")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                        } else {
+                            ProgressView("正在准备翻译环境…")
+                        }
                     } else if !session.translatedText.isEmpty {
                         Label("译文已生成并加入恢复快照", systemImage: "checkmark.circle.fill")
                     }

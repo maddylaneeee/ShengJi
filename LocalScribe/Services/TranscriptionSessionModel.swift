@@ -26,6 +26,7 @@ final class TranscriptionSessionModel {
     private(set) var translatedSegments: [TranscriptSegment] = []
     private(set) var segmentTranslations: [SegmentTranslation] = []
     private(set) var isTranslating = false
+    private(set) var translationProgress: TranslationProgress?
     private(set) var translationError: String?
     private(set) var computeBackendStatus: ComputeBackendStatus?
     var progress: Double = 0
@@ -400,6 +401,7 @@ final class TranscriptionSessionModel {
         translatedSegments = []
         segmentTranslations = []
         translationError = nil
+        translationProgress = nil
         if targetLanguage.isEquivalent(to: locale) {
             isTranslating = false
             translationTask = nil
@@ -413,6 +415,7 @@ final class TranscriptionSessionModel {
         translationTask?.cancel()
         translationTask = nil
         isTranslating = false
+        translationProgress = nil
         if let targetLanguage {
             translationConfiguration = TranslationConfiguration(
                 provider: provider ?? translationConfiguration?.provider ?? .apple,
@@ -438,6 +441,7 @@ final class TranscriptionSessionModel {
               !isTranslating else { return }
         isTranslating = true
         translationError = nil
+        translationProgress = .preparing
         let sourceSegments = hasManualEdits || segments.isEmpty
             ? TranscriptSegment.sentenceSegments(from: transcriptText, duration: elapsed)
             : segments.sorted { $0.startTime < $1.startTime }
@@ -450,10 +454,15 @@ final class TranscriptionSessionModel {
                 units: units,
                 sourceLocale: locale,
                 configuration: translationConfiguration
-            )
+            ) { progress in
+                Task { @MainActor [weak self] in
+                    self?.translationProgress = progress
+                }
+            }
             guard !Task.isCancelled, let self,
                   self.translationConfiguration == translationConfiguration else {
                 self?.isTranslating = false
+                self?.translationProgress = nil
                 return
             }
             self.segmentTranslations = translations
@@ -463,6 +472,7 @@ final class TranscriptionSessionModel {
             let failures = translations.filter { $0.state == .fallback }
             self.translationError = failures.isEmpty ? nil : L10n.format("有 %lld 个片段未能翻译，已保留原文并标记。", failures.count)
             self.isTranslating = false
+            self.translationProgress = nil
             self.translationTask = nil
             self.saveRecoveryNow()
         }
