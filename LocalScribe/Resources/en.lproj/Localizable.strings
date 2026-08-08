@@ -3,6 +3,7 @@
 "%@ · %@%@" = "%@ · %@%@";
 "%@ 已可离线使用" = "%@ is ready for offline use";
 "%@正在翻译" = "%@ is translating";
+"%@正在翻译 %lld/%lld" = "%@ is translating %lld/%lld";
 "%lld 字符" = "%lld characters";
 "%lld%%" = "%lld%%";
 "Apple 本地翻译；首次使用可能需要下载语言包" = "Apple on-device translation; language packs may be downloaded on first use";
@@ -108,6 +109,7 @@
 "模型来源" = "Model Sources";
 "模型管理" = "Model Management";
 "正在下载 %@ · %@" = "Downloading %@ · %@";
+"正在准备翻译环境…" = "Preparing the translation environment…";
 "正在本地翻译…" = "Translating on this Mac…";
 "清除" = "Clear";
 "版本" = "Version";
@@ -136,6 +138,7 @@
 "识别模型" = "Recognition Model";
 "识别语言" = "Recognition Language";
 "译为" = "Translate To";
+"已翻译 %lld/%lld 个片段" = "Translated %lld/%lld segments";
 "译文" = "Translation";
 "译文已生成并加入恢复快照" = "Translation generated and added to the recovery snapshot";
 "语言" = "Language";
