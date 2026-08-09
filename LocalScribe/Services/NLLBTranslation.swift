@@ -327,6 +327,9 @@ actor NLLBTranslationProcess {
     private var output: FileHandle?
     private var stderr: FileHandle?
     private var outputBuffer = Data()
+    /// Tail of the helper's stderr output, kept for error messages.
+    private var stderrTail = Data()
+    private static let stderrTailLimit = 8192
 
     func translate(
         texts: [String],
@@ -412,6 +415,16 @@ actor NLLBTranslationProcess {
         self.output = outputPipe.fileHandleForReading
         self.stderr = errorPipe.fileHandleForReading
 
+        // CTranslate2/sentencepiece log to stderr. If that pipe is never
+        // drained, its 64 KB buffer fills up during longer runs and the helper
+        // blocks on write(), deadlocking the translation (observed on macOS 15:
+        // stderr pipe full at 65536 bytes, helper parked in write()).
+        errorPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty else { return }
+            Task { await self?.appendStderr(data) }
+        }
+
         let ready: NLLBResponse = try readResponse()
         guard ready.ok else {
             throw NLLBTranslationError.runtime(ready.error ?? L10n.text("NLLB 运行时启动失败。"))
@@ -449,14 +462,20 @@ actor NLLBTranslationProcess {
         }
     }
 
+    private func appendStderr(_ data: Data) {
+        stderrTail.append(data)
+        if stderrTail.count > Self.stderrTailLimit {
+            stderrTail = Data(stderrTail.suffix(Self.stderrTailLimit))
+        }
+    }
+
     private func readStderr() -> String {
-        guard let stderr else { return "" }
-        let data = stderr.availableData
-        return String(data: data, encoding: .utf8)?
+        String(data: stderrTail, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     private func terminate() {
+        stderr?.readabilityHandler = nil
         try? input?.close()
         try? output?.close()
         try? stderr?.close()
@@ -466,6 +485,7 @@ actor NLLBTranslationProcess {
         output = nil
         stderr = nil
         outputBuffer.removeAll(keepingCapacity: false)
+        stderrTail.removeAll(keepingCapacity: false)
     }
 }
 
