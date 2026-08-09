@@ -167,6 +167,7 @@
 "默认" = "默认";
 "默认使用 Apple Speech Framework；第三方模型仅在手动选择后启用。" = "默认使用 Apple Speech Framework；第三方模型仅在手动选择后启用。";
 "Apple Translation 返回了不完整的翻译结果。" = "Apple Translation 返回了不完整的翻译结果。";
+"Apple 翻译服务无响应（已超时）。请重试，或改用 NLLB 翻译。" = "Apple 翻译服务无响应（已超时）。请重试，或改用 NLLB 翻译。";
 "Apple 本地实时字幕需要 macOS 26。" = "Apple 本地实时字幕需要 macOS 26。";
 "Apple 本地识别需要 macOS 26；当前系统可使用 Whisper、SenseVoice 或 Parakeet。" = "Apple 本地识别需要 macOS 26；当前系统可使用 Whisper、SenseVoice 或 Parakeet。";
 "Apple 翻译" = "Apple 翻译";
