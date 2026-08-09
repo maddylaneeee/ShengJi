@@ -10,7 +10,16 @@ enum TranslationProgress: Sendable, Equatable {
 }
 
 enum TranslationService {
-    private static let batchSize = 64
+    /// Requests per provider call. The system TranslationSession on macOS 15
+    /// can silently stop responding when a single call carries too many
+    /// requests, so Apple batches stay small; the local NLLB runtime handles
+    /// larger batches fine and benefits from fewer process round-trips.
+    private static func batchSize(for provider: TranslationProvider) -> Int {
+        switch provider {
+        case .apple: 16
+        case .nllb: 64
+        }
+    }
 
     static func translate(
         texts: [String],
@@ -57,17 +66,27 @@ enum TranslationService {
         }
 
         onProgress?(.preparing)
+        let batchSize = batchSize(for: configuration.provider)
         var output: [SegmentTranslation] = []
         output.reserveCapacity(units.count)
         var cursor = 0
         while cursor < units.count {
             let end = min(cursor + batchSize, units.count)
             let batch = Array(units[cursor..<end])
-            output.append(contentsOf: await translateBatchWithFallback(
-                batch,
-                sourceLocale: sourceLocale,
-                configuration: configuration
-            ))
+            do {
+                output.append(contentsOf: try await translateBatchWithFallback(
+                    batch,
+                    sourceLocale: sourceLocale,
+                    configuration: configuration
+                ))
+            } catch {
+                // The provider stopped responding mid-run: mark everything left
+                // as failed with a visible reason instead of stalling again.
+                output.append(contentsOf: units[cursor...].map {
+                    fallback($0, error: error.localizedDescription)
+                })
+                break
+            }
             cursor = end
             onProgress?(.translating(completed: cursor, total: units.count))
         }
@@ -78,7 +97,7 @@ enum TranslationService {
         _ units: [TranslationUnit],
         sourceLocale: Locale,
         configuration: TranslationConfiguration
-    ) async -> [SegmentTranslation] {
+    ) async throws -> [SegmentTranslation] {
         var batchError: Error?
         for attempt in 0..<2 {
             do {
@@ -98,6 +117,10 @@ enum TranslationService {
                 )
             } catch is CancellationError {
                 return units.map { fallback($0, error: L10n.text("翻译已取消")) }
+            } catch AppleTranslationError.timedOut {
+                // A wedged provider will not recover within a single backoff
+                // retry; fail fast so the run settles within one timeout.
+                throw AppleTranslationError.timedOut
             } catch {
                 batchError = error
                 if attempt == 0 { try? await Task.sleep(for: .milliseconds(250)) }
@@ -118,7 +141,12 @@ enum TranslationService {
                     throw TranslationBatchError.emptyTranslation
                 }
                 recovered.append(success(unit, value: value))
+            } catch is CancellationError {
+                recovered.append(fallback(unit, error: L10n.text("翻译已取消")))
             } catch {
+                if let error = error as? AppleTranslationError, case .timedOut = error {
+                    throw error
+                }
                 recovered.append(fallback(unit, error: batchError?.localizedDescription ?? error.localizedDescription))
             }
         }
@@ -153,6 +181,14 @@ enum TranslationService {
                 output.append(success(unit, value: retried))
             } catch {
                 output.append(fallback(unit, error: error.localizedDescription))
+                // A wedged provider would stall every remaining retry in this
+                // batch; fail them fast with the same visible reason.
+                if let error = error as? AppleTranslationError, case .timedOut = error, index + 1 < units.count {
+                    output.append(contentsOf: units[(index + 1)...].map {
+                        fallback($0, error: error.localizedDescription)
+                    })
+                    return output
+                }
             }
         }
         return output
@@ -292,6 +328,9 @@ actor NLLBTranslationProcess {
     private var output: FileHandle?
     private var stderr: FileHandle?
     private var outputBuffer = Data()
+    /// Tail of the helper's stderr output, kept for error messages.
+    private var stderrTail = Data()
+    private static let stderrTailLimit = 8192
 
     func shutdown() {
         terminate()
@@ -381,6 +420,16 @@ actor NLLBTranslationProcess {
         self.output = outputPipe.fileHandleForReading
         self.stderr = errorPipe.fileHandleForReading
 
+        // CTranslate2/sentencepiece log to stderr. If that pipe is never
+        // drained, its 64 KB buffer fills up during longer runs and the helper
+        // blocks on write(), deadlocking the translation (observed on macOS 15:
+        // stderr pipe full at 65536 bytes, helper parked in write()).
+        errorPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty else { return }
+            Task { await self?.appendStderr(data) }
+        }
+
         let ready: NLLBResponse = try readResponse()
         guard ready.ok else {
             throw NLLBTranslationError.runtime(ready.error ?? L10n.text("NLLB 运行时启动失败。"))
@@ -418,14 +467,20 @@ actor NLLBTranslationProcess {
         }
     }
 
+    private func appendStderr(_ data: Data) {
+        stderrTail.append(data)
+        if stderrTail.count > Self.stderrTailLimit {
+            stderrTail = Data(stderrTail.suffix(Self.stderrTailLimit))
+        }
+    }
+
     private func readStderr() -> String {
-        guard let stderr else { return "" }
-        let data = stderr.availableData
-        return String(data: data, encoding: .utf8)?
+        String(data: stderrTail, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     private func terminate() {
+        stderr?.readabilityHandler = nil
         try? input?.close()
         try? output?.close()
         try? stderr?.close()
@@ -435,6 +490,7 @@ actor NLLBTranslationProcess {
         output = nil
         stderr = nil
         outputBuffer.removeAll(keepingCapacity: false)
+        stderrTail.removeAll(keepingCapacity: false)
     }
 }
 
