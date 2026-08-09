@@ -117,17 +117,14 @@ enum TranslationService {
                 )
             } catch is CancellationError {
                 return units.map { fallback($0, error: L10n.text("翻译已取消")) }
+            } catch AppleTranslationError.timedOut {
+                // A wedged provider will not recover within a single backoff
+                // retry; fail fast so the run settles within one timeout.
+                throw AppleTranslationError.timedOut
             } catch {
                 batchError = error
                 if attempt == 0 { try? await Task.sleep(for: .milliseconds(250)) }
             }
-        }
-
-        // A provider timeout means the service is wedged; retrying each unit
-        // individually would stall once per unit. Surface one visible failure
-        // for the whole run instead.
-        if let error = batchError as? AppleTranslationError, case .timedOut = error {
-            throw error
         }
 
         var recovered: [SegmentTranslation] = []
