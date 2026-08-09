@@ -10,7 +10,16 @@ enum TranslationProgress: Sendable, Equatable {
 }
 
 enum TranslationService {
-    private static let batchSize = 64
+    /// Requests per provider call. The system TranslationSession on macOS 15
+    /// can silently stop responding when a single call carries too many
+    /// requests, so Apple batches stay small; the local NLLB runtime handles
+    /// larger batches fine and benefits from fewer process round-trips.
+    private static func batchSize(for provider: TranslationProvider) -> Int {
+        switch provider {
+        case .apple: 16
+        case .nllb: 64
+        }
+    }
 
     static func translate(
         texts: [String],
@@ -57,17 +66,27 @@ enum TranslationService {
         }
 
         onProgress?(.preparing)
+        let batchSize = batchSize(for: configuration.provider)
         var output: [SegmentTranslation] = []
         output.reserveCapacity(units.count)
         var cursor = 0
         while cursor < units.count {
             let end = min(cursor + batchSize, units.count)
             let batch = Array(units[cursor..<end])
-            output.append(contentsOf: await translateBatchWithFallback(
-                batch,
-                sourceLocale: sourceLocale,
-                configuration: configuration
-            ))
+            do {
+                output.append(contentsOf: try await translateBatchWithFallback(
+                    batch,
+                    sourceLocale: sourceLocale,
+                    configuration: configuration
+                ))
+            } catch {
+                // The provider stopped responding mid-run: mark everything left
+                // as failed with a visible reason instead of stalling again.
+                output.append(contentsOf: units[cursor...].map {
+                    fallback($0, error: error.localizedDescription)
+                })
+                break
+            }
             cursor = end
             onProgress?(.translating(completed: cursor, total: units.count))
         }
@@ -78,7 +97,7 @@ enum TranslationService {
         _ units: [TranslationUnit],
         sourceLocale: Locale,
         configuration: TranslationConfiguration
-    ) async -> [SegmentTranslation] {
+    ) async throws -> [SegmentTranslation] {
         var batchError: Error?
         for attempt in 0..<2 {
             do {
@@ -104,6 +123,13 @@ enum TranslationService {
             }
         }
 
+        // A provider timeout means the service is wedged; retrying each unit
+        // individually would stall once per unit. Surface one visible failure
+        // for the whole run instead.
+        if let error = batchError as? AppleTranslationError, case .timedOut = error {
+            throw error
+        }
+
         var recovered: [SegmentTranslation] = []
         recovered.reserveCapacity(units.count)
         for unit in units {
@@ -118,7 +144,12 @@ enum TranslationService {
                     throw TranslationBatchError.emptyTranslation
                 }
                 recovered.append(success(unit, value: value))
+            } catch is CancellationError {
+                recovered.append(fallback(unit, error: L10n.text("翻译已取消")))
             } catch {
+                if let error = error as? AppleTranslationError, case .timedOut = error {
+                    throw error
+                }
                 recovered.append(fallback(unit, error: batchError?.localizedDescription ?? error.localizedDescription))
             }
         }
@@ -153,6 +184,14 @@ enum TranslationService {
                 output.append(success(unit, value: retried))
             } catch {
                 output.append(fallback(unit, error: error.localizedDescription))
+                // A wedged provider would stall every remaining retry in this
+                // batch; fail them fast with the same visible reason.
+                if let error = error as? AppleTranslationError, case .timedOut = error, index + 1 < units.count {
+                    output.append(contentsOf: units[(index + 1)...].map {
+                        fallback($0, error: error.localizedDescription)
+                    })
+                    return output
+                }
             }
         }
         return output

@@ -157,6 +157,11 @@ enum AppleTranslationQuality: Sendable {
 final class AppleTranslationCoordinator {
     static let shared = AppleTranslationCoordinator()
 
+    /// A job that never makes it through the SwiftUI translationTask bridge —
+    /// or through a wedged system translation service — must surface as an
+    /// error instead of waiting forever.
+    private static let jobTimeout: Duration = .seconds(90)
+
     private(set) var configuration: TranslationSession.Configuration?
     private(set) var isBusy = false
 
@@ -252,6 +257,10 @@ final class AppleTranslationCoordinator {
                     continuation: continuation
                 ))
                 activateNextJobIfNeeded()
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: Self.jobTimeout)
+                    self?.timeoutIfPending(jobID: id)
+                }
             }
         } onCancel: {
             Task { @MainActor [weak self] in self?.cancel(jobID: id) }
@@ -277,16 +286,24 @@ final class AppleTranslationCoordinator {
     }
 
     private func cancel(jobID: UUID) {
+        settle(jobID: jobID, error: CancellationError())
+    }
+
+    private func timeoutIfPending(jobID: UUID) {
+        settle(jobID: jobID, error: AppleTranslationError.timedOut)
+    }
+
+    private func settle(jobID: UUID, error: any Error) {
         if currentJob?.id == jobID {
             if #available(macOS 26.0, *) {
                 activeSession?.cancel()
             }
-            finish(jobID: jobID, result: .failure(CancellationError()))
+            finish(jobID: jobID, result: .failure(error))
             return
         }
         guard let index = queuedJobs.firstIndex(where: { $0.id == jobID }) else { return }
         let job = queuedJobs.remove(at: index)
-        job.continuation.resume(throwing: CancellationError())
+        job.continuation.resume(throwing: error)
     }
 
     private func finish(jobID: UUID, result: Result<[String], Error>) {
@@ -373,6 +390,7 @@ enum AppleTranslationError: LocalizedError {
     case invalidResponse
     case languageAssetsNotInstalled
     case unsupportedPair(String, String)
+    case timedOut
 
     var errorDescription: String? {
         switch self {
@@ -382,6 +400,8 @@ enum AppleTranslationError: LocalizedError {
             L10n.text("所需 Apple 翻译语言包尚未安装；请先在声迹图形界面中翻译一次，并按系统提示下载。")
         case .unsupportedPair(let source, let target):
             L10n.format("本机 Apple Translation 不支持从 %@ 翻译为 %@。", source, target)
+        case .timedOut:
+            L10n.text("Apple 翻译服务无响应（已超时）。请重试，或改用 NLLB 翻译。")
         }
     }
 }
