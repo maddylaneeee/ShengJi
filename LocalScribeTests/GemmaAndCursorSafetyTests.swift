@@ -215,44 +215,14 @@ final class GemmaAndCursorSafetyTests: XCTestCase {
         XCTAssertFalse(controller.hasActiveResources)
     }
 
-    func testCursorReplacementRangeUsesInitialSelectionThenGeneratedText() {
-        let initial = CursorAccessibilityWriter.replacementRange(
-            previous: "",
-            insertionLocation: 4,
-            initialSelectionLength: 3
-        )
-        XCTAssertEqual(initial.location, 4)
-        XCTAssertEqual(initial.length, 3)
-
-        let revision = CursorAccessibilityWriter.replacementRange(
-            previous: "你好🙂",
-            insertionLocation: 4,
-            initialSelectionLength: 3
-        )
-        XCTAssertEqual(revision.location, 4)
-        XCTAssertEqual(revision.length, 4)
-    }
-
-    func testCursorStreamingOnlyReplacesChangedSuffix() {
-        let append = CursorAccessibilityWriter.incrementalReplacement(
-            previous: "Hello wor",
-            current: "Hello world",
-            insertionLocation: 7,
-            initialSelectionLength: 0
-        )
-        XCTAssertEqual(append.range.location, 16)
-        XCTAssertEqual(append.range.length, 0)
+    func testCursorStreamingTypesOnlyChangedSuffix() {
+        let append = CursorInputWriter.keyboardEdit(previous: "Hello wor", current: "Hello world")
+        XCTAssertEqual(append.deleteCount, 0)
         XCTAssertEqual(append.text, "ld")
 
-        let revision = CursorAccessibilityWriter.incrementalReplacement(
-            previous: "Hello word",
-            current: "Hello world",
-            insertionLocation: 7,
-            initialSelectionLength: 0
-        )
-        XCTAssertEqual(revision.range.location, 16)
-        XCTAssertEqual(revision.range.length, 1)
-        XCTAssertEqual(revision.text, "ld")
+        let revision = CursorInputWriter.keyboardEdit(previous: "你好🙂天气", current: "你好🙂世界")
+        XCTAssertEqual(revision.deleteCount, 2)
+        XCTAssertEqual(revision.text, "世界")
     }
 
     @MainActor

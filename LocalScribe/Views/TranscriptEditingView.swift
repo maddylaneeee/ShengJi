@@ -7,7 +7,7 @@ struct TranscriptEditingTextView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
-    func makeNSView(context: Context) -> NSScrollView {
+    func makeNSView(context: Context) -> TranscriptEditorContainerView {
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
@@ -34,18 +34,14 @@ struct TranscriptEditingTextView: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         textView.string = text
         scrollView.documentView = textView
-        scrollView.hasVerticalRuler = true
-        scrollView.rulersVisible = true
-        scrollView.verticalRulerView = TranscriptLineNumberRulerView(textView: textView)
-        return scrollView
+        return TranscriptEditorContainerView(scrollView: scrollView, textView: textView)
     }
 
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
+    func updateNSView(_ container: TranscriptEditorContainerView, context: Context) {
+        let textView = container.textView
         context.coordinator.parent = self
         if textView.string != text {
             textView.string = text
-            (scrollView.verticalRulerView as? TranscriptLineNumberRulerView)?.needsDisplay = true
         }
         let safe = TranscriptTextEditing.validRange(selection, in: text) ?? NSRange(location: 0, length: 0)
         if textView.selectedRange() != safe {
@@ -73,44 +69,81 @@ struct TranscriptEditingTextView: NSViewRepresentable {
     }
 }
 
-final class TranscriptLineNumberRulerView: NSRulerView {
-    private weak var textView: NSTextView?
-    private var observers: [NSObjectProtocol] = []
+final class TranscriptEditorContainerView: NSView {
+    let scrollView: NSScrollView
+    let textView: NSTextView
+    private let gutter: TranscriptLineNumberGutterView
 
-    init(textView: NSTextView) {
+    init(scrollView: NSScrollView, textView: NSTextView) {
+        self.scrollView = scrollView
         self.textView = textView
-        super.init(scrollView: textView.enclosingScrollView, orientation: .verticalRuler)
-        ruleThickness = 50
-        textView.enclosingScrollView?.contentView.postsBoundsChangedNotifications = true
-        let center = NotificationCenter.default
-        observers.append(center.addObserver(forName: NSText.didChangeNotification, object: textView, queue: .main) { [weak self] _ in
-            self?.needsDisplay = true
-        })
-        if let contentView = textView.enclosingScrollView?.contentView {
-            observers.append(center.addObserver(forName: NSView.boundsDidChangeNotification, object: contentView, queue: .main) { [weak self] _ in
-                self?.needsDisplay = true
-            })
-        }
+        self.gutter = TranscriptLineNumberGutterView(textView: textView, scrollView: scrollView)
+        super.init(frame: .zero)
+        clipsToBounds = true
+        gutter.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(gutter)
+        addSubview(scrollView)
+        NSLayoutConstraint.activate([
+            gutter.leadingAnchor.constraint(equalTo: leadingAnchor),
+            gutter.topAnchor.constraint(equalTo: topAnchor),
+            gutter.bottomAnchor.constraint(equalTo: bottomAnchor),
+            gutter.widthAnchor.constraint(equalToConstant: 50),
+            scrollView.leadingAnchor.constraint(equalTo: gutter.trailingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
     }
 
-    required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { nil }
+}
+
+final class TranscriptLineNumberGutterView: NSView {
+    private weak var textView: NSTextView?
+    private weak var scrollView: NSScrollView?
+    private var observers: [NSObjectProtocol] = []
+
+    override var isFlipped: Bool { true }
+
+    init(textView: NSTextView, scrollView: NSScrollView) {
+        self.textView = textView
+        self.scrollView = scrollView
+        super.init(frame: .zero)
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(
+            forName: NSText.didChangeNotification,
+            object: textView,
+            queue: .main
+        ) { [weak self] _ in self?.needsDisplay = true })
+        observers.append(center.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in self?.needsDisplay = true })
+    }
+
+    required init?(coder: NSCoder) { nil }
 
     deinit { observers.forEach(NotificationCenter.default.removeObserver) }
 
-    override func drawHashMarksAndLabels(in rect: NSRect) {
-        guard let textView, let layoutManager = textView.layoutManager,
+    override func draw(_ dirtyRect: NSRect) {
+        guard let textView, let scrollView, let layoutManager = textView.layoutManager,
               let textContainer = textView.textContainer else { return }
-        NSColor.separatorColor.withAlphaComponent(0.35).setFill()
-        NSRect(x: bounds.maxX - 1, y: rect.minY, width: 1, height: rect.height).fill()
-
-        let visibleRect = textView.enclosingScrollView?.contentView.bounds ?? textView.visibleRect
-        let glyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: textContainer)
+        let visibleRect = scrollView.contentView.bounds
+        let containerRect = NSRect(
+            x: 0,
+            y: max(0, visibleRect.minY - textView.textContainerInset.height),
+            width: max(0, visibleRect.width - textView.textContainerInset.width * 2),
+            height: visibleRect.height
+        )
+        let glyphRange = layoutManager.glyphRange(forBoundingRect: containerRect, in: textContainer)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular),
             .foregroundColor: NSColor.secondaryLabelColor
         ]
-        layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { [weak self] _, usedRect, _, glyphRange, _ in
-            guard let self, let textView = self.textView else { return }
+        layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { _, usedRect, _, glyphRange, _ in
             let characterIndex = layoutManager.characterIndexForGlyph(at: glyphRange.location)
             let source = textView.string as NSString
             let safeIndex = min(characterIndex, source.length)
@@ -119,9 +152,8 @@ final class TranscriptLineNumberRulerView: NSRulerView {
             let lineNumber = prefix.reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
             let value = "\(lineNumber)" as NSString
             let size = value.size(withAttributes: attributes)
-            let y = usedRect.minY + textView.textContainerInset.height
-                - (textView.enclosingScrollView?.contentView.bounds.minY ?? 0)
-            value.draw(at: NSPoint(x: bounds.width - size.width - 9, y: y), withAttributes: attributes)
+            let y = usedRect.minY + textView.textContainerInset.height - visibleRect.minY
+            value.draw(at: NSPoint(x: self.bounds.maxX - size.width - 9, y: y), withAttributes: attributes)
         }
     }
 }

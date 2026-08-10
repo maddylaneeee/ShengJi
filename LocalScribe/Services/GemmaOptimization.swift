@@ -423,6 +423,7 @@ actor GemmaOptimizationService {
         progress: @escaping @Sendable (Int, Int) -> Void,
         preview: @escaping @Sendable (String) -> Void
     ) async throws -> String {
+        let sourceEvidence = Dictionary(uniqueKeysWithValues: segments.map { ($0.id.uuidString, $0.text) })
         let batches = stride(from: 0, to: segments.count, by: batchSize).map {
             Array(segments[$0..<min($0 + batchSize, segments.count)])
         }
@@ -433,9 +434,24 @@ actor GemmaOptimizationService {
         for batch in batches {
             try Task.checkCancellation()
             let priorFacts = facts
-            facts.append(contentsOf: try await summaryFacts(from: batch, prompt: prompt) { partialFacts in
-                preview((priorFacts + partialFacts).map(\.text).joined(separator: "\n"))
-            })
+            do {
+                facts.append(contentsOf: try await summaryFacts(from: batch, prompt: prompt) { partialFacts in
+                    preview((priorFacts + partialFacts).map(\.text).joined(separator: "\n"))
+                })
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // A small local model can occasionally miss the JSON contract.
+                // Preserve availability with exact source-backed facts; later
+                // reduction can still compress them without inventing content.
+                facts.append(contentsOf: batch.compactMap { segment in
+                    let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return text.isEmpty ? nil : GemmaSummaryFact(
+                        text: text,
+                        evidenceIDs: [segment.id.uuidString]
+                    )
+                })
+            }
             completed += 1
             progress(completed, estimatedTotal)
             preview(facts.map(\.text).joined(separator: "\n"))
@@ -448,9 +464,19 @@ actor GemmaOptimizationService {
                 try Task.checkCancellation()
                 let group = Array(facts[start..<min(start + 12, facts.count)])
                 let priorReduced = reduced
-                reduced.append(contentsOf: try await reduceSummaryFacts(group, prompt: prompt) { partialFacts in
-                    preview((priorReduced + partialFacts).map(\.text).joined(separator: "\n"))
-                })
+                do {
+                    reduced.append(contentsOf: try await reduceSummaryFacts(
+                        group,
+                        prompt: prompt,
+                        evidence: sourceEvidence
+                    ) { partialFacts in
+                        preview((priorReduced + partialFacts).map(\.text).joined(separator: "\n"))
+                    })
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    reduced.append(contentsOf: group)
+                }
                 completed += 1
                 estimatedTotal = max(estimatedTotal, completed + 1)
                 progress(completed, estimatedTotal)
@@ -461,8 +487,19 @@ actor GemmaOptimizationService {
         }
 
         if facts.count > 1 {
-            facts = try await reduceSummaryFacts(facts, prompt: prompt) { partialFacts in
-                preview(partialFacts.map(\.text).joined(separator: "\n"))
+            do {
+                facts = try await reduceSummaryFacts(
+                    facts,
+                    prompt: prompt,
+                    evidence: sourceEvidence
+                ) { partialFacts in
+                    preview(partialFacts.map(\.text).joined(separator: "\n"))
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Keep the already verified map-stage facts instead of turning a
+                // valid long-document summary into a user-visible task failure.
             }
             completed += 1
             progress(completed, max(completed, estimatedTotal))
@@ -498,6 +535,7 @@ actor GemmaOptimizationService {
     private func reduceSummaryFacts(
         _ facts: [GemmaSummaryFact],
         prompt: String,
+        evidence: [String: String],
         partial: @escaping @Sendable ([GemmaSummaryFact]) -> Void
     ) async throws -> [GemmaSummaryFact] {
         let data = try String(data: JSONEncoder().encode(facts), encoding: .utf8) ?? "[]"
@@ -507,9 +545,6 @@ actor GemmaOptimizationService {
             maxTokens: min(1_536, max(384, facts.reduce(0) { $0 + $1.text.count })),
             partial: { partial(Self.decodeCompletedObjects($0)) }
         )
-        let evidence = Dictionary(facts.flatMap { fact in
-            fact.evidenceIDs.map { ($0, fact.text) }
-        }, uniquingKeysWith: { first, _ in first })
         let validated = try Self.validateSummaryFacts(Self.decodeSummaryFacts(response), evidence: evidence)
         return try await verifySummaryFacts(validated, evidence: evidence)
     }

@@ -42,6 +42,7 @@ struct TranscriptionView: View {
     @State private var gemmaTask: Task<Void, Never>?
     @State private var gemmaPreviewText = ""
     @State private var gemmaOriginalText = ""
+    @FocusState private var gemmaPromptFocused: Bool
     @AppStorage("EnableGemmaE4B") private var enableGemmaE4B = false
 
     var body: some View {
@@ -260,7 +261,11 @@ struct TranscriptionView: View {
                     animatedText: nil
                 )
             } else if gemmaIsRunning, !gemmaPreviewText.isEmpty {
-                AIChangePreviewView(original: gemmaOriginalText, proposed: gemmaPreviewText)
+                if gemmaKind == .summarize {
+                    AISummaryPreviewView(text: gemmaPreviewText)
+                } else {
+                    AIChangePreviewView(original: gemmaOriginalText, proposed: gemmaPreviewText)
+                }
             } else if session.canEdit {
                 HStack(spacing: 0) {
                     Spacer(minLength: 20)
@@ -835,8 +840,19 @@ struct TranscriptionView: View {
         HStack(spacing: 10) {
             if session.canStart {
                 if session.isCursorInput {
-                    if cursorInput.isArmed {
-                        Button("取消准备", systemImage: "xmark.circle") { cursorInput.finish() }
+                    if session.isPreparingCursorInput {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Button("取消准备", systemImage: "xmark.circle") {
+                                session.cancelCursorInputPreparation()
+                            }
+                        }
+                    } else if cursorInput.isArmed {
+                        Button("取消准备", systemImage: "xmark.circle") {
+                            cursorInput.finish()
+                            session.cancelCursorInputPreparation()
+                        }
                     } else {
                         Button("准备开始", systemImage: "cursorarrow.motionlines") { armCursorInput() }
                             .keyboardShortcut(.defaultAction)
@@ -1026,7 +1042,7 @@ struct TranscriptionView: View {
                     Text("提示词")
                         .font(.caption.weight(.medium))
                     ZStack(alignment: .topLeading) {
-                        if gemmaPrompt.isEmpty {
+                        if gemmaPrompt.isEmpty, !gemmaPromptFocused {
                             Text(gemmaKind == .summarize
                                 ? "可指定总结长度、重点、格式或需保留的信息"
                                 : "可输入正确人名、术语或希望采用的表达方式")
@@ -1038,8 +1054,8 @@ struct TranscriptionView: View {
                         TextEditor(text: $gemmaPrompt)
                             .font(.body)
                             .scrollContentBackground(.hidden)
-                            .padding(.horizontal, 3)
-                            .padding(.vertical, 2)
+                            .padding(4)
+                            .focused($gemmaPromptFocused)
                     }
                     .frame(minHeight: 86, maxHeight: 120)
                     .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 6))
@@ -1157,10 +1173,14 @@ struct TranscriptionView: View {
 
     private func armCursorInput() {
         syncPendingConfiguration()
-        _ = cursorInput.arm {
-            Task { await session.start() }
-        } stop: {
-            Task { await session.stop() }
+        Task {
+            guard await session.prepareCursorInput(), session.canStart else { return }
+            let armed = cursorInput.arm {
+                Task { await session.start() }
+            } stop: {
+                Task { await session.stop() }
+            }
+            if !armed { session.cancelCursorInputPreparation() }
         }
     }
 
@@ -1206,7 +1226,7 @@ struct TranscriptionView: View {
         gemmaFailures = []
         gemmaProgress = nil
         gemmaOriginalText = session.transcriptText
-        gemmaPreviewText = session.transcriptText
+        gemmaPreviewText = gemmaKind == .summarize ? "" : session.transcriptText
         let model = gemmaModel
         let prompt = gemmaPrompt
         let segments = session.segments
@@ -1277,7 +1297,10 @@ struct TranscriptionView: View {
     private func handleDisappear() {
         gemmaTask?.cancel()
         Task { await GemmaOptimizationService.shared.cancel() }
-        if session.isCursorInput { cursorInput.finish() }
+        if session.isCursorInput {
+            cursorInput.finish()
+            session.cancelCursorInputPreparation()
+        }
     }
 
     private func handleCursorSessionPhase(_ phase: TranscriptionPhase) {
@@ -1995,6 +2018,21 @@ private struct NumberedTranscriptText: View {
                 }
             }
         }
+    }
+}
+
+private struct AISummaryPreviewView: View {
+    let text: String
+
+    var body: some View {
+        ScrollView {
+            NumberedTranscriptText(text: text)
+                .frame(maxWidth: 900, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+        }
+        .accessibilityLabel("AI 总结实时预览")
     }
 }
 
