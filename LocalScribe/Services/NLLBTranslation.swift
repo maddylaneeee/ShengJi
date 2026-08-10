@@ -226,6 +226,10 @@ private enum TranslationBatchError: LocalizedError {
 enum NLLBTranslationRuntime {
     static let shared = NLLBTranslationProcess()
 
+    static func shutdown() async {
+        await shared.shutdown()
+    }
+
     static var isRuntimeBundled: Bool {
         runtimeExecutableURL != nil
     }
@@ -288,6 +292,10 @@ actor NLLBTranslationProcess {
     private var output: FileHandle?
     private var stderr: FileHandle?
     private var outputBuffer = Data()
+
+    func shutdown() {
+        terminate()
+    }
 
     func translate(
         texts: [String],

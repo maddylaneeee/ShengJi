@@ -28,8 +28,27 @@ struct TranscriptionView: View {
     @State private var secondEditNode: NSRange?
     @State private var editStatus: String?
     @State private var isAdvancedExpanded = false
+    @State private var gemmaModelManager = GemmaModelManager()
+    @State private var gemmaKind: GemmaOptimizationKind?
+    @State private var gemmaModel: GemmaModel = .e2b
+    @State private var gemmaPrompt = ""
+    @State private var gemmaIsPreparing = false
+    @State private var gemmaReady = false
+    @State private var gemmaIsRunning = false
+    @State private var gemmaProgress: (Int, Int)?
+    @State private var gemmaError: String?
+    @State private var gemmaFailures: [GemmaSegmentFailure] = []
+    @State private var gemmaTask: Task<Void, Never>?
+    @State private var gemmaPreviewText = ""
+    @State private var gemmaOriginalText = ""
+    @FocusState private var gemmaPromptFocused: Bool
+    @AppStorage("EnableGemmaE4B") private var enableGemmaE4B = false
 
     var body: some View {
+        observedContent
+    }
+
+    private var presentedContent: some View {
         VStack(spacing: 0) {
             statusStrip
             Divider()
@@ -84,10 +103,16 @@ struct TranscriptionView: View {
         } message: {
             Text(exportError ?? L10n.text("未知错误"))
         }
+    }
+
+    private var primaryObservedContent: some View {
+        presentedContent
         .onAppear {
             isAdvancedExpanded = false
             nllbModelManager.refresh()
+            gemmaModelManager.refresh()
             syncPendingConfiguration()
+            autoPrepareGemmaIfNeeded()
         }
         .onChange(of: catalog.selectedLocaleIdentifier) { _, _ in syncPendingConfiguration() }
         .onChange(of: recognitionPreferences.configuration) { _, _ in syncPendingConfiguration() }
@@ -113,6 +138,25 @@ struct TranscriptionView: View {
                 provider: .nllb
             )
         }
+    }
+
+    private var observedContent: some View {
+        primaryObservedContent
+        .onChange(of: session.phase) { _, phase in
+            if phase == .finished { autoPrepareGemmaIfNeeded() }
+        }
+        .onChange(of: gemmaModelManager.installedModels) { _, installed in
+            guard installed.contains(gemmaModel), gemmaKind != nil else { return }
+            prepareGemma()
+        }
+        .onChange(of: gemmaModel) { _, _ in
+            guard session.phase == .finished else { return }
+            gemmaTask?.cancel()
+            gemmaReady = false
+            gemmaIsPreparing = false
+            prepareGemma()
+        }
+        .onDisappear(perform: handleDisappear)
     }
 
     private var statusStrip: some View {
@@ -171,6 +215,14 @@ struct TranscriptionView: View {
                     .accessibilityLabel(session.activityDetail)
                 }
             }
+            if session.canUndoAIChange {
+                Button("撤销 AI 修改", systemImage: "arrow.uturn.backward.circle") {
+                    session.undoLastAIChange()
+                    editStatus = L10n.text("已撤销 AI 修改")
+                    gemmaFailures = []
+                }
+                .buttonStyle(.bordered)
+            }
             Label(session.elapsed.formattedDuration, systemImage: "clock")
                 .font(.callout.monospacedDigit())
                 .foregroundStyle(.secondary)
@@ -189,6 +241,12 @@ struct TranscriptionView: View {
                     isActive: false,
                     animatedText: nil
                 )
+            } else if gemmaIsRunning, !gemmaPreviewText.isEmpty {
+                if gemmaKind == .summarize {
+                    AISummaryPreviewView(text: gemmaPreviewText)
+                } else {
+                    AIChangePreviewView(original: gemmaOriginalText, proposed: gemmaPreviewText)
+                }
             } else if session.canEdit {
                 HStack(spacing: 0) {
                     Spacer(minLength: 20)
@@ -617,6 +675,12 @@ struct TranscriptionView: View {
 
     private var translationAction: some View {
         HStack(spacing: 8) {
+            Menu("AI 优化", systemImage: "sparkles") {
+                Button("纠错与润色", systemImage: "wand.and.stars") { chooseGemma(.proofread) }
+                Button("总结", systemImage: "text.alignleft") { chooseGemma(.summarize) }
+            }
+            .disabled(session.isTranslating || gemmaIsRunning || !GemmaHardwareSupport.isSupported)
+            .help(GemmaHardwareSupport.isSupported ? "" : GemmaHardwareSupport.unsupportedReason)
             if translationPreferences.provider == .nllb, !isNLLBTranslationReady {
                 nllbModelDownloadAction
             }
@@ -810,6 +874,10 @@ struct TranscriptionView: View {
                 }
             }
 
+            if session.phase == .finished {
+                gemmaInspector
+            }
+
             if !session.isImportedTranscript, advancedEngine != .apple {
                 Section {
                     Button {
@@ -897,6 +965,276 @@ struct TranscriptionView: View {
         }
         .formStyle(.grouped)
         .inspectorColumnWidth(min: 240, ideal: 280, max: 340)
+    }
+
+    @ViewBuilder
+    private var gemmaInspector: some View {
+        Section("AI 优化") {
+            if !GemmaHardwareSupport.isSupported {
+                Label(GemmaHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            if let gemmaKind {
+                Picker("任务", selection: Binding(
+                    get: { gemmaKind },
+                    set: { chooseGemma($0) }
+                )) {
+                    ForEach(GemmaOptimizationKind.allCases) { kind in
+                        Text(kind.title).tag(kind)
+                    }
+                }
+
+                Picker("模型", selection: $gemmaModel) {
+                    Text(GemmaModel.e2b.title).tag(GemmaModel.e2b)
+                    if enableGemmaE4B { Text(GemmaModel.e4b.title).tag(GemmaModel.e4b) }
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("提示词")
+                        .font(.caption.weight(.medium))
+                    ZStack(alignment: .topLeading) {
+                        if gemmaPrompt.isEmpty, !gemmaPromptFocused {
+                            Text(gemmaKind == .summarize
+                                ? "可指定总结长度、重点、格式或需保留的信息"
+                                : "可输入正确人名、术语或希望采用的表达方式")
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 9)
+                                .allowsHitTesting(false)
+                        }
+                        TextEditor(text: $gemmaPrompt)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .padding(4)
+                            .focused($gemmaPromptFocused)
+                    }
+                    .frame(minHeight: 86, maxHeight: 120)
+                    .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(.secondary.opacity(0.35))
+                    }
+                }
+
+                gemmaModelStatus
+
+                if !gemmaFailures.isEmpty {
+                    Label("\(gemmaFailures.count) 个片段未通过校验，已保留原文", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .help(gemmaFailures.prefix(8).map(\.message).joined(separator: "\n"))
+                }
+
+                if let gemmaError {
+                    Label(gemmaError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+
+                HStack {
+                    if gemmaIsRunning {
+                        Button("取消", systemImage: "xmark.circle") {
+                            cancelGemma()
+                            self.gemmaKind = nil
+                        }
+                    } else {
+                        Button("开始执行", systemImage: "sparkles") { startGemma() }
+                            .primaryActionStyle()
+                            .disabled(!gemmaReady || !gemmaModelManager.installedModels.contains(gemmaModel))
+                    }
+                    Spacer()
+                    Button("不使用 AI") {
+                        cancelGemma()
+                        self.gemmaKind = nil
+                    }
+                    .buttonStyle(.borderless)
+                }
+            } else {
+                Text("转录完成后，可选择本机 Gemma 进行纠错、润色或总结。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("纠错与润色") { chooseGemma(.proofread) }
+                        .disabled(!GemmaHardwareSupport.isSupported)
+                    Button("总结") { chooseGemma(.summarize) }
+                        .disabled(!GemmaHardwareSupport.isSupported)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var gemmaModelStatus: some View {
+        if !GemmaRuntime.isBundled {
+            Label("当前版本没有 Gemma runtime", systemImage: "exclamationmark.octagon.fill")
+                .foregroundStyle(.red)
+        } else {
+            switch gemmaModelManager.state {
+            case .idle:
+                if gemmaModelManager.installedModels.contains(gemmaModel) {
+                    if gemmaIsPreparing {
+                        ProgressView("正在释放识别/翻译模型并加载 Gemma…")
+                    } else if gemmaReady {
+                        Label("模型已加载，可开始", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("AI 将在后台自动准备")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    HStack {
+                        Text("需下载 \(gemmaModel.sizeLabel)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("下载", systemImage: "arrow.down.circle") {
+                            gemmaModelManager.download(gemmaModel)
+                        }
+                        .disabled(!GemmaHardwareSupport.isSupported)
+                    }
+                }
+            case .downloading(let model, let progress):
+                VStack(alignment: .leading, spacing: 5) {
+                    ProgressView(value: progress)
+                    HStack {
+                        Text("正在下载 \(model.title) · \(progress.formatted(.percent.precision(.fractionLength(0))))")
+                            .font(.caption.monospacedDigit())
+                        Spacer()
+                        Button("取消") { gemmaModelManager.cancelDownload() }
+                    }
+                }
+            case .failed(_, let message):
+                HStack {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    Spacer()
+                    Button("重试") { gemmaModelManager.download(gemmaModel) }
+                }
+            }
+        }
+        if let gemmaProgress {
+            ProgressView(value: Double(gemmaProgress.0), total: Double(max(gemmaProgress.1, 1))) {
+                Text("已处理 \(gemmaProgress.0)/\(gemmaProgress.1) 批")
+                    .font(.caption)
+            }
+        }
+    }
+
+    private func chooseGemma(_ kind: GemmaOptimizationKind) {
+        guard GemmaHardwareSupport.isSupported else {
+            gemmaError = GemmaHardwareSupport.unsupportedReason
+            session.isShowingInspector = true
+            return
+        }
+        gemmaKind = kind
+        gemmaFailures = []
+        gemmaError = nil
+        session.isShowingInspector = true
+        autoPrepareGemmaIfNeeded()
+    }
+
+    private func prepareGemma() {
+        guard !gemmaReady, !gemmaIsPreparing else { return }
+        gemmaTask?.cancel()
+        gemmaReady = false
+        gemmaError = nil
+        guard GemmaModelStore.isInstalled(gemmaModel), GemmaRuntime.isBundled else { return }
+        gemmaIsPreparing = true
+        let model = gemmaModel
+        gemmaTask = Task {
+            do {
+                try await GemmaOptimizationService.shared.prepare(model: model)
+                guard !Task.isCancelled, gemmaModel == model else { return }
+                gemmaReady = true
+            } catch is CancellationError {
+            } catch {
+                gemmaError = error.localizedDescription
+            }
+            gemmaIsPreparing = false
+        }
+    }
+
+    private func startGemma() {
+        guard let gemmaKind else { return }
+        gemmaTask?.cancel()
+        gemmaIsRunning = true
+        gemmaError = nil
+        gemmaFailures = []
+        gemmaProgress = nil
+        gemmaOriginalText = session.transcriptText
+        gemmaPreviewText = gemmaKind == .summarize ? "" : session.transcriptText
+        let model = gemmaModel
+        let prompt = gemmaPrompt
+        let segments = session.segments
+        let fallback = session.transcriptText
+        gemmaTask = Task {
+            do {
+                let result = try await GemmaOptimizationService.shared.optimize(
+                    segments: segments,
+                    fallbackText: fallback,
+                    kind: gemmaKind,
+                    prompt: prompt,
+                    model: model
+                ) { completed, total in
+                    Task { @MainActor in gemmaProgress = (completed, total) }
+                } preview: { text in
+                    Task { @MainActor in
+                        guard gemmaIsRunning else { return }
+                        gemmaPreviewText = text
+                    }
+                }
+                guard !Task.isCancelled else { return }
+                gemmaFailures = result.failures
+                if session.applyAIOptimization(result) {
+                    editStatus = gemmaKind == .summarize
+                        ? L10n.text("AI 总结已替换文字预览，可一键撤销")
+                        : L10n.text("AI 优化已更新文字预览，可一键撤销")
+                    self.gemmaKind = nil
+                } else {
+                    gemmaError = L10n.text("AI 没有返回可应用的文字，已保留原文。")
+                }
+            } catch is CancellationError {
+            } catch {
+                gemmaError = error.localizedDescription
+            }
+            gemmaIsRunning = false
+            gemmaIsPreparing = false
+            gemmaReady = false
+            gemmaProgress = nil
+            gemmaPreviewText = ""
+            gemmaOriginalText = ""
+        }
+    }
+
+    private func autoPrepareGemmaIfNeeded() {
+        guard session.phase == .finished,
+              GemmaHardwareSupport.isSupported,
+              GemmaRuntime.isBundled,
+              GemmaModelStore.isInstalled(gemmaModel),
+              !gemmaReady,
+              !gemmaIsPreparing,
+              !gemmaIsRunning else { return }
+        prepareGemma()
+    }
+
+    private func cancelGemma() {
+        gemmaTask?.cancel()
+        gemmaTask = nil
+        gemmaIsRunning = false
+        gemmaIsPreparing = false
+        gemmaReady = false
+        gemmaProgress = nil
+        gemmaPreviewText = ""
+        gemmaOriginalText = ""
+        Task { await GemmaOptimizationService.shared.cancel() }
+    }
+
+    private func handleDisappear() {
+        gemmaTask?.cancel()
+        Task { await GemmaOptimizationService.shared.cancel() }
     }
 
     private var advancedEngine: RecognitionEngine {
@@ -1389,7 +1727,7 @@ struct TranscriptionView: View {
     }
 
     private var defaultTitle: String {
-        switch session.source {
+        return switch session.source {
         case .microphone: L10n.text("麦克风转录")
         case .file(let url): url.deletingPathExtension().lastPathComponent
         case .recovered(let title): title
@@ -1399,7 +1737,7 @@ struct TranscriptionView: View {
     private var defaultFilename: String { "\(defaultTitle).\(exportFormat.fileExtension)" }
 
     private var placeholderTitle: String {
-        switch session.phase {
+        return switch session.phase {
         case .preparing: L10n.text("选择设置，然后开始转录")
         case .failed: L10n.text("还没有可显示的文字")
         default: L10n.text("识别到的文字会显示在这里")
@@ -1407,7 +1745,7 @@ struct TranscriptionView: View {
     }
 
     private var placeholderDetail: String {
-        switch session.phase {
+        return switch session.phase {
         case .preparing: L10n.text("开始后会锁定当前语言、识别引擎和模型。")
         case .loadingModel, .preparingAudio, .transcribing, .finishing: session.activityDetail
         case .paused: L10n.text("已暂停。你现在可以直接编辑这段文字。")
@@ -1508,20 +1846,22 @@ private struct TranscriptStreamView: View {
                                 .padding(.bottom, 4)
                         }
                         if let animatedText {
-                            Text(animatedText)
-                                .font(.system(size: 19))
-                                .lineSpacing(8)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            NumberedTranscriptText(text: animatedText)
                                 .id("animated-transcript")
                         } else {
-                            ForEach(segments) { segment in
-                                Text(segment.text)
-                                    .font(.system(size: 19))
-                                    .lineSpacing(8)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .id(segment.id)
+                            ForEach(Array(segments.enumerated()), id: \.element.id) { offset, segment in
+                                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                                    Text("\(max(1, totalCount - segments.count + offset + 1))")
+                                        .font(.system(size: 13, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 38, alignment: .trailing)
+                                    Text(segment.text)
+                                        .font(.system(size: 19))
+                                        .lineSpacing(8)
+                                        .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .id(segment.id)
                             }
                         }
                         Color.clear
@@ -1574,6 +1914,43 @@ private struct TranscriptStreamView: View {
             try? await Task.sleep(for: .milliseconds(220))
             isProgrammaticScroll = false
         }
+    }
+}
+
+private struct NumberedTranscriptText: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(text.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { index, line in
+                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                    Text("\(index + 1)")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 38, alignment: .trailing)
+                    Text(String(line))
+                        .font(.system(size: 19))
+                        .lineSpacing(8)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+}
+
+private struct AISummaryPreviewView: View {
+    let text: String
+
+    var body: some View {
+        ScrollView {
+            NumberedTranscriptText(text: text)
+                .frame(maxWidth: 900, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+        }
+        .accessibilityLabel("AI 总结实时预览")
     }
 }
 

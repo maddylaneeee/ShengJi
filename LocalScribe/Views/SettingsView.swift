@@ -12,6 +12,8 @@ struct SettingsView: View {
     @State private var settingsError: String?
     @State private var isConfirmingUninstall = false
     @State private var launchesAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var gemmaModelManager = GemmaModelManager()
+    @AppStorage("EnableGemmaE4B") private var enableGemmaE4B = false
 
     var body: some View {
         TabView {
@@ -23,6 +25,11 @@ struct SettingsView: View {
             permissionsTab
                 .tabItem {
                     Label("权限", systemImage: "hand.raised")
+                }
+
+            modelsTab
+                .tabItem {
+                    Label("模型", systemImage: "memorychip")
                 }
 
             updatesTab
@@ -72,6 +79,9 @@ struct SettingsView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             permissionCenter.refresh()
+        }
+        .onChange(of: presentationPreferences.language) { _, language in
+            ApplicationMenuLocalizer.apply(language)
         }
     }
 
@@ -158,6 +168,80 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding(20)
         .onAppear { permissionCenter.refresh() }
+    }
+
+    private var modelsTab: some View {
+        Form {
+            Section("Gemma 4") {
+                if !GemmaHardwareSupport.isSupported {
+                    Label(GemmaHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
+                        .foregroundStyle(.red)
+                }
+                Toggle("启用 Gemma 4 E4B 选项", isOn: $enableGemmaE4B)
+                    .disabled(!GemmaHardwareSupport.isSupported)
+                Text("E2B 是默认模型。E4B 占用更多统一内存，仅在开启后出现在 AI 优化的模型列表中。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                gemmaModelRow(.e2b)
+                if enableGemmaE4B { gemmaModelRow(.e4b) }
+            }
+
+            Section("用途与隐私") {
+                Label("用于已完成转录的纠错、润色或总结", systemImage: "sparkles")
+                Text("模型由 llama.cpp 通过 Metal 在本机运行。稿件不会上传；开始加载前会释放声迹持有的识别和 NLLB 翻译运行环境，任务结束后也会退出 Gemma helper。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("AI 输出可能出错。纠错结果会按片段 ID、数量、非空、长度、数字、链接、邮箱和时间表达进行校验；未通过的片段保留原文。重要内容仍需人工复核。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("来源") {
+                LabeledContent("模型", value: "Google Gemma 4 IT · Apache-2.0")
+                LabeledContent("运行环境", value: "llama.cpp b10333 · MIT")
+            }
+        }
+        .formStyle(.grouped)
+        .padding(20)
+        .onAppear { gemmaModelManager.refresh() }
+    }
+
+    @ViewBuilder
+    private func gemmaModelRow(_ model: GemmaModel) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.title)
+                Text(model.sizeLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            switch gemmaModelManager.state {
+            case .downloading(let active, let progress) where active == model:
+                ProgressView(value: progress)
+                    .frame(width: 100)
+                Text(progress.formatted(.percent.precision(.fractionLength(0))))
+                    .font(.caption.monospacedDigit())
+                Button("取消") { gemmaModelManager.cancelDownload() }
+            case .failed(let active, _) where active == model:
+                Button("重试") { gemmaModelManager.download(model) }
+            default:
+                if gemmaModelManager.installedModels.contains(model) {
+                    Label("已下载", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                    Button("移除", role: .destructive) {
+                        try? GemmaModelStore.remove(model)
+                        gemmaModelManager.refresh()
+                    }
+                } else {
+                    Button("下载", systemImage: "arrow.down.circle") {
+                        gemmaModelManager.download(model)
+                    }
+                    .disabled(gemmaModelManager.state.isDownloading || !GemmaHardwareSupport.isSupported)
+                }
+            }
+        }
     }
 
     private var updatesTab: some View {
