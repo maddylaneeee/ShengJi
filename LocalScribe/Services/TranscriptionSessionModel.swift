@@ -833,7 +833,8 @@ final class TranscriptionSessionModel {
             hasMicrophoneTap = false
         }
         let levelLimiter = audioLevelLimiter
-        engine.inputNode.installTap(onBus: 0, bufferSize: 2_048, format: naturalFormat) { [weak self, bridge, levelLimiter] buffer, _ in
+        let streamingBufferSize: AVAudioFrameCount = isCursorInput ? 1_024 : 2_048
+        engine.inputNode.installTap(onBus: 0, bufferSize: streamingBufferSize, format: naturalFormat) { [weak self, bridge, levelLimiter] buffer, _ in
             do {
                 let output = try AudioFileFeeder.convert(buffer, using: converter, to: converter.outputFormat)
                 _ = bridge.yield(AnalyzerInput(buffer: output))

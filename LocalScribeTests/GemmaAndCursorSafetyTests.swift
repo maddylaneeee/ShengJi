@@ -171,6 +171,28 @@ final class GemmaAndCursorSafetyTests: XCTestCase {
         XCTAssertNotNil(result.errors[segment.id])
     }
 
+    func testProofreadCleanupRemovesRepeatedSafeFillers() {
+        XCTAssertEqual(
+            GemmaOptimizationService.cleanedProofreadText("Um, uh, this is a test."),
+            "this is a test."
+        )
+        XCTAssertEqual(
+            GemmaOptimizationService.cleanedProofreadText("呃，嗯，我们今天讨论计划。"),
+            "我们今天讨论计划。"
+        )
+        XCTAssertEqual(
+            GemmaOptimizationService.cleanedProofreadText("I know the answer. 啊！太好了。"),
+            "I know the answer. 啊！太好了。"
+        )
+    }
+
+    func testFillerHeavyCorrectionUsesCleanedLengthBaseline() {
+        let segment = TranscriptSegment(startTime: 0, endTime: 1, text: "Um, uh, this is a test.")
+        let correction = GemmaCorrection(id: segment.id.uuidString, text: "This is a test.")
+        let result = GemmaOptimizationService.validate([correction], originals: [segment])
+        XCTAssertEqual(result.values[segment.id], correction.text)
+    }
+
     func testRegisteredGemmaHelpersAreTerminated() throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sleep")
@@ -198,6 +220,10 @@ final class GemmaAndCursorSafetyTests: XCTestCase {
         )
         XCTAssertEqual(
             CursorInputHotkeyPolicy.action(state: .transcribing, keyCode: 53, modifiers: []),
+            .stop
+        )
+        XCTAssertEqual(
+            CursorInputHotkeyPolicy.action(state: .transcribing, keyCode: 1, modifiers: [.command, .shift]),
             .stop
         )
         XCTAssertEqual(

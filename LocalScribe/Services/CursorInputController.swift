@@ -16,7 +16,9 @@ enum CursorInputHotkeyPolicy {
         modifiers: NSEvent.ModifierFlags
     ) -> CursorInputHotkeyAction {
         let flags = modifiers.intersection(.deviceIndependentFlagsMask)
-        if state == .armed, keyCode == 1, flags == [.command, .shift] { return .start }
+        if keyCode == 1, flags == [.command, .shift] {
+            return state == .armed ? .start : (state == .transcribing ? .stop : .none)
+        }
         if state == .transcribing, keyCode == 53 { return .stop }
         return .none
     }
@@ -70,12 +72,14 @@ enum CursorInputWriter {
 
     static func replaceGeneratedText(
         previous: String,
-        current: String
+        current: String,
+        shouldContinue: () -> Bool = { true }
     ) -> Bool {
         let edit = keyboardEdit(previous: previous, current: current)
         guard let source = CGEventSource(stateID: .hidSystemState) else { return false }
 
         for _ in 0..<edit.deleteCount {
+            guard shouldContinue() else { return false }
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: true),
                   let up = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: false) else {
                 return false
@@ -91,6 +95,7 @@ enum CursorInputWriter {
         // to apply each edit before a later streaming revision is calculated.
         if !edit.text.isEmpty { Thread.sleep(forTimeInterval: 0.005) }
         for character in edit.text {
+            guard shouldContinue() else { return false }
             var codeUnits = Array(String(character).utf16)[...]
             while !codeUnits.isEmpty {
                 let count = min(20, codeUnits.count)
@@ -110,9 +115,9 @@ enum CursorInputWriter {
                     )
                 }
                 down.post(tap: .cghidEventTap)
-                Thread.sleep(forTimeInterval: 0.002)
+                Thread.sleep(forTimeInterval: 0.001)
                 up.post(tap: .cghidEventTap)
-                Thread.sleep(forTimeInterval: 0.002)
+                Thread.sleep(forTimeInterval: 0.001)
                 codeUnits = codeUnits.dropFirst(count)
             }
         }
@@ -127,17 +132,48 @@ private final class CursorGlobalKeyMonitor {
         case finishing
     }
 
+    private let lock = NSLock()
     private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    private var eventRunLoop: CFRunLoop?
+    private var exitSignal: DispatchSemaphore?
     private var action: ((CursorInputHotkeyAction) -> Void)?
-    var mode: Mode = .armed
+    private var storedMode: Mode = .armed
 
-    var isInstalled: Bool { eventTap != nil }
+    var mode: Mode {
+        get { lock.withLock { storedMode } }
+        set { lock.withLock { storedMode = newValue } }
+    }
+
+    var isInstalled: Bool { lock.withLock { eventTap != nil } }
 
     @discardableResult
     func start(action: @escaping (CursorInputHotkeyAction) -> Void) -> Bool {
         stop()
-        self.action = action
+        let ready = DispatchSemaphore(value: 0)
+        let exited = DispatchSemaphore(value: 0)
+        lock.withLock {
+            self.action = action
+            self.exitSignal = exited
+        }
+        let thread = Thread { [weak self] in
+            guard let self else {
+                ready.signal()
+                exited.signal()
+                return
+            }
+            self.runEventLoop(ready: ready, exited: exited)
+        }
+        thread.name = "ca.lixinchen.shengji.cursor-hotkey"
+        thread.qualityOfService = .userInteractive
+        thread.start()
+        guard ready.wait(timeout: .now() + 2) == .success else {
+            stop()
+            return false
+        }
+        return isInstalled
+    }
+
+    private func runEventLoop(ready: DispatchSemaphore, exited: DispatchSemaphore) {
         let eventMask = (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.tapDisabledByTimeout.rawValue)
             | (1 << CGEventType.tapDisabledByUserInput.rawValue)
@@ -151,7 +187,9 @@ private final class CursorGlobalKeyMonitor {
                 let monitor = Unmanaged<CursorGlobalKeyMonitor>
                     .fromOpaque(userInfo).takeUnretainedValue()
                 if eventType == .tapDisabledByTimeout || eventType == .tapDisabledByUserInput {
-                    if let tap = monitor.eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
+                    if let tap = monitor.lock.withLock({ monitor.eventTap }) {
+                        CGEvent.tapEnable(tap: tap, enable: true)
+                    }
                     return Unmanaged.passUnretained(event)
                 }
                 return monitor.handle(event: event)
@@ -160,49 +198,88 @@ private final class CursorGlobalKeyMonitor {
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            self.action = nil
-            return false
+            lock.withLock { self.action = nil }
+            ready.signal()
+            exited.signal()
+            return
         }
         guard let runLoopSource = CFMachPortCreateRunLoopSource(nil, eventTap, 0) else {
             CFMachPortInvalidate(eventTap)
-            self.action = nil
-            return false
+            lock.withLock { self.action = nil }
+            ready.signal()
+            exited.signal()
+            return
         }
-        self.eventTap = eventTap
-        self.runLoopSource = runLoopSource
-        CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+        let runLoop = CFRunLoopGetCurrent()
+        lock.withLock {
+            self.eventTap = eventTap
+            self.eventRunLoop = runLoop
+        }
+        CFRunLoopAddSource(runLoop, runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
-        return true
+        ready.signal()
+        CFRunLoopRun()
+        CGEvent.tapEnable(tap: eventTap, enable: false)
+        CFRunLoopRemoveSource(runLoop, runLoopSource, .commonModes)
+        CFMachPortInvalidate(eventTap)
+        lock.withLock {
+            self.eventTap = nil
+            self.eventRunLoop = nil
+            self.action = nil
+        }
+        exited.signal()
     }
 
     private func handle(event: CGEvent) -> Bool {
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         let modifiers = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
-        if mode == .finishing {
+        let currentMode = mode
+        if currentMode == .finishing {
             let exactCommandShift = modifiers.intersection(.deviceIndependentFlagsMask) == [.command, .shift]
             return (keyCode == 1 && exactCommandShift) || keyCode == 53
         }
-        let controllerState: CursorInputController.State = mode == .armed ? .armed : .transcribing
+        let controllerState: CursorInputController.State = currentMode == .armed ? .armed : .transcribing
         let hotkeyAction = CursorInputHotkeyPolicy.action(
             state: controllerState,
             keyCode: keyCode,
             modifiers: modifiers
         )
         guard hotkeyAction != .none else { return false }
-        action?(hotkeyAction)
+        lock.withLock {
+            storedMode = hotkeyAction == .start ? .transcribing : .finishing
+        }
+        let callback = lock.withLock { action }
+        callback?(hotkeyAction)
         return true
     }
 
     func stop() {
-        if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: false) }
-        if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
-        if let eventTap { CFMachPortInvalidate(eventTap) }
-        runLoopSource = nil
-        eventTap = nil
-        action = nil
+        let resources = lock.withLock { (eventTap, eventRunLoop, exitSignal) }
+        if let tap = resources.0 { CGEvent.tapEnable(tap: tap, enable: false) }
+        if let runLoop = resources.1 {
+            CFRunLoopStop(runLoop)
+            CFRunLoopWakeUp(runLoop)
+        }
+        if let exited = resources.2, resources.1 != nil {
+            _ = exited.wait(timeout: .now() + 1)
+        }
+        lock.withLock {
+            eventTap = nil
+            eventRunLoop = nil
+            exitSignal = nil
+            action = nil
+        }
     }
 
     deinit { stop() }
+}
+
+private final class CursorWriteCancellationToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    var isCancelled: Bool { lock.withLock { cancelled } }
+    func cancel() { lock.withLock { cancelled = true } }
 }
 
 @MainActor
@@ -233,6 +310,14 @@ final class CursorInputController {
     private var insertedText = ""
     private var pendingTranscript = ""
     private var syncTask: Task<Void, Never>?
+    @ObservationIgnored private let writerQueue = DispatchQueue(
+        label: "ca.lixinchen.shengji.cursor-writer",
+        qos: .userInteractive
+    )
+    @ObservationIgnored private var activeWriteToken: CursorWriteCancellationToken?
+    private var writeInFlight = false
+    private var finishAfterPendingWrite = false
+    private var writeGeneration = 0
     private var target: CursorInputTarget?
     private var startAction: (() -> Void)?
     private var stopAction: (() -> Void)?
@@ -240,7 +325,7 @@ final class CursorInputController {
     var isArmed: Bool { state != .idle }
     var isTranscribing: Bool { state == .transcribing }
     var hasActiveResources: Bool {
-        panel != nil || keyMonitor.isInstalled || mouseMonitor != nil || followTimer != nil
+        panel != nil || keyMonitor.isInstalled || mouseMonitor != nil || followTimer != nil || writeInFlight
     }
 
     @discardableResult
@@ -276,12 +361,12 @@ final class CursorInputController {
     private func scheduleSyncIfNeeded() {
         guard syncTask == nil else { return }
         syncTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(50))
+            try? await Task.sleep(for: .milliseconds(25))
             guard !Task.isCancelled else { return }
             guard let self else { return }
             self.syncTask = nil
             self.writePendingTranscript(stopOnFailure: true)
-            if self.pendingTranscript != self.insertedText {
+            if self.pendingTranscript != self.insertedText, !self.writeInFlight {
                 self.scheduleSyncIfNeeded()
             }
         }
@@ -290,13 +375,18 @@ final class CursorInputController {
     func flushAndFinish() {
         syncTask?.cancel()
         syncTask = nil
+        finishAfterPendingWrite = true
         writePendingTranscript(stopOnFailure: false)
-        disarm()
+        finishIfReady()
     }
 
     private func writePendingTranscript(stopOnFailure: Bool) {
+        guard !writeInFlight else { return }
         let transcript = pendingTranscript
-        guard transcript != insertedText else { return }
+        guard transcript != insertedText else {
+            finishIfReady()
+            return
+        }
         guard let target,
               NSRunningApplication(processIdentifier: target.processIdentifier) != nil else {
             handleWriteFailure(L10n.text("目标 App 已关闭，光标输入已停止。"), stopSession: stopOnFailure)
@@ -306,14 +396,52 @@ final class CursorInputController {
             handleWriteFailure(L10n.text("目标 App 已失去焦点，光标输入已停止。"), stopSession: stopOnFailure)
             return
         }
-        guard CursorInputWriter.replaceGeneratedText(
-            previous: insertedText,
-            current: transcript
-        ) else {
+        let previous = insertedText
+        let generation = writeGeneration
+        let token = CursorWriteCancellationToken()
+        activeWriteToken = token
+        writeInFlight = true
+        writerQueue.async { [weak self] in
+            let succeeded = CursorInputWriter.replaceGeneratedText(
+                previous: previous,
+                current: transcript,
+                shouldContinue: { !token.isCancelled }
+            )
+            Task { @MainActor [weak self] in
+                self?.completeWrite(
+                    succeeded: succeeded,
+                    transcript: transcript,
+                    generation: generation,
+                    stopOnFailure: stopOnFailure
+                )
+            }
+        }
+    }
+
+    private func completeWrite(
+        succeeded: Bool,
+        transcript: String,
+        generation: Int,
+        stopOnFailure: Bool
+    ) {
+        guard generation == writeGeneration else { return }
+        writeInFlight = false
+        activeWriteToken = nil
+        guard succeeded else {
             handleWriteFailure(L10n.text("目标位置不接受文本输入，光标输入已停止。"), stopSession: stopOnFailure)
             return
         }
         insertedText = transcript
+        if pendingTranscript != insertedText {
+            writePendingTranscript(stopOnFailure: stopOnFailure)
+        } else {
+            finishIfReady()
+        }
+    }
+
+    private func finishIfReady() {
+        guard finishAfterPendingWrite, !writeInFlight, pendingTranscript == insertedText else { return }
+        disarm()
     }
 
     func finish() {
@@ -325,6 +453,11 @@ final class CursorInputController {
     }
 
     func disarm() {
+        writeGeneration += 1
+        activeWriteToken?.cancel()
+        activeWriteToken = nil
+        writeInFlight = false
+        finishAfterPendingWrite = false
         syncTask?.cancel()
         syncTask = nil
         keyMonitor.stop()
@@ -365,6 +498,7 @@ final class CursorInputController {
         guard state == .armed else { return }
         guard let target = CursorInputWriter.focusedTarget(),
               target.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            keyMonitor.mode = .armed
             errorMessage = L10n.text("请先将文本光标放到另一个 App 的输入位置，再按 Command-Shift-S。")
             refreshPanel()
             return

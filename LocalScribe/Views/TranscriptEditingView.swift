@@ -130,7 +130,8 @@ final class TranscriptLineNumberGutterView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let textView, let scrollView, let layoutManager = textView.layoutManager,
-              let textContainer = textView.textContainer else { return }
+              let textContainer = textView.textContainer,
+              !textView.string.isEmpty else { return }
         let visibleRect = scrollView.contentView.bounds
         let containerRect = NSRect(
             x: 0,
