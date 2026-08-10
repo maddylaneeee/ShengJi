@@ -22,6 +22,81 @@ enum CursorInputHotkeyPolicy {
     }
 }
 
+struct CursorAccessibilityTarget {
+    let element: AXUIElement
+    let processIdentifier: pid_t
+    let insertionLocation: CFIndex
+    let initialSelectionLength: CFIndex
+}
+
+enum CursorAccessibilityWriter {
+    static func replacementRange(
+        previous: String,
+        insertionLocation: CFIndex,
+        initialSelectionLength: CFIndex
+    ) -> CFRange {
+        CFRange(
+            location: insertionLocation,
+            length: previous.isEmpty ? initialSelectionLength : previous.utf16.count
+        )
+    }
+
+    static func focusedTarget() -> CursorAccessibilityTarget? {
+        var focusedValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            AXUIElementCreateSystemWide(),
+            kAXFocusedUIElementAttribute as CFString,
+            &focusedValue
+        ) == .success,
+              let focusedValue,
+              CFGetTypeID(focusedValue) == AXUIElementGetTypeID() else { return nil }
+        let element = unsafeBitCast(focusedValue, to: AXUIElement.self)
+        var processIdentifier: pid_t = 0
+        guard AXUIElementGetPid(element, &processIdentifier) == .success else { return nil }
+
+        var rangeValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            element,
+            kAXSelectedTextRangeAttribute as CFString,
+            &rangeValue
+        ) == .success,
+              let rangeValue,
+              CFGetTypeID(rangeValue) == AXValueGetTypeID() else { return nil }
+        let axRange = unsafeBitCast(rangeValue, to: AXValue.self)
+        var range = CFRange()
+        guard AXValueGetValue(axRange, .cfRange, &range) else { return nil }
+        return CursorAccessibilityTarget(
+            element: element,
+            processIdentifier: processIdentifier,
+            insertionLocation: range.location,
+            initialSelectionLength: range.length
+        )
+    }
+
+    static func replaceGeneratedText(
+        previous: String,
+        current: String,
+        target: CursorAccessibilityTarget
+    ) -> Bool {
+        var replacementRange = replacementRange(
+            previous: previous,
+            insertionLocation: target.insertionLocation,
+            initialSelectionLength: target.initialSelectionLength
+        )
+        guard let rangeValue = AXValueCreate(.cfRange, &replacementRange),
+              AXUIElementSetAttributeValue(
+                target.element,
+                kAXSelectedTextRangeAttribute as CFString,
+                rangeValue
+              ) == .success else { return false }
+        return AXUIElementSetAttributeValue(
+            target.element,
+            kAXSelectedTextAttribute as CFString,
+            current as CFString
+        ) == .success
+    }
+}
+
 @MainActor
 @Observable
 final class CursorInputController {
@@ -47,6 +122,7 @@ final class CursorInputController {
     private var mouseMonitor: Any?
     private var followTimer: Timer?
     private var insertedText = ""
+    private var target: CursorAccessibilityTarget?
     private var startAction: (() -> Void)?
     private var stopAction: (() -> Void)?
 
@@ -77,11 +153,19 @@ final class CursorInputController {
 
     func sync(transcript: String) {
         guard state == .transcribing, transcript != insertedText else { return }
-        let prefix = transcript.commonPrefix(with: insertedText)
-        let removedCount = insertedText.count - prefix.count
-        if removedCount > 0 { postBackspaces(removedCount) }
-        let suffix = String(transcript.dropFirst(prefix.count))
-        if !suffix.isEmpty { postText(suffix) }
+        guard let target,
+              NSRunningApplication(processIdentifier: target.processIdentifier) != nil else {
+            failTarget(L10n.text("目标 App 已关闭，光标输入已停止。"))
+            return
+        }
+        guard CursorAccessibilityWriter.replaceGeneratedText(
+            previous: insertedText,
+            current: transcript,
+            target: target
+        ) else {
+            failTarget(L10n.text("目标位置不接受文本输入，光标输入已停止。"))
+            return
+        }
         insertedText = transcript
     }
 
@@ -106,6 +190,7 @@ final class CursorInputController {
         panel = nil
         startAction = nil
         stopAction = nil
+        target = nil
         state = .idle
     }
 
@@ -133,6 +218,14 @@ final class CursorInputController {
             modifiers: event.modifierFlags
         ) {
         case .start:
+            guard let target = CursorAccessibilityWriter.focusedTarget(),
+                  target.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+                errorMessage = L10n.text("请先将文本光标放到另一个 App 的输入位置，再按 Command-Shift-S。")
+                refreshPanel()
+                return true
+            }
+            self.target = target
+            insertedText = ""
             state = .transcribing
             refreshPanel()
             startAction?()
@@ -185,27 +278,11 @@ final class CursorInputController {
         panel.setFrameOrigin(origin)
     }
 
-    private func postBackspaces(_ count: Int) {
-        guard let source = CGEventSource(stateID: .hidSystemState) else { return }
-        for _ in 0..<count {
-            CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: true)?.post(tap: .cghidEventTap)
-            CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: false)?.post(tap: .cghidEventTap)
-        }
-    }
-
-    private func postText(_ text: String) {
-        guard let source = CGEventSource(stateID: .hidSystemState) else { return }
-        var index = text.startIndex
-        while index < text.endIndex {
-            let end = text.index(index, offsetBy: 32, limitedBy: text.endIndex) ?? text.endIndex
-            let chunk = String(text[index..<end])
-            let utf16 = Array(chunk.utf16)
-            let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
-            down?.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
-            down?.post(tap: .cghidEventTap)
-            CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)?.post(tap: .cghidEventTap)
-            index = end
-        }
+    private func failTarget(_ message: String) {
+        let action = stopAction
+        disarm()
+        errorMessage = message
+        action?()
     }
 }
 

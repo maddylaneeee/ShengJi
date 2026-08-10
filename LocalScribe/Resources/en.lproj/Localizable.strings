@@ -565,5 +565,15 @@
 "菜单：显示" = "View";
 "菜单：窗口" = "Window";
 "菜单：帮助" = "Help";
+"目标 App 已关闭，光标输入已停止。" = "The target app closed, so Cursor Input stopped.";
+"目标位置不接受文本输入，光标输入已停止。" = "The target location does not accept text input, so Cursor Input stopped.";
+"请先将文本光标放到另一个 App 的输入位置，再按 Command-Shift-S。" = "Place the text cursor in another app before pressing Command-Shift-S.";
+"选择识别设置，然后点击“准备开始”" = "Choose recognition settings, then click Ready";
+"已撤销 AI 修改" = "Undid AI changes";
+"AI 总结已替换文字预览，可一键撤销" = "The AI summary replaced the text preview and can be undone";
+"AI 优化已更新文字预览，可一键撤销" = "AI optimization updated the text preview and can be undone";
+"AI 没有返回可应用的文字，已保留原文。" = "AI returned no applicable text; the original was kept.";
+"配置光标输入" = "Configure Cursor Input";
+"点击“准备开始”，再把文本光标放到目标 App，按 Command-Shift-S 开始。" = "Click Ready, place the text cursor in the target app, then press Command-Shift-S.";
 "更新已下载" = "Update Downloaded";
 "更新包已完成校验。确认后，声迹会安装更新并重新打开。" = "The update package has been verified. After confirmation, ShengJi will install it and reopen.";

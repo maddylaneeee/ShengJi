@@ -11,6 +11,16 @@ private final class AppleSpeechSessionState {
     var bridge: AnalyzerInputBridge?
 }
 
+private struct AITranscriptUndoSnapshot {
+    let transcriptText: String
+    let segments: [TranscriptSegment]
+    let translatedText: String
+    let translatedSegments: [TranscriptSegment]
+    let segmentTranslations: [SegmentTranslation]
+    let translationError: String?
+    let hasManualEdits: Bool
+}
+
 @MainActor
 @Observable
 final class TranscriptionSessionModel {
@@ -38,6 +48,7 @@ final class TranscriptionSessionModel {
     var isShowingInspector = true
     var hasManualEdits = false
     private(set) var isImportedTranscript = false
+    private var aiUndoSnapshot: AITranscriptUndoSnapshot?
 
     private(set) var segments: [TranscriptSegment] = []
     private var pendingFinalSegments: [TranscriptSegment] = []
@@ -74,6 +85,7 @@ final class TranscriptionSessionModel {
     private var elapsedBeforeCurrentRun: Duration = .zero
     private var recoveryID = UUID()
     private var recoveryCreatedAt = Date()
+    private var shouldPersistRecovery = true
     private var recoverySaveTask: Task<Void, Never>?
     private var recoverySaveGeneration = 0
     private let recoveryWriter = RecoverySnapshotWriter()
@@ -121,6 +133,9 @@ final class TranscriptionSessionModel {
         self.locale = locale
         self.configuration = configuration
         self.translationConfiguration = translationConfiguration
+        if isCursorInput {
+            activityDetail = L10n.text("选择识别设置，然后点击“准备开始”")
+        }
     }
 
     init(snapshot: RecoverySnapshot) {
@@ -151,7 +166,8 @@ final class TranscriptionSessionModel {
         imported: ImportedTranscript,
         continueWithMicrophone: Bool,
         locale: Locale,
-        configuration: RecognitionConfiguration
+        configuration: RecognitionConfiguration,
+        persistRecovery: Bool = true
     ) {
         self.source = continueWithMicrophone ? .microphone : .recovered(imported.title)
         self.isCursorInput = false
@@ -170,6 +186,7 @@ final class TranscriptionSessionModel {
         self.segmentFingerprints = Set(imported.segments.map(Self.segmentFingerprint))
         self.hasManualEdits = false
         self.isImportedTranscript = !continueWithMicrophone
+        self.shouldPersistRecovery = persistRecovery
     }
 
     var languageName: String {
@@ -181,6 +198,9 @@ final class TranscriptionSessionModel {
     var canStop: Bool { phase == .transcribing || phase == .paused }
     var canEdit: Bool { phase == .paused || phase == .finished || phase.failedMessage != nil }
     var canStart: Bool { phase == .preparing }
+    var canUndoAIChange: Bool { aiUndoSnapshot != nil }
+    var displayTitle: String { isCursorInput ? L10n.text("光标输入") : source.title }
+    var displaySymbol: String { isCursorInput ? "cursorarrow.motionlines" : source.symbol }
 
     func configure(
         locale: Locale,
@@ -392,6 +412,7 @@ final class TranscriptionSessionModel {
         guard canEdit else { return }
         if transcriptText != lastGeneratedText {
             hasManualEdits = true
+            aiUndoSnapshot = nil
             translatedText = ""
             translatedSegments = []
             segmentTranslations = []
@@ -399,21 +420,63 @@ final class TranscriptionSessionModel {
         scheduleRecoverySave()
     }
 
-    func applyAIProofread(_ result: GemmaOptimizationResult) {
-        guard phase == .finished, result.summary == nil else { return }
-        segments = result.segments
-        transcriptText = result.text
-        animatedTranscriptText = result.text
-        committedText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    @discardableResult
+    func applyAIOptimization(_ result: GemmaOptimizationResult) -> Bool {
+        guard phase == .finished else { return false }
+        let replacementText = (result.summary ?? result.text)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !replacementText.isEmpty else { return false }
+        aiUndoSnapshot = AITranscriptUndoSnapshot(
+            transcriptText: transcriptText,
+            segments: segments,
+            translatedText: translatedText,
+            translatedSegments: translatedSegments,
+            segmentTranslations: segmentTranslations,
+            translationError: translationError,
+            hasManualEdits: hasManualEdits
+        )
+        let replacementSegments: [TranscriptSegment]
+        if result.summary != nil {
+            let duration = max(max(elapsed, segments.last?.endTime ?? 0), 0.05)
+            replacementSegments = [TranscriptSegment(startTime: 0, endTime: duration, text: replacementText)]
+        } else {
+            replacementSegments = result.segments
+        }
+        segments = replacementSegments
+        transcriptText = replacementText
+        animatedTranscriptText = replacementText
+        committedText = replacementText
         stableGeneratedText = committedText
         lastGeneratedText = committedText
         segmentFingerprints = Set(segments.map(Self.segmentFingerprint))
-        hasManualEdits = true
+        // AI proofreading preserves segment identity and timestamps; summaries
+        // intentionally become one full-duration cue. Both can export directly.
+        hasManualEdits = false
         translatedText = ""
         translatedSegments = []
         segmentTranslations = []
         translationError = nil
-        Task { await transcriptRepository.replaceManualTranscript(text: result.text, segments: result.segments) }
+        Task { await transcriptRepository.replaceManualTranscript(text: replacementText, segments: replacementSegments) }
+        saveRecoveryNow()
+        return true
+    }
+
+    func undoLastAIChange() {
+        guard phase == .finished, let snapshot = aiUndoSnapshot else { return }
+        aiUndoSnapshot = nil
+        transcriptText = snapshot.transcriptText
+        animatedTranscriptText = snapshot.transcriptText
+        segments = snapshot.segments
+        translatedText = snapshot.translatedText
+        translatedSegments = snapshot.translatedSegments
+        segmentTranslations = snapshot.segmentTranslations
+        translationError = snapshot.translationError
+        hasManualEdits = snapshot.hasManualEdits
+        committedText = snapshot.transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        stableGeneratedText = committedText
+        lastGeneratedText = committedText
+        segmentFingerprints = Set(snapshot.segments.map(Self.segmentFingerprint))
+        Task { await transcriptRepository.replaceManualTranscript(text: snapshot.transcriptText, segments: snapshot.segments) }
         saveRecoveryNow()
     }
 
@@ -1248,7 +1311,7 @@ final class TranscriptionSessionModel {
     }
 
     private func scheduleRecoverySave() {
-        guard hasRecoverableContent else { return }
+        guard shouldPersistRecovery, hasRecoverableContent else { return }
         recoverySaveGeneration += 1
         let generation = recoverySaveGeneration
         recoverySaveTask?.cancel()
@@ -1263,7 +1326,7 @@ final class TranscriptionSessionModel {
     }
 
     private func saveRecoveryNow() {
-        guard hasRecoverableContent else { return }
+        guard shouldPersistRecovery, hasRecoverableContent else { return }
         recoverySaveGeneration += 1
         let snapshot = makeRecoverySnapshot()
         recoverySaveTask?.cancel()

@@ -38,7 +38,6 @@ struct TranscriptionView: View {
     @State private var gemmaIsRunning = false
     @State private var gemmaProgress: (Int, Int)?
     @State private var gemmaError: String?
-    @State private var gemmaSummary: String?
     @State private var gemmaFailures: [GemmaSegmentFailure] = []
     @State private var gemmaTask: Task<Void, Never>?
     @AppStorage("EnableGemmaE4B") private var enableGemmaE4B = false
@@ -64,7 +63,7 @@ struct TranscriptionView: View {
             }
             transcriptEditor
         }
-        .navigationTitle(session.source.title)
+        .navigationTitle(session.displayTitle)
         .navigationSubtitle(session.phase.label)
         .navigationBarBackButtonHidden(true)
         .toolbar { toolbarContent }
@@ -226,6 +225,14 @@ struct TranscriptionView: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel(session.activityDetail)
                 }
+            }
+            if session.canUndoAIChange {
+                Button("撤销 AI 修改", systemImage: "arrow.uturn.backward.circle") {
+                    session.undoLastAIChange()
+                    editStatus = L10n.text("已撤销 AI 修改")
+                    gemmaFailures = []
+                }
+                .buttonStyle(.bordered)
             }
             Label(session.elapsed.formattedDuration, systemImage: "clock")
                 .font(.callout.monospacedDigit())
@@ -872,9 +879,9 @@ struct TranscriptionView: View {
 
     private var inspector: some View {
         Form {
-            Section("转录") {
+            Section(session.isCursorInput ? "光标输入" : "转录") {
                 LabeledContent("来源") {
-                    Label(session.source.title, systemImage: session.source.symbol)
+                    Label(session.displayTitle, systemImage: session.displaySymbol)
                         .lineLimit(1)
                 }
                 LabeledContent("语言", value: session.languageName)
@@ -1013,7 +1020,9 @@ struct TranscriptionView: View {
                         TextEditor(text: $gemmaPrompt)
                             .frame(minHeight: 70, maxHeight: 110)
                         if gemmaPrompt.isEmpty {
-                            Text("可输入正确人名、术语或希望采用的表达方式")
+                            Text(gemmaKind == .summarize
+                                ? "可指定总结长度、重点、格式或需保留的信息"
+                                : "可输入正确人名、术语或希望采用的表达方式")
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                                 .padding(.horizontal, 6)
@@ -1024,15 +1033,6 @@ struct TranscriptionView: View {
                 }
 
                 gemmaModelStatus
-
-                if let gemmaSummary {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("总结")
-                            .font(.caption.weight(.semibold))
-                        Text(gemmaSummary)
-                            .textSelection(.enabled)
-                    }
-                }
 
                 if !gemmaFailures.isEmpty {
                     Label("\(gemmaFailures.count) 个片段未通过校验，已保留原文", systemImage: "exclamationmark.triangle.fill")
@@ -1149,7 +1149,6 @@ struct TranscriptionView: View {
             return
         }
         gemmaKind = kind
-        gemmaSummary = nil
         gemmaFailures = []
         gemmaError = nil
         session.isShowingInspector = true
@@ -1181,7 +1180,6 @@ struct TranscriptionView: View {
         gemmaTask?.cancel()
         gemmaIsRunning = true
         gemmaError = nil
-        gemmaSummary = nil
         gemmaFailures = []
         gemmaProgress = nil
         let model = gemmaModel
@@ -1201,10 +1199,12 @@ struct TranscriptionView: View {
                 }
                 guard !Task.isCancelled else { return }
                 gemmaFailures = result.failures
-                if gemmaKind == .proofread {
-                    session.applyAIProofread(result)
+                if session.applyAIOptimization(result) {
+                    editStatus = gemmaKind == .summarize
+                        ? L10n.text("AI 总结已替换文字预览，可一键撤销")
+                        : L10n.text("AI 优化已更新文字预览，可一键撤销")
                 } else {
-                    gemmaSummary = result.summary
+                    gemmaError = L10n.text("AI 没有返回可应用的文字，已保留原文。")
                 }
             } catch is CancellationError {
             } catch {
@@ -1732,7 +1732,8 @@ struct TranscriptionView: View {
     }
 
     private var defaultTitle: String {
-        switch session.source {
+        if session.isCursorInput { return L10n.text("光标输入") }
+        return switch session.source {
         case .microphone: L10n.text("麦克风转录")
         case .file(let url): url.deletingPathExtension().lastPathComponent
         case .recovered(let title): title
@@ -1742,7 +1743,10 @@ struct TranscriptionView: View {
     private var defaultFilename: String { "\(defaultTitle).\(exportFormat.fileExtension)" }
 
     private var placeholderTitle: String {
-        switch session.phase {
+        if session.isCursorInput, session.phase == .preparing {
+            return L10n.text("配置光标输入")
+        }
+        return switch session.phase {
         case .preparing: L10n.text("选择设置，然后开始转录")
         case .failed: L10n.text("还没有可显示的文字")
         default: L10n.text("识别到的文字会显示在这里")
@@ -1750,7 +1754,10 @@ struct TranscriptionView: View {
     }
 
     private var placeholderDetail: String {
-        switch session.phase {
+        if session.isCursorInput, session.phase == .preparing {
+            return L10n.text("点击“准备开始”，再把文本光标放到目标 App，按 Command-Shift-S 开始。")
+        }
+        return switch session.phase {
         case .preparing: L10n.text("开始后会锁定当前语言、识别引擎和模型。")
         case .loadingModel, .preparingAudio, .transcribing, .finishing: session.activityDetail
         case .paused: L10n.text("已暂停。你现在可以直接编辑这段文字。")
