@@ -7,6 +7,7 @@ struct RootView: View {
     @State private var preferences = RecognitionPreferences()
     @State private var translationPreferences = AppleTranslationPreferences()
     @State private var liveCaptions = LiveCaptionController()
+    @State private var cursorInput = CursorInputController()
     @State private var session: TranscriptionSessionModel?
     @State private var isShowingFileImporter = false
     @State private var fileImporterKind: FileImporterKind = .transcriptionMedia
@@ -25,6 +26,7 @@ struct RootView: View {
                 liveCaptions: liveCaptions,
                 recoverySnapshot: recoverySnapshot,
                 startMicrophone: startMicrophone,
+                startCursorInput: startCursorInput,
                 chooseFile: { showFileImporter(.transcriptionMedia) },
                 chooseTranscript: { showFileImporter(.transcript) },
                 restoreRecovery: restoreRecovery,
@@ -42,6 +44,7 @@ struct RootView: View {
                         catalog: catalog,
                         recognitionPreferences: preferences,
                         translationPreferences: translationPreferences,
+                        cursorInput: cursorInput,
                         close: closeCurrentSession,
                         restart: restartCurrentSession
                     )
@@ -153,6 +156,16 @@ struct RootView: View {
         startSession(.microphone)
     }
 
+    private func startCursorInput() {
+        let model = TranscriptionSessionModel(
+            source: .microphone,
+            locale: catalog.selectedLocale,
+            configuration: preferences.configuration,
+            isCursorInput: true
+        )
+        session = model
+    }
+
     private func startSession(_ source: TranscriptionSource) {
         let model = TranscriptionSessionModel(
             source: source,
@@ -194,6 +207,7 @@ struct RootView: View {
 
     private func closeCurrentSession() {
         guard let current = session else { return }
+        cursorInput.finish()
         Task {
             await current.cancel()
             await MainActor.run {
@@ -206,13 +220,16 @@ struct RootView: View {
     private func restartCurrentSession() {
         guard let current = session else { return }
         let source = current.source
+        let isCursorInput = current.isCursorInput
+        cursorInput.finish()
         Task {
             await current.cancel()
             await MainActor.run {
                 let model = TranscriptionSessionModel(
                     source: source,
                     locale: catalog.selectedLocale,
-                    configuration: preferences.configuration
+                    configuration: preferences.configuration,
+                    isCursorInput: isCursorInput
                 )
                 session = model
             }

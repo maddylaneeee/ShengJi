@@ -43,6 +43,9 @@ source_files = %w[
   Services/AppleTranslation.swift
   Services/NLLBTranslation.swift
   Services/NLLBModelManager.swift
+  Services/GemmaModelManager.swift
+  Services/GemmaOptimization.swift
+  Services/CursorInputController.swift
   Services/LiveCaptionController.swift
   Views/RootView.swift
   Views/InterfaceStyles.swift
@@ -68,6 +71,7 @@ test_target.add_dependency(target)
   TranscriptImportAndEditingTests.swift
   LocalizationTests.swift
   AppUpdateControllerTests.swift
+  GemmaAndCursorSafetyTests.swift
 ].each do |relative_path|
   reference = tests_group.new_file(relative_path)
   test_target.source_build_phase.add_file_reference(reference)
@@ -129,6 +133,10 @@ target.resources_build_phase.add_file_reference(sherpa_reference)
 nllb_reference = vendor_group.new_file("NLLBTranslator")
 nllb_reference.last_known_file_type = "folder"
 target.resources_build_phase.add_file_reference(nllb_reference)
+
+gemma_reference = vendor_group.new_file("GemmaRuntime")
+gemma_reference.last_known_file_type = "folder"
+target.resources_build_phase.add_file_reference(gemma_reference)
 
 project.build_configurations.each do |config|
   config.build_settings["MACOSX_DEPLOYMENT_TARGET"] = "15.5"

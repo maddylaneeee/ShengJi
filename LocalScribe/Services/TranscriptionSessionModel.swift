@@ -15,6 +15,7 @@ private final class AppleSpeechSessionState {
 @Observable
 final class TranscriptionSessionModel {
     let source: TranscriptionSource
+    let isCursorInput: Bool
     var locale: Locale
     var configuration: RecognitionConfiguration
     private(set) var translationConfiguration: TranslationConfiguration?
@@ -112,9 +113,11 @@ final class TranscriptionSessionModel {
         source: TranscriptionSource,
         locale: Locale,
         configuration: RecognitionConfiguration,
-        translationConfiguration: TranslationConfiguration? = nil
+        translationConfiguration: TranslationConfiguration? = nil,
+        isCursorInput: Bool = false
     ) {
         self.source = source
+        self.isCursorInput = isCursorInput
         self.locale = locale
         self.configuration = configuration
         self.translationConfiguration = translationConfiguration
@@ -122,6 +125,7 @@ final class TranscriptionSessionModel {
 
     init(snapshot: RecoverySnapshot) {
         self.source = .recovered(snapshot.sourceTitle)
+        self.isCursorInput = false
         self.locale = Locale(identifier: snapshot.localeIdentifier)
         self.configuration = snapshot.configuration
         self.translationConfiguration = snapshot.translationConfiguration
@@ -150,6 +154,7 @@ final class TranscriptionSessionModel {
         configuration: RecognitionConfiguration
     ) {
         self.source = continueWithMicrophone ? .microphone : .recovered(imported.title)
+        self.isCursorInput = false
         self.locale = locale
         self.configuration = configuration
         self.phase = continueWithMicrophone ? .preparing : .finished
@@ -394,6 +399,24 @@ final class TranscriptionSessionModel {
         scheduleRecoverySave()
     }
 
+    func applyAIProofread(_ result: GemmaOptimizationResult) {
+        guard phase == .finished, result.summary == nil else { return }
+        segments = result.segments
+        transcriptText = result.text
+        animatedTranscriptText = result.text
+        committedText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        stableGeneratedText = committedText
+        lastGeneratedText = committedText
+        segmentFingerprints = Set(segments.map(Self.segmentFingerprint))
+        hasManualEdits = true
+        translatedText = ""
+        translatedSegments = []
+        segmentTranslations = []
+        translationError = nil
+        Task { await transcriptRepository.replaceManualTranscript(text: result.text, segments: result.segments) }
+        saveRecoveryNow()
+    }
+
     func translate(targetLanguage: TranslationTargetLanguage, provider: TranslationProvider = .apple) {
         translationTask?.cancel()
         translationConfiguration = TranslationConfiguration(provider: provider, targetLanguage: targetLanguage)
@@ -446,7 +469,8 @@ final class TranscriptionSessionModel {
             ? TranscriptSegment.sentenceSegments(from: transcriptText, duration: elapsed)
             : segments.sorted { $0.startTime < $1.startTime }
         let locale = self.locale
-        translationTask = Task { [weak self] in
+        let progressObserver = TranslationProgressObserver(session: self)
+        translationTask = Task { [weak self, progressObserver] in
             let units = sourceSegments.enumerated().map { index, segment in
                 TranslationUnit(segment: segment, ordinal: index)
             }
@@ -455,9 +479,7 @@ final class TranscriptionSessionModel {
                 sourceLocale: locale,
                 configuration: translationConfiguration
             ) { progress in
-                Task { @MainActor [weak self] in
-                    self?.translationProgress = progress
-                }
+                Task { @MainActor in progressObserver.update(progress) }
             }
             guard !Task.isCancelled, let self,
                   self.translationConfiguration == translationConfiguration else {
@@ -476,6 +498,10 @@ final class TranscriptionSessionModel {
             self.translationTask = nil
             self.saveRecoveryNow()
         }
+    }
+
+    fileprivate func updateTranslationProgress(_ progress: TranslationProgress) {
+        translationProgress = progress
     }
 
     @available(macOS 26.0, *)
@@ -1328,6 +1354,19 @@ final class TranscriptionSessionModel {
         let rms = sqrt(sum / Float(buffer.frameLength))
         let decibels = 20 * log10(max(rms, 0.000_001))
         return min(max(Double((decibels + 60) / 60), 0), 1)
+    }
+}
+
+private final class TranslationProgressObserver: @unchecked Sendable {
+    private weak var session: TranscriptionSessionModel?
+
+    init(session: TranscriptionSessionModel) {
+        self.session = session
+    }
+
+    @MainActor
+    func update(_ progress: TranslationProgress) {
+        session?.updateTranslationProgress(progress)
     }
 }
 

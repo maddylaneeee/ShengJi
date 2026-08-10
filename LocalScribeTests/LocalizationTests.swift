@@ -27,6 +27,12 @@ final class LocalizationTests: XCTestCase {
             "离线翻译已就绪",
             "推荐语言",
             "自动检查并下载更新",
+            "光标输入",
+            "AI 优化",
+            "辅助功能",
+            "设置…",
+            "退出声迹",
+            "这台 Mac 有 %@ 内存；6 GB 及以下不能安全运行 Gemma E2B，因此 AI 功能已停用。",
         ]
 
         for key in keys {
@@ -48,6 +54,10 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(chinese.localizedString(forKey: "菜单：文件", value: nil, table: nil), "文件")
         XCTAssertEqual(english.localizedString(forKey: "菜单：显示", value: nil, table: nil), "View")
         XCTAssertEqual(chinese.localizedString(forKey: "菜单：显示", value: nil, table: nil), "显示")
+        XCTAssertEqual(english.localizedString(forKey: "设置…", value: nil, table: nil), "Settings…")
+        XCTAssertEqual(chinese.localizedString(forKey: "设置…", value: nil, table: nil), "设置…")
+        XCTAssertEqual(english.localizedString(forKey: "退出声迹", value: nil, table: nil), "Quit ShengJi")
+        XCTAssertEqual(chinese.localizedString(forKey: "退出声迹", value: nil, table: nil), "退出声迹")
     }
 
     func testLiveCaptionInputTitlesFollowAppLanguageWithoutRestart() {
