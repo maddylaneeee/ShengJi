@@ -407,6 +407,20 @@ final class TranscriptionSessionModel {
         scheduleRecoverySave()
     }
 
+    var aiOptimizationInputSegments: [TranscriptSegment] {
+        let previewText = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !previewText.isEmpty else { return [] }
+        let sortedSegments = segments.sorted { $0.startTime < $1.startTime }
+        let generatedText = sortedSegments.map(\.text)
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if generatedText == previewText {
+            return sortedSegments
+        }
+        let duration = max(max(elapsed, sortedSegments.last?.endTime ?? 0), 1)
+        return TranscriptSegment.sentenceSegments(from: previewText, duration: duration)
+    }
+
     @discardableResult
     func applyAIOptimization(_ result: GemmaOptimizationResult) -> Bool {
         guard phase == .finished else { return false }

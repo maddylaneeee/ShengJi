@@ -411,7 +411,12 @@ actor GemmaOptimizationService {
                 let response = try await GemmaRuntime.shared.complete(
                     system: systemPrompt,
                     data: requestData,
-                    maxTokens: min(2_048, max(256, editable.reduce(0) { $0 + $1.text.count })),
+                    maxTokens: Self.responseTokenBudget(
+                        texts: editable.map(\.text),
+                        minimum: 512,
+                        maximum: 3_072,
+                        overheadPerItem: 96
+                    ),
                     partial: { value in
                         let corrections: [GemmaCorrection] = Self.decodeCompletedObjects(value)
                         let proposed = Self.applyingPreviewCorrections(
@@ -422,17 +427,29 @@ actor GemmaOptimizationService {
                         preview(proposed.map(\.text).joined(separator: "\n"))
                     }
                 )
-                let values: [GemmaCorrection] = try await Self.decodeWithSingleRetry(
-                    response,
-                    retry: {
-                        try await GemmaRuntime.shared.complete(
-                        system: systemPrompt,
-                        data: requestData + "\n\nThe previous response was invalid JSON. Return the required JSON array only.",
-                        maxTokens: min(2_048, max(256, editable.reduce(0) { $0 + $1.text.count }))
+                let values: [GemmaCorrection]
+                do {
+                    values = try await Self.decodeWithSingleRetry(
+                        response,
+                        retry: {
+                            try await GemmaRuntime.shared.complete(
+                                system: systemPrompt,
+                                data: requestData + "\n\nThe previous response was invalid JSON. Return the required JSON array only.",
+                                maxTokens: Self.responseTokenBudget(
+                                    texts: editable.map(\.text),
+                                    minimum: 512,
+                                    maximum: 3_072,
+                                    overheadPerItem: 96
+                                )
+                            )
+                        },
+                        decode: Self.decodeCorrections
                     )
-                    },
-                    decode: Self.decodeCorrections
-                )
+                } catch {
+                    let completed: [GemmaCorrection] = Self.decodeCompletedObjects(response)
+                    guard !completed.isEmpty else { throw error }
+                    values = completed
+                }
                 let validated = Self.validate(values, originals: editable)
                 for segment in editable {
                     if let corrected = validated.values[segment.id] {
@@ -534,6 +551,10 @@ actor GemmaOptimizationService {
             preview(facts.map(\.text).joined(separator: "\n"))
         }
 
+        if facts.count > 8 {
+            facts = Self.extractiveSummaryFacts(facts, maximumCount: 8)
+            preview(facts.map(\.text).joined(separator: "\n"))
+        }
         if facts.count > 1 {
             do {
                 facts = try await reduceSummaryFacts(
@@ -571,7 +592,12 @@ actor GemmaOptimizationService {
         let response = try await GemmaRuntime.shared.complete(
             system: systemPrompt,
             data: requestData,
-            maxTokens: min(1_536, max(384, segments.reduce(0) { $0 + $1.text.count })),
+            maxTokens: Self.responseTokenBudget(
+                texts: segments.map(\.text),
+                minimum: 768,
+                maximum: 3_072,
+                overheadPerItem: 96
+            ),
             partial: { partial(Self.decodeCompletedObjects($0)) }
         )
         let evidence = Dictionary(uniqueKeysWithValues: segments.map { ($0.id.uuidString, $0.text) })
@@ -581,7 +607,12 @@ actor GemmaOptimizationService {
                 try await GemmaRuntime.shared.complete(
                     system: systemPrompt,
                     data: requestData + "\n\nThe previous response was invalid JSON. Return the required JSON array only.",
-                    maxTokens: min(1_536, max(384, segments.reduce(0) { $0 + $1.text.count }))
+                    maxTokens: Self.responseTokenBudget(
+                        texts: segments.map(\.text),
+                        minimum: 768,
+                        maximum: 3_072,
+                        overheadPerItem: 96
+                    )
                 )
             },
             decode: Self.decodeSummaryFacts
@@ -590,7 +621,16 @@ actor GemmaOptimizationService {
             decoded,
             evidence: evidence
         )
-        return try await verifySummaryFacts(validated, evidence: evidence)
+        do {
+            return try await verifySummaryFacts(validated, evidence: evidence)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as GemmaOptimizationError {
+            if case .ungroundedSummary = error { throw error }
+            return validated
+        } catch {
+            return validated
+        }
     }
 
     private func reduceSummaryFacts(
@@ -605,7 +645,12 @@ actor GemmaOptimizationService {
         let response = try await GemmaRuntime.shared.complete(
             system: systemPrompt,
             data: requestData,
-            maxTokens: min(1_536, max(384, facts.reduce(0) { $0 + $1.text.count })),
+            maxTokens: Self.responseTokenBudget(
+                texts: facts.map(\.text),
+                minimum: 768,
+                maximum: 3_072,
+                overheadPerItem: 72
+            ),
             partial: { partial(Self.decodeCompletedObjects($0)) }
         )
         let decoded: [GemmaSummaryFact] = try await Self.decodeWithSingleRetry(
@@ -614,13 +659,27 @@ actor GemmaOptimizationService {
                 try await GemmaRuntime.shared.complete(
                     system: systemPrompt,
                     data: requestData + "\n\nThe previous response was invalid JSON. Return the required JSON array only.",
-                    maxTokens: min(1_536, max(384, facts.reduce(0) { $0 + $1.text.count }))
+                    maxTokens: Self.responseTokenBudget(
+                        texts: facts.map(\.text),
+                        minimum: 768,
+                        maximum: 3_072,
+                        overheadPerItem: 72
+                    )
                 )
             },
             decode: Self.decodeSummaryFacts
         )
         let validated = try Self.validateSummaryFacts(decoded, evidence: evidence)
-        return try await verifySummaryFacts(validated, evidence: evidence)
+        do {
+            return try await verifySummaryFacts(validated, evidence: evidence)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as GemmaOptimizationError {
+            if case .ungroundedSummary = error { throw error }
+            return validated
+        } catch {
+            return validated
+        }
     }
 
     private func verifySummaryFacts(
@@ -649,17 +708,41 @@ actor GemmaOptimizationService {
     }
 
     static func proofreadRanges(for segments: [TranscriptSegment]) -> [Range<Int>] {
-        adaptiveRanges(texts: segments.map(\.text), maximumCount: 16, characterBudget: 3_000)
+        adaptiveRanges(texts: segments.map(\.text), maximumCount: 4, characterBudget: 1_200)
     }
 
     static func summaryBatches(for segments: [TranscriptSegment]) -> [[TranscriptSegment]] {
-        adaptiveRanges(texts: segments.map(\.text), maximumCount: 24, characterBudget: 4_500)
+        adaptiveRanges(texts: segments.map(\.text), maximumCount: 12, characterBudget: 2_400)
             .map { Array(segments[$0]) }
     }
 
     static func reductionBatches(for facts: [GemmaSummaryFact]) -> [[GemmaSummaryFact]] {
-        adaptiveRanges(texts: facts.map(\.text), maximumCount: 16, characterBudget: 4_000)
+        adaptiveRanges(texts: facts.map(\.text), maximumCount: 8, characterBudget: 2_400)
             .map { Array(facts[$0]) }
+    }
+
+    static func responseTokenBudget(
+        texts: [String],
+        minimum: Int,
+        maximum: Int,
+        overheadPerItem: Int
+    ) -> Int {
+        let estimated = texts.reduce(0) { $0 + $1.utf8.count * 2 }
+            + texts.count * overheadPerItem
+        return min(maximum, max(minimum, estimated))
+    }
+
+    static func extractiveSummaryFacts(
+        _ facts: [GemmaSummaryFact],
+        maximumCount: Int
+    ) -> [GemmaSummaryFact] {
+        guard maximumCount > 0, facts.count > maximumCount else { return facts }
+        if maximumCount == 1 { return [facts[0]] }
+        let last = facts.count - 1
+        let indexes = (0..<maximumCount).map { offset in
+            Int((Double(offset) * Double(last) / Double(maximumCount - 1)).rounded())
+        }
+        return Array(Set(indexes)).sorted().map { facts[$0] }
     }
 
     static func summaryInputSegments(from segments: [TranscriptSegment]) -> [TranscriptSegment] {
@@ -888,20 +971,18 @@ actor GemmaOptimizationService {
         _ corrections: [GemmaCorrection],
         originals: [TranscriptSegment]
     ) -> (values: [UUID: String], errors: [UUID: String]) {
-        let originalIDs = Set(originals.map(\.id))
-        let correctionIDs = corrections.compactMap { UUID(uuidString: $0.id) }
-        guard corrections.count == originals.count,
-              correctionIDs.count == corrections.count,
-              Set(correctionIDs) == originalIDs,
-              Set(correctionIDs).count == correctionIDs.count else {
-            let message = L10n.text("返回的片段 ID 或数量不一致")
-            return ([:], Dictionary(uniqueKeysWithValues: originals.map { ($0.id, message) }))
-        }
-        let indexed = Dictionary(uniqueKeysWithValues: zip(correctionIDs, corrections.map(\.text)))
+        let indexed = Dictionary(grouping: corrections.compactMap { correction -> (UUID, String)? in
+            guard let id = UUID(uuidString: correction.id) else { return nil }
+            return (id, correction.text)
+        }, by: \.0)
         var values: [UUID: String] = [:]
         var errors: [UUID: String] = [:]
         for original in originals {
-            let corrected = indexed[original.id]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard let matches = indexed[original.id], matches.count == 1 else {
+                errors[original.id] = L10n.text("返回的片段 ID 或数量不一致")
+                continue
+            }
+            let corrected = matches[0].1.trimmingCharacters(in: .whitespacesAndNewlines)
             let cleaned = cleanedProofreadText(corrected)
             let candidate = validationFailure(original: original.text, corrected: cleaned) == nil
                 ? cleaned

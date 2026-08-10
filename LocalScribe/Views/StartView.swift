@@ -303,18 +303,15 @@ struct StartView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(18)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var importAndTranslationRow: some View {
-        Grid(horizontalSpacing: 12, verticalSpacing: 12) {
-            GridRow(alignment: .top) {
-                importPanel
-                translationPanel
-            }
+        HStack(alignment: .top, spacing: 12) {
+            importPanel
+            translationPanel
         }
     }
 
@@ -337,8 +334,7 @@ struct StartView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(18)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }

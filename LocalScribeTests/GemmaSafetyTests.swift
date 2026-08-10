@@ -213,7 +213,20 @@ final class GemmaSafetyTests: XCTestCase {
         XCTAssertEqual(result.values[second.id], "Keep this sentence.")
     }
 
-    func testMismatchedIDsRejectWholeBatch() {
+    func testIncompleteBatchStillAppliesValidSegments() {
+        let first = TranscriptSegment(startTime: 0, endTime: 1, text: "Um, first sentence.")
+        let second = TranscriptSegment(startTime: 1, endTime: 2, text: "Second sentence.")
+        let result = GemmaOptimizationService.validate(
+            [GemmaCorrection(id: first.id.uuidString, text: "First sentence.")],
+            originals: [first, second]
+        )
+
+        XCTAssertEqual(result.values[first.id], "First sentence.")
+        XCTAssertNil(result.values[second.id])
+        XCTAssertNotNil(result.errors[second.id])
+    }
+
+    func testMismatchedIDRejectsAffectedSegment() {
         let segment = TranscriptSegment(startTime: 0, endTime: 1, text: "Original")
         let correction = GemmaCorrection(id: UUID().uuidString, text: "Changed")
         let result = GemmaOptimizationService.validate([correction], originals: [segment])
@@ -249,14 +262,45 @@ final class GemmaSafetyTests: XCTestCase {
             TranscriptSegment(startTime: Double($0), endTime: Double($0 + 1), text: "Sentence \($0).")
         }
         let proofreadRanges = GemmaOptimizationService.proofreadRanges(for: short)
-        XCTAssertEqual(proofreadRanges.map(\.count), [16, 4])
-        XCTAssertEqual(GemmaOptimizationService.summaryBatches(for: short).count, 1)
+        XCTAssertEqual(proofreadRanges.map(\.count), [4, 4, 4, 4, 4])
+        XCTAssertEqual(GemmaOptimizationService.summaryBatches(for: short).map(\.count), [12, 8])
 
         let long = (0..<4).map {
             TranscriptSegment(startTime: Double($0), endTime: Double($0 + 1), text: String(repeating: "a", count: 1_600))
         }
         XCTAssertEqual(GemmaOptimizationService.proofreadRanges(for: long).map(\.count), [1, 1, 1, 1])
-        XCTAssertEqual(GemmaOptimizationService.summaryBatches(for: long).map(\.count), [2, 2])
+        XCTAssertEqual(GemmaOptimizationService.summaryBatches(for: long).map(\.count), [1, 1, 1, 1])
+    }
+
+    func testResponseBudgetIncludesStructuredOutputOverhead() {
+        XCTAssertEqual(
+            GemmaOptimizationService.responseTokenBudget(
+                texts: ["短句", "Second"],
+                minimum: 512,
+                maximum: 3_072,
+                overheadPerItem: 96
+            ),
+            512
+        )
+        XCTAssertEqual(
+            GemmaOptimizationService.responseTokenBudget(
+                texts: [String(repeating: "中", count: 2_000)],
+                minimum: 512,
+                maximum: 3_072,
+                overheadPerItem: 96
+            ),
+            3_072
+        )
+    }
+
+    func testExtractiveSummaryFallbackCoversBeginningAndEnd() {
+        let facts = (0..<20).map {
+            GemmaSummaryFact(text: "Fact \($0)", evidenceIDs: ["\($0)"])
+        }
+        let fallback = GemmaOptimizationService.extractiveSummaryFacts(facts, maximumCount: 8)
+        XCTAssertEqual(fallback.count, 8)
+        XCTAssertEqual(fallback.first?.text, "Fact 0")
+        XCTAssertEqual(fallback.last?.text, "Fact 19")
     }
 
     func testSummarySplitsOversizedSegmentsAndPreservesUniqueEvidenceIDs() {
@@ -321,6 +365,30 @@ final class GemmaSafetyTests: XCTestCase {
         XCTAssertEqual(session.transcriptText, original.text)
         XCTAssertEqual(session.segments, [original])
         XCTAssertFalse(session.canUndoAIChange)
+    }
+
+    @MainActor
+    func testAIInputUsesCurrentEditedPreviewInsteadOfGeneratedSegments() {
+        let original = TranscriptSegment(startTime: 0, endTime: 4, text: "Original generated text.")
+        let session = TranscriptionSessionModel(
+            imported: ImportedTranscript(
+                title: "sample",
+                text: original.text,
+                segments: [original],
+                duration: 4
+            ),
+            continueWithMicrophone: false,
+            locale: Locale(identifier: "en"),
+            configuration: RecognitionConfiguration(engine: .apple)
+        )
+        session.transcriptText = "Manually edited preview.\nA second edited sentence."
+        session.noteDirectEdit()
+
+        let input = session.aiOptimizationInputSegments
+        let inputText = input.map(\.text).joined(separator: "\n")
+        XCTAssertTrue(inputText.contains("Manually edited preview."))
+        XCTAssertTrue(inputText.contains("A second edited sentence."))
+        XCTAssertFalse(inputText.contains("Original generated text."))
     }
 
     @MainActor

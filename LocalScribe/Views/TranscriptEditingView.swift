@@ -4,6 +4,7 @@ import SwiftUI
 struct TranscriptEditingTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var selection: NSRange
+    var isEditable = true
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -17,7 +18,7 @@ struct TranscriptEditingTextView: NSViewRepresentable {
         let textView = NSTextView(frame: .zero)
         textView.delegate = context.coordinator
         textView.isRichText = false
-        textView.isEditable = true
+        textView.isEditable = isEditable
         textView.isSelectable = true
         textView.allowsUndo = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
@@ -40,6 +41,7 @@ struct TranscriptEditingTextView: NSViewRepresentable {
     func updateNSView(_ container: TranscriptEditorContainerView, context: Context) {
         let textView = container.textView
         context.coordinator.parent = self
+        textView.isEditable = isEditable
         if textView.string != text {
             textView.string = text
         }
