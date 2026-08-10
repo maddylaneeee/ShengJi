@@ -856,7 +856,7 @@ struct TranscriptionView: View {
                 Button("完成", systemImage: "stop.fill") {
                     Task {
                         await session.stop()
-                        if session.isCursorInput { cursorInput.finish() }
+                        if session.isCursorInput { cursorInput.flushAndFinish() }
                     }
                 }
             }
@@ -1016,20 +1016,15 @@ struct TranscriptionView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("提示词")
                         .font(.caption.weight(.medium))
-                    ZStack(alignment: .topLeading) {
-                        TextEditor(text: $gemmaPrompt)
-                            .frame(minHeight: 70, maxHeight: 110)
-                        if gemmaPrompt.isEmpty {
-                            Text(gemmaKind == .summarize
-                                ? "可指定总结长度、重点、格式或需保留的信息"
-                                : "可输入正确人名、术语或希望采用的表达方式")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 8)
-                                .allowsHitTesting(false)
-                        }
-                    }
+                    TextField(
+                        gemmaKind == .summarize
+                            ? "可指定总结长度、重点、格式或需保留的信息"
+                            : "可输入正确人名、术语或希望采用的表达方式",
+                        text: $gemmaPrompt,
+                        axis: .vertical
+                    )
+                    .lineLimit(3...6)
+                    .textFieldStyle(.roundedBorder)
                 }
 
                 gemmaModelStatus
@@ -1236,7 +1231,7 @@ struct TranscriptionView: View {
     private func handleCursorSessionPhase(_ phase: TranscriptionPhase) {
         guard session.isCursorInput else { return }
         if phase == .finished {
-            cursorInput.finish()
+            cursorInput.flushAndFinish()
         } else if case .failed = phase {
             cursorInput.finish()
         }

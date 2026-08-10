@@ -575,5 +575,12 @@
 "AI 没有返回可应用的文字，已保留原文。" = "AI returned no applicable text; the original was kept.";
 "配置光标输入" = "Configure Cursor Input";
 "点击“准备开始”，再把文本光标放到目标 App，按 Command-Shift-S 开始。" = "Click Ready, place the text cursor in the target app, then press Command-Shift-S.";
+"正在完成最后一句…" = "Finishing the last sentence…";
+"正在转录，按 Esc 或 Command-Shift-S 退出" = "Transcribing. Press Esc or Command-Shift-S to stop.";
+"无法注册光标输入退出快捷键，流程已停止。" = "Could not register the cursor input stop shortcut. The session has stopped.";
+"目标 App 已失去焦点，光标输入已停止。" = "The target app lost focus. Cursor input has stopped.";
+"无法注册光标输入快捷键，请关闭占用 Command-Shift-S 的应用后重试。" = "Could not register the Cursor Input shortcut. Close the app using Command-Shift-S and try again.";
+"提示词要求添加原文之外的内容。为避免误导，已拒绝执行。" = "The prompt asks to add content not present in the transcript. It was rejected to prevent misleading output.";
+"AI 总结包含原文中不存在的信息，已保留原文。" = "The AI summary contained information absent from the transcript, so the original was kept.";
 "更新已下载" = "Update Downloaded";
 "更新包已完成校验。确认后，声迹会安装更新并重新打开。" = "The update package has been verified. After confirmation, ShengJi will install it and reopen.";

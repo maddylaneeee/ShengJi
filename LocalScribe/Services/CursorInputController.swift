@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import CoreGraphics
 import Observation
 import SwiftUI
@@ -76,7 +77,8 @@ enum CursorAccessibilityWriter {
     static func replaceGeneratedText(
         previous: String,
         current: String,
-        target: CursorAccessibilityTarget
+        target: CursorAccessibilityTarget,
+        beforePaste: () -> Void
     ) -> Bool {
         var replacementRange = replacementRange(
             previous: previous,
@@ -89,12 +91,130 @@ enum CursorAccessibilityWriter {
                 kAXSelectedTextRangeAttribute as CFString,
                 rangeValue
               ) == .success else { return false }
-        return AXUIElementSetAttributeValue(
-            target.element,
-            kAXSelectedTextAttribute as CFString,
-            current as CFString
-        ) == .success
+        // Editors such as Notes can report a successful AX selected-text write
+        // without changing their document. Always perform the actual edit through
+        // the keyboard paste path after using AX only to select our prior output.
+        beforePaste()
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        guard pasteboard.setString(current, forType: .string),
+              let source = CGEventSource(stateID: .hidSystemState),
+              let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else {
+            return false
+        }
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
+        return true
     }
+}
+
+private struct CursorPasteboardSnapshot: Sendable {
+    let items: [[String: Data]]
+
+    static func capture() -> CursorPasteboardSnapshot {
+        let captured = (NSPasteboard.general.pasteboardItems ?? []).map { item in
+            Dictionary(uniqueKeysWithValues: item.types.compactMap { type in
+                item.data(forType: type).map { (type.rawValue, $0) }
+            })
+        }
+        return CursorPasteboardSnapshot(items: captured)
+    }
+
+    @MainActor
+    func restore() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let restored = items.map { stored -> NSPasteboardItem in
+            let item = NSPasteboardItem()
+            for (rawType, data) in stored {
+                item.setData(data, forType: NSPasteboard.PasteboardType(rawType))
+            }
+            return item
+        }
+        if !restored.isEmpty { pasteboard.writeObjects(restored) }
+    }
+}
+
+private final class CursorGlobalHotkey {
+    private static let signature: OSType = 0x534A4349 // "SJCI"
+    private var eventHandler: EventHandlerRef?
+    private var hotKey: EventHotKeyRef?
+    private var registeredID: UInt32?
+    private var action: (() -> Void)?
+
+    var isRegistered: Bool { hotKey != nil }
+
+    @discardableResult
+    func register(keyCode: UInt32, modifiers: UInt32, id: UInt32, action: @escaping () -> Void) -> Bool {
+        unregister()
+        self.action = action
+        var eventSpec = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        let handlerStatus = InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, event, userData in
+                guard let event, let userData else { return OSStatus(eventNotHandledErr) }
+                var hotKeyID = EventHotKeyID()
+                let status = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
+                guard status == noErr else { return status }
+                let registration = Unmanaged<CursorGlobalHotkey>
+                    .fromOpaque(userData).takeUnretainedValue()
+                guard hotKeyID.signature == CursorGlobalHotkey.signature,
+                      hotKeyID.id == registration.registeredID else {
+                    return OSStatus(eventNotHandledErr)
+                }
+                registration.action?()
+                return noErr
+            },
+            1,
+            &eventSpec,
+            Unmanaged.passUnretained(self).toOpaque(),
+            &eventHandler
+        )
+        guard handlerStatus == noErr else {
+            unregister()
+            return false
+        }
+        var hotKeyID = EventHotKeyID(signature: Self.signature, id: id)
+        let registrationStatus = RegisterEventHotKey(
+            keyCode,
+            modifiers,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKey
+        )
+        guard registrationStatus == noErr else {
+            unregister()
+            return false
+        }
+        registeredID = id
+        return true
+    }
+
+    func unregister() {
+        if let hotKey { UnregisterEventHotKey(hotKey) }
+        if let eventHandler { RemoveEventHandler(eventHandler) }
+        hotKey = nil
+        eventHandler = nil
+        registeredID = nil
+        action = nil
+    }
+
+    deinit { unregister() }
 }
 
 @MainActor
@@ -104,12 +224,14 @@ final class CursorInputController {
         case idle
         case armed
         case transcribing
+        case finishing
 
         var message: String {
             switch self {
             case .idle: ""
             case .armed: L10n.text("将光标移到输入位置，按 Command-Shift-S 开始转录")
-            case .transcribing: L10n.text("正在转录，按 Esc 退出")
+            case .transcribing: L10n.text("正在转录，按 Esc 或 Command-Shift-S 退出")
+            case .finishing: L10n.text("正在完成最后一句…")
             }
         }
     }
@@ -117,19 +239,22 @@ final class CursorInputController {
     private(set) var state: State = .idle
     private(set) var errorMessage: String?
     private var panel: NSPanel?
-    private var globalKeyMonitor: Any?
-    private var localKeyMonitor: Any?
+    private let commandHotkey = CursorGlobalHotkey()
+    private let escapeHotkey = CursorGlobalHotkey()
     private var mouseMonitor: Any?
     private var followTimer: Timer?
     private var insertedText = ""
+    private var pendingTranscript = ""
+    private var syncTask: Task<Void, Never>?
     private var target: CursorAccessibilityTarget?
+    private var pasteboardSnapshot: CursorPasteboardSnapshot?
     private var startAction: (() -> Void)?
     private var stopAction: (() -> Void)?
 
     var isArmed: Bool { state != .idle }
     var isTranscribing: Bool { state == .transcribing }
     var hasActiveResources: Bool {
-        panel != nil || globalKeyMonitor != nil || localKeyMonitor != nil || mouseMonitor != nil || followTimer != nil
+        panel != nil || commandHotkey.isRegistered || escapeHotkey.isRegistered || mouseMonitor != nil || followTimer != nil
     }
 
     @discardableResult
@@ -143,27 +268,59 @@ final class CursorInputController {
         disarm()
         errorMessage = nil
         insertedText = ""
+        pendingTranscript = ""
         startAction = start
         stopAction = stop
         state = .armed
         showPanel()
-        installMonitors()
+        guard installMonitors() else {
+            disarm()
+            errorMessage = L10n.text("无法注册光标输入快捷键，请关闭占用 Command-Shift-S 的应用后重试。")
+            return false
+        }
         return true
     }
 
     func sync(transcript: String) {
-        guard state == .transcribing, transcript != insertedText else { return }
+        guard state == .transcribing || state == .finishing else { return }
+        pendingTranscript = transcript
+        syncTask?.cancel()
+        syncTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(750))
+            guard !Task.isCancelled else { return }
+            self?.writePendingTranscript(stopOnFailure: true)
+        }
+    }
+
+    func flushAndFinish() {
+        syncTask?.cancel()
+        syncTask = nil
+        writePendingTranscript(stopOnFailure: false)
+        disarm()
+    }
+
+    private func writePendingTranscript(stopOnFailure: Bool) {
+        let transcript = pendingTranscript
+        guard transcript != insertedText else { return }
         guard let target,
               NSRunningApplication(processIdentifier: target.processIdentifier) != nil else {
-            failTarget(L10n.text("目标 App 已关闭，光标输入已停止。"))
+            handleWriteFailure(L10n.text("目标 App 已关闭，光标输入已停止。"), stopSession: stopOnFailure)
+            return
+        }
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier else {
+            handleWriteFailure(L10n.text("目标 App 已失去焦点，光标输入已停止。"), stopSession: stopOnFailure)
             return
         }
         guard CursorAccessibilityWriter.replaceGeneratedText(
             previous: insertedText,
             current: transcript,
-            target: target
+            target: target,
+            beforePaste: { [weak self] in
+                guard let self, self.pasteboardSnapshot == nil else { return }
+                self.pasteboardSnapshot = .capture()
+            }
         ) else {
-            failTarget(L10n.text("目标位置不接受文本输入，光标输入已停止。"))
+            handleWriteFailure(L10n.text("目标位置不接受文本输入，光标输入已停止。"), stopSession: stopOnFailure)
             return
         }
         insertedText = transcript
@@ -178,11 +335,11 @@ final class CursorInputController {
     }
 
     func disarm() {
-        if let globalKeyMonitor { NSEvent.removeMonitor(globalKeyMonitor) }
-        if let localKeyMonitor { NSEvent.removeMonitor(localKeyMonitor) }
+        syncTask?.cancel()
+        syncTask = nil
+        commandHotkey.unregister()
+        escapeHotkey.unregister()
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
-        globalKeyMonitor = nil
-        localKeyMonitor = nil
         mouseMonitor = nil
         followTimer?.invalidate()
         followTimer = nil
@@ -191,53 +348,78 @@ final class CursorInputController {
         startAction = nil
         stopAction = nil
         target = nil
+        pendingTranscript = ""
+        if let snapshot = pasteboardSnapshot {
+            pasteboardSnapshot = nil
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(250))
+                snapshot.restore()
+            }
+        }
         state = .idle
     }
 
-    private func installMonitors() {
-        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            Task { @MainActor in self?.handle(event) }
-        }
-        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
-            return handle(event) ? nil : event
-        }
+    @discardableResult
+    private func installMonitors() -> Bool {
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] _ in
             Task { @MainActor in self?.movePanel() }
         }
         followTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.movePanel() }
         }
+        return commandHotkey.register(
+            keyCode: UInt32(kVK_ANSI_S),
+            modifiers: UInt32(cmdKey | shiftKey),
+            id: 1
+        ) { [weak self] in
+            Task { @MainActor in self?.startFromHotkey() }
+        }
     }
 
-    @discardableResult
-    private func handle(_ event: NSEvent) -> Bool {
-        switch CursorInputHotkeyPolicy.action(
-            state: state,
-            keyCode: event.keyCode,
-            modifiers: event.modifierFlags
-        ) {
-        case .start:
-            guard let target = CursorAccessibilityWriter.focusedTarget(),
-                  target.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
-                errorMessage = L10n.text("请先将文本光标放到另一个 App 的输入位置，再按 Command-Shift-S。")
-                refreshPanel()
-                return true
-            }
-            self.target = target
-            insertedText = ""
-            state = .transcribing
+    private func startFromHotkey() {
+        guard state == .armed else { return }
+        guard let target = CursorAccessibilityWriter.focusedTarget(),
+              target.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            errorMessage = L10n.text("请先将文本光标放到另一个 App 的输入位置，再按 Command-Shift-S。")
             refreshPanel()
-            startAction?()
-            return true
-        case .stop:
-            let action = stopAction
-            disarm()
-            action?()
-            return true
-        case .none:
-            return false
+            return
         }
+        self.target = target
+        insertedText = ""
+        pendingTranscript = ""
+        state = .transcribing
+        refreshPanel()
+        let commandRegistered = commandHotkey.register(
+            keyCode: UInt32(kVK_ANSI_S),
+            modifiers: UInt32(cmdKey | shiftKey),
+            id: 2
+        ) { [weak self] in
+            Task { @MainActor in self?.stopFromHotkey() }
+        }
+        let escapeRegistered = escapeHotkey.register(
+            keyCode: UInt32(kVK_Escape),
+            modifiers: 0,
+            id: 3
+        ) { [weak self] in
+            Task { @MainActor in self?.stopFromHotkey() }
+        }
+        guard commandRegistered, escapeRegistered else {
+            handleWriteFailure(
+                L10n.text("无法注册光标输入退出快捷键，流程已停止。"),
+                stopSession: true
+            )
+            return
+        }
+        startAction?()
+    }
+
+    private func stopFromHotkey() {
+        guard state == .transcribing else { return }
+        commandHotkey.unregister()
+        escapeHotkey.unregister()
+        state = .finishing
+        refreshPanel()
+        stopAction?()
     }
 
     private func showPanel() {
@@ -278,11 +460,11 @@ final class CursorInputController {
         panel.setFrameOrigin(origin)
     }
 
-    private func failTarget(_ message: String) {
+    private func handleWriteFailure(_ message: String, stopSession: Bool) {
         let action = stopAction
         disarm()
         errorMessage = message
-        action?()
+        if stopSession { action?() }
     }
 }
 
