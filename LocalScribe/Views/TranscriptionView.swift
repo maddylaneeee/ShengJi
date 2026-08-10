@@ -40,6 +40,7 @@ struct TranscriptionView: View {
     @State private var gemmaFailures: [GemmaSegmentFailure] = []
     @State private var gemmaTask: Task<Void, Never>?
     @State private var gemmaPreviewText = ""
+    @State private var gemmaOriginalText = ""
     @FocusState private var gemmaPromptFocused: Bool
     @AppStorage("EnableGemmaE4B") private var enableGemmaE4B = false
 
@@ -244,17 +245,7 @@ struct TranscriptionView: View {
                 if gemmaKind == .summarize {
                     AISummaryPreviewView(text: gemmaPreviewText)
                 } else {
-                    HStack(spacing: 0) {
-                        Spacer(minLength: 20)
-                        TranscriptEditingTextView(
-                            text: $gemmaPreviewText,
-                            selection: $editorSelection,
-                            isEditable: false
-                        )
-                        .frame(maxWidth: 900)
-                        Spacer(minLength: 20)
-                    }
-                    .accessibilityLabel("AI 修改实时预览")
+                    AIChangePreviewView(original: gemmaOriginalText, proposed: gemmaPreviewText)
                 }
             } else if session.canEdit {
                 HStack(spacing: 0) {
@@ -1173,6 +1164,7 @@ struct TranscriptionView: View {
         gemmaError = nil
         gemmaFailures = []
         gemmaProgress = nil
+        gemmaOriginalText = session.transcriptText
         gemmaPreviewText = gemmaKind == .summarize ? "" : session.transcriptText
         let model = gemmaModel
         let prompt = gemmaPrompt
@@ -1213,6 +1205,7 @@ struct TranscriptionView: View {
             gemmaReady = false
             gemmaProgress = nil
             gemmaPreviewText = ""
+            gemmaOriginalText = ""
         }
     }
 
@@ -1235,6 +1228,7 @@ struct TranscriptionView: View {
         gemmaReady = false
         gemmaProgress = nil
         gemmaPreviewText = ""
+        gemmaOriginalText = ""
         Task { await GemmaOptimizationService.shared.cancel() }
     }
 

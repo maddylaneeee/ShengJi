@@ -263,13 +263,13 @@ final class GemmaSafetyTests: XCTestCase {
         }
         let proofreadRanges = GemmaOptimizationService.proofreadRanges(for: short)
         XCTAssertEqual(proofreadRanges.map(\.count), [4, 4, 4, 4, 4])
-        XCTAssertEqual(GemmaOptimizationService.summaryBatches(for: short).map(\.count), [12, 8])
+        XCTAssertEqual(GemmaOptimizationService.summaryBatches(for: short).map(\.count), [20])
 
         let long = (0..<4).map {
             TranscriptSegment(startTime: Double($0), endTime: Double($0 + 1), text: String(repeating: "a", count: 1_600))
         }
         XCTAssertEqual(GemmaOptimizationService.proofreadRanges(for: long).map(\.count), [1, 1, 1, 1])
-        XCTAssertEqual(GemmaOptimizationService.summaryBatches(for: long).map(\.count), [1, 1, 1, 1])
+        XCTAssertEqual(GemmaOptimizationService.summaryBatches(for: long).map(\.count), [3, 1])
     }
 
     func testResponseBudgetIncludesStructuredOutputOverhead() {
@@ -291,6 +291,63 @@ final class GemmaSafetyTests: XCTestCase {
             ),
             3_072
         )
+    }
+
+    func testSummaryTargetScalesButRemainsConcise() {
+        XCTAssertEqual(GemmaOptimizationService.summaryCharacterTarget(sourceLength: 100), 65)
+        XCTAssertEqual(GemmaOptimizationService.summaryCharacterTarget(sourceLength: 1_000), 200)
+        XCTAssertEqual(GemmaOptimizationService.summaryCharacterTarget(sourceLength: 20_000), 1_200)
+    }
+
+    func testFinalSummaryRejectsTranscriptLengthAndSpeakerFraming() {
+        let source = String(repeating: "项目完成了测试并批准周二复查。", count: 30) + "共45项。"
+        let concise = "项目完成测试，并批准周二复查，共45项。"
+        XCTAssertEqual(
+            GemmaOptimizationService.validatedFinalSummary(
+                concise,
+                source: source,
+                targetCharacters: 120
+            ),
+            concise
+        )
+        XCTAssertNil(GemmaOptimizationService.validatedFinalSummary(
+            source,
+            source: source,
+            targetCharacters: 120
+        ))
+        XCTAssertNil(GemmaOptimizationService.validatedFinalSummary(
+            "说话者认为项目完成测试，并批准周二复查，共45项。",
+            source: source,
+            targetCharacters: 120
+        ))
+        XCTAssertNil(GemmaOptimizationService.validatedFinalSummary(
+            "项目完成测试，并批准周二复查，共46项。",
+            source: source,
+            targetCharacters: 120
+        ))
+    }
+
+    func testSummaryPromptRequestsSynthesisInsteadOfSegmentRewriting() {
+        let message = GemmaOptimizationService.summaryUserMessage(
+            prompt: "使用中文",
+            data: "第一段。\n第二段。",
+            targetCharacters: 120
+        )
+        XCTAssertTrue(message.contains("around 120 characters"))
+        XCTAssertTrue(message.contains("substantially shorter"))
+        XCTAssertTrue(message.contains("第一段。\n第二段。"))
+    }
+
+    func testStreamingProofreadPreviewAppliesCompletedRowsImmediately() {
+        let first = TranscriptSegment(startTime: 0, endTime: 1, text: "Um, first sentence.")
+        let second = TranscriptSegment(startTime: 1, endTime: 2, text: "Second sentence.")
+        let preview = GemmaOptimizationService.applyingPreviewCorrections(
+            [GemmaCorrection(id: first.id.uuidString, text: "First sentence.")],
+            editable: [first, second],
+            baseline: [first, second]
+        )
+        XCTAssertEqual(preview[0].text, "First sentence.")
+        XCTAssertEqual(preview[1].text, second.text)
     }
 
     func testExtractiveSummaryFallbackCoversBeginningAndEnd() {
