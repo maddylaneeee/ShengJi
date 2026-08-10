@@ -257,7 +257,7 @@ cat > "$UPDATE_MANIFEST" <<EOF
   "build": "$BUILD",
   "download_url": "$DOWNLOAD_URL",
   "sha256": "$SHA256",
-  "release_notes": "ShengJi 1.6.2 shows a preparing state and live batch progress while translating completed transcripts.",
+  "release_notes": "ShengJi 1.6.3 adds local Gemma-powered transcript optimization and AI-assisted editing.",
   "minimum_system_version": "15.5",
   "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "size_bytes": $(stat -f %z "$ZIP")
