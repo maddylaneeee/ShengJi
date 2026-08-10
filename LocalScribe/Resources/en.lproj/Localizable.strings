@@ -570,6 +570,8 @@
 "请先将文本光标放到另一个 App 的输入位置，再按 Command-Shift-S。" = "Place the text cursor in another app before pressing Command-Shift-S.";
 "选择识别设置，然后点击“准备开始”" = "Choose recognition settings, then click Ready";
 "已撤销 AI 修改" = "Undid AI changes";
+"AI 将在后台自动准备" = "AI will prepare automatically in the background";
+"AI 修改实时对比" = "Live AI change comparison";
 "AI 总结已替换文字预览，可一键撤销" = "The AI summary replaced the text preview and can be undone";
 "AI 优化已更新文字预览，可一键撤销" = "AI optimization updated the text preview and can be undone";
 "AI 没有返回可应用的文字，已保留原文。" = "AI returned no applicable text; the original was kept.";

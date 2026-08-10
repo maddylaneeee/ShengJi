@@ -40,6 +40,8 @@ struct TranscriptionView: View {
     @State private var gemmaError: String?
     @State private var gemmaFailures: [GemmaSegmentFailure] = []
     @State private var gemmaTask: Task<Void, Never>?
+    @State private var gemmaPreviewText = ""
+    @State private var gemmaOriginalText = ""
     @AppStorage("EnableGemmaE4B") private var enableGemmaE4B = false
 
     var body: some View {
@@ -115,6 +117,7 @@ struct TranscriptionView: View {
             nllbModelManager.refresh()
             gemmaModelManager.refresh()
             syncPendingConfiguration()
+            autoPrepareGemmaIfNeeded()
         }
         .onChange(of: catalog.selectedLocaleIdentifier) { _, _ in syncPendingConfiguration() }
         .onChange(of: recognitionPreferences.configuration) { _, _ in syncPendingConfiguration() }
@@ -149,13 +152,17 @@ struct TranscriptionView: View {
         }
         .onChange(of: session.phase) { _, phase in
             handleCursorSessionPhase(phase)
+            if phase == .finished { autoPrepareGemmaIfNeeded() }
         }
         .onChange(of: gemmaModelManager.installedModels) { _, installed in
             guard installed.contains(gemmaModel), gemmaKind != nil else { return }
             prepareGemma()
         }
         .onChange(of: gemmaModel) { _, _ in
-            guard gemmaKind != nil else { return }
+            guard session.phase == .finished else { return }
+            gemmaTask?.cancel()
+            gemmaReady = false
+            gemmaIsPreparing = false
             prepareGemma()
         }
         .onDisappear(perform: handleDisappear)
@@ -252,6 +259,8 @@ struct TranscriptionView: View {
                     isActive: false,
                     animatedText: nil
                 )
+            } else if gemmaIsRunning, !gemmaPreviewText.isEmpty {
+                AIChangePreviewView(original: gemmaOriginalText, proposed: gemmaPreviewText)
             } else if session.canEdit {
                 HStack(spacing: 0) {
                     Spacer(minLength: 20)
@@ -1016,15 +1025,28 @@ struct TranscriptionView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("提示词")
                         .font(.caption.weight(.medium))
-                    TextField(
-                        gemmaKind == .summarize
-                            ? "可指定总结长度、重点、格式或需保留的信息"
-                            : "可输入正确人名、术语或希望采用的表达方式",
-                        text: $gemmaPrompt,
-                        axis: .vertical
-                    )
-                    .lineLimit(3...6)
-                    .textFieldStyle(.roundedBorder)
+                    ZStack(alignment: .topLeading) {
+                        if gemmaPrompt.isEmpty {
+                            Text(gemmaKind == .summarize
+                                ? "可指定总结长度、重点、格式或需保留的信息"
+                                : "可输入正确人名、术语或希望采用的表达方式")
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 9)
+                                .allowsHitTesting(false)
+                        }
+                        TextEditor(text: $gemmaPrompt)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .padding(.horizontal, 3)
+                            .padding(.vertical, 2)
+                    }
+                    .frame(minHeight: 86, maxHeight: 120)
+                    .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(.secondary.opacity(0.35))
+                    }
                 }
 
                 gemmaModelStatus
@@ -1044,7 +1066,10 @@ struct TranscriptionView: View {
 
                 HStack {
                     if gemmaIsRunning {
-                        Button("取消", systemImage: "xmark.circle") { cancelGemma() }
+                        Button("取消", systemImage: "xmark.circle") {
+                            cancelGemma()
+                            self.gemmaKind = nil
+                        }
                     } else {
                         Button("开始执行", systemImage: "sparkles") { startGemma() }
                             .primaryActionStyle()
@@ -1086,7 +1111,9 @@ struct TranscriptionView: View {
                         Label("模型已加载，可开始", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.secondary)
                     } else {
-                        Button("加载模型", systemImage: "memorychip") { prepareGemma() }
+                        Text("AI 将在后台自动准备")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 } else {
                     HStack {
@@ -1147,10 +1174,11 @@ struct TranscriptionView: View {
         gemmaFailures = []
         gemmaError = nil
         session.isShowingInspector = true
-        prepareGemma()
+        autoPrepareGemmaIfNeeded()
     }
 
     private func prepareGemma() {
+        guard !gemmaReady, !gemmaIsPreparing else { return }
         gemmaTask?.cancel()
         gemmaReady = false
         gemmaError = nil
@@ -1177,6 +1205,8 @@ struct TranscriptionView: View {
         gemmaError = nil
         gemmaFailures = []
         gemmaProgress = nil
+        gemmaOriginalText = session.transcriptText
+        gemmaPreviewText = session.transcriptText
         let model = gemmaModel
         let prompt = gemmaPrompt
         let segments = session.segments
@@ -1191,6 +1221,11 @@ struct TranscriptionView: View {
                     model: model
                 ) { completed, total in
                     Task { @MainActor in gemmaProgress = (completed, total) }
+                } preview: { text in
+                    Task { @MainActor in
+                        guard gemmaIsRunning else { return }
+                        gemmaPreviewText = text
+                    }
                 }
                 guard !Task.isCancelled else { return }
                 gemmaFailures = result.failures
@@ -1198,6 +1233,7 @@ struct TranscriptionView: View {
                     editStatus = gemmaKind == .summarize
                         ? L10n.text("AI 总结已替换文字预览，可一键撤销")
                         : L10n.text("AI 优化已更新文字预览，可一键撤销")
+                    self.gemmaKind = nil
                 } else {
                     gemmaError = L10n.text("AI 没有返回可应用的文字，已保留原文。")
                 }
@@ -1209,7 +1245,21 @@ struct TranscriptionView: View {
             gemmaIsPreparing = false
             gemmaReady = false
             gemmaProgress = nil
+            gemmaPreviewText = ""
+            gemmaOriginalText = ""
         }
+    }
+
+    private func autoPrepareGemmaIfNeeded() {
+        guard session.phase == .finished,
+              !session.isCursorInput,
+              GemmaHardwareSupport.isSupported,
+              GemmaRuntime.isBundled,
+              GemmaModelStore.isInstalled(gemmaModel),
+              !gemmaReady,
+              !gemmaIsPreparing,
+              !gemmaIsRunning else { return }
+        prepareGemma()
     }
 
     private func cancelGemma() {
@@ -1219,6 +1269,8 @@ struct TranscriptionView: View {
         gemmaIsPreparing = false
         gemmaReady = false
         gemmaProgress = nil
+        gemmaPreviewText = ""
+        gemmaOriginalText = ""
         Task { await GemmaOptimizationService.shared.cancel() }
     }
 
@@ -1853,20 +1905,22 @@ private struct TranscriptStreamView: View {
                                 .padding(.bottom, 4)
                         }
                         if let animatedText {
-                            Text(animatedText)
-                                .font(.system(size: 19))
-                                .lineSpacing(8)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            NumberedTranscriptText(text: animatedText)
                                 .id("animated-transcript")
                         } else {
-                            ForEach(segments) { segment in
-                                Text(segment.text)
-                                    .font(.system(size: 19))
-                                    .lineSpacing(8)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .id(segment.id)
+                            ForEach(Array(segments.enumerated()), id: \.element.id) { offset, segment in
+                                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                                    Text("\(max(1, totalCount - segments.count + offset + 1))")
+                                        .font(.system(size: 13, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 38, alignment: .trailing)
+                                    Text(segment.text)
+                                        .font(.system(size: 19))
+                                        .lineSpacing(8)
+                                        .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .id(segment.id)
                             }
                         }
                         Color.clear
@@ -1918,6 +1972,28 @@ private struct TranscriptStreamView: View {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(220))
             isProgrammaticScroll = false
+        }
+    }
+}
+
+private struct NumberedTranscriptText: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(text.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { index, line in
+                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                    Text("\(index + 1)")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 38, alignment: .trailing)
+                    Text(String(line))
+                        .font(.system(size: 19))
+                        .lineSpacing(8)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
         }
     }
 }

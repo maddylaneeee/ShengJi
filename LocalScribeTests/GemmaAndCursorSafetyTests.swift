@@ -44,6 +44,30 @@ final class GemmaAndCursorSafetyTests: XCTestCase {
         XCTAssertEqual(GemmaProcessRegistry.activeProcessCount, 0)
     }
 
+    func testInstalledGemmaSummaryUsesEvidenceAndUnloads() async throws {
+        guard GemmaModelStore.isInstalled(.e2b) else {
+            throw XCTSkip("Gemma E2B is not installed on this Mac.")
+        }
+        let segments = [
+            TranscriptSegment(startTime: 0, endTime: 2, text: "Project Atlas reviewed 45 samples near Stonehenge."),
+            TranscriptSegment(startTime: 2, endTime: 4, text: "The team approved another review for Tuesday.")
+        ]
+        let result = try await GemmaOptimizationService.shared.optimize(
+            segments: segments,
+            fallbackText: segments.map(\.text).joined(separator: "\n"),
+            kind: .summarize,
+            prompt: "Write a concise factual summary and retain important quantities.",
+            model: .e2b,
+            progress: { _, _ in }
+        )
+        let summary = try XCTUnwrap(result.summary)
+        XCTAssertFalse(summary.isEmpty)
+        XCTAssertTrue(summary.contains("45"))
+        XCTAssertFalse(summary.contains("2017"))
+        XCTAssertFalse(summary.localizedCaseInsensitiveContains("Donald Trump"))
+        XCTAssertEqual(GemmaProcessRegistry.activeProcessCount, 0)
+    }
+
     func testSixGBAndBelowCannotUseAI() {
         let gibibyte: UInt64 = 1_024 * 1_024 * 1_024
         XCTAssertFalse(GemmaHardwareSupport.isSupported(physicalMemory: 6 * gibibyte))
@@ -87,16 +111,32 @@ final class GemmaAndCursorSafetyTests: XCTestCase {
         ))
     }
 
-    func testSummaryGroundingRejectsNewFactsAndNames() {
-        let source = "Researchers found 45 wooden pieces near Stonehenge."
-        XCTAssertTrue(GemmaOptimizationService.isGroundedSummary(
-            "Researchers found 45 wooden pieces near Stonehenge.",
-            source: source
+    func testSummaryFactsRequireRealEvidenceAndRejectNewArtifacts() throws {
+        let id = UUID().uuidString
+        let evidence = [id: "Researchers found 45 wooden pieces near Stonehenge."]
+        let valid = try GemmaOptimizationService.validateSummaryFacts(
+            [GemmaSummaryFact(text: "Near Stonehenge, researchers found 45 wooden pieces.", evidenceIDs: [id])],
+            evidence: evidence
+        )
+        XCTAssertEqual(valid.count, 1)
+
+        XCTAssertThrowsError(try GemmaOptimizationService.validateSummaryFacts(
+            [GemmaSummaryFact(text: "Donald Trump served from 2017 to 2021.", evidenceIDs: [id])],
+            evidence: evidence
         ))
-        XCTAssertFalse(GemmaOptimizationService.isGroundedSummary(
-            "Donald Trump served from 2017 to 2021.",
-            source: source
+        XCTAssertThrowsError(try GemmaOptimizationService.validateSummaryFacts(
+            [GemmaSummaryFact(text: "A supported paraphrase.", evidenceIDs: [UUID().uuidString])],
+            evidence: evidence
         ))
+    }
+
+    func testStreamingJSONOnlyExposesCompletedObjects() {
+        let first = UUID().uuidString
+        let complete = "[{\"id\":\"\(first)\",\"text\":\"Clean sentence.\"},{\"id\":\"unfinished"
+        let values: [GemmaCorrection] = GemmaOptimizationService.decodeCompletedObjects(complete)
+        XCTAssertEqual(values.count, 1)
+        XCTAssertEqual(values.first?.id, first)
+        XCTAssertEqual(values.first?.text, "Clean sentence.")
     }
 
     func testValidCorrectionKeepsSegmentIdentity() {
@@ -191,6 +231,28 @@ final class GemmaAndCursorSafetyTests: XCTestCase {
         )
         XCTAssertEqual(revision.location, 4)
         XCTAssertEqual(revision.length, 4)
+    }
+
+    func testCursorStreamingOnlyReplacesChangedSuffix() {
+        let append = CursorAccessibilityWriter.incrementalReplacement(
+            previous: "Hello wor",
+            current: "Hello world",
+            insertionLocation: 7,
+            initialSelectionLength: 0
+        )
+        XCTAssertEqual(append.range.location, 16)
+        XCTAssertEqual(append.range.length, 0)
+        XCTAssertEqual(append.text, "ld")
+
+        let revision = CursorAccessibilityWriter.incrementalReplacement(
+            previous: "Hello word",
+            current: "Hello world",
+            insertionLocation: 7,
+            initialSelectionLength: 0
+        )
+        XCTAssertEqual(revision.range.location, 16)
+        XCTAssertEqual(revision.range.length, 1)
+        XCTAssertEqual(revision.text, "ld")
     }
 
     @MainActor

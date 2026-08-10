@@ -31,6 +31,25 @@ struct CursorAccessibilityTarget {
 }
 
 enum CursorAccessibilityWriter {
+    static func incrementalReplacement(
+        previous: String,
+        current: String,
+        insertionLocation: CFIndex,
+        initialSelectionLength: CFIndex
+    ) -> (range: CFRange, text: String) {
+        let prefix = previous.commonPrefix(with: current)
+        let prefixLength = prefix.utf16.count
+        return (
+            CFRange(
+                location: insertionLocation + prefixLength,
+                length: previous.isEmpty
+                    ? initialSelectionLength
+                    : max(0, previous.utf16.count - prefixLength)
+            ),
+            String(current.dropFirst(prefix.count))
+        )
+    }
+
     static func replacementRange(
         previous: String,
         insertionLocation: CFIndex,
@@ -80,11 +99,13 @@ enum CursorAccessibilityWriter {
         target: CursorAccessibilityTarget,
         beforePaste: () -> Void
     ) -> Bool {
-        var replacementRange = replacementRange(
+        let plan = incrementalReplacement(
             previous: previous,
+            current: current,
             insertionLocation: target.insertionLocation,
             initialSelectionLength: target.initialSelectionLength
         )
+        var replacementRange = plan.range
         guard let rangeValue = AXValueCreate(.cfRange, &replacementRange),
               AXUIElementSetAttributeValue(
                 target.element,
@@ -97,7 +118,7 @@ enum CursorAccessibilityWriter {
         beforePaste()
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        guard pasteboard.setString(current, forType: .string),
+        guard pasteboard.setString(plan.text, forType: .string),
               let source = CGEventSource(stateID: .hidSystemState),
               let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else {
@@ -284,11 +305,20 @@ final class CursorInputController {
     func sync(transcript: String) {
         guard state == .transcribing || state == .finishing else { return }
         pendingTranscript = transcript
-        syncTask?.cancel()
+        scheduleSyncIfNeeded()
+    }
+
+    private func scheduleSyncIfNeeded() {
+        guard syncTask == nil else { return }
         syncTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(750))
+            try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
-            self?.writePendingTranscript(stopOnFailure: true)
+            guard let self else { return }
+            self.syncTask = nil
+            self.writePendingTranscript(stopOnFailure: true)
+            if self.pendingTranscript != self.insertedText {
+                self.scheduleSyncIfNeeded()
+            }
         }
     }
 
