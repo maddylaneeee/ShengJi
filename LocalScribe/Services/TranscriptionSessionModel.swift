@@ -92,10 +92,9 @@ final class TranscriptionSessionModel {
     private let recoveryWriter = RecoverySnapshotWriter()
     private var translationTask: Task<Void, Never>?
     private var transcriptRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var cursorStreamingHandler: ((String) -> Void)?
     @ObservationIgnored private var cursorPreparationTask: Task<Void, Never>?
-    private var isCursorApplePrepared = false
-    private var preparedCursorConfiguration: RecognitionConfiguration?
-    private var preparedCursorLocaleIdentifier: String?
+    private var isCursorPreflightReady = false
     @ObservationIgnored private lazy var streamingTextAnimator = AdaptiveStreamingTextAnimator { [weak self] text in
         self?.animatedTranscriptText = text
     }
@@ -238,22 +237,15 @@ final class TranscriptionSessionModel {
         }
         if isCursorInput, case .microphone = source {
             _ = await cursorPreparationTask?.result
-            if isCursorApplePrepared,
-               preparedCursorConfiguration == configuration,
-               preparedCursorLocaleIdentifier == locale.identifier {
-                do {
-                    try restartAppleMicrophoneCapture()
-                    phase = .transcribing
-                    beginTimer()
-                } catch {
-                    fail(error)
-                }
-                return
-            }
+            guard phase == .preparing else { return }
+            // Preflight intentionally does not start SpeechAnalyzer. An analyzer
+            // left consuming an empty stream before the hotkey was pressed can
+            // defer its volatile results until a long pause. Start with the same
+            // fresh, live analyzer/capture lifecycle as ordinary microphone mode.
             discardPreparedCursorInput()
         }
         do {
-            try await prepareAppleRecognition(startCapture: true)
+            try await prepareAppleRecognition()
             phase = .transcribing
             if case .microphone = source { beginTimer() }
         } catch {
@@ -265,27 +257,23 @@ final class TranscriptionSessionModel {
         guard isCursorInput,
               phase == .preparing,
               configuration.engine == .apple else { return false }
-        if isCursorApplePrepared { return true }
+        if isCursorPreflightReady { return true }
         if let cursorPreparationTask {
             _ = await cursorPreparationTask.result
-            return isCursorApplePrepared
+            return isCursorPreflightReady
         }
         guard #available(macOS 26.0, *) else {
             fail(SessionError.requiresMacOS26)
             return false
         }
-        let preparedConfiguration = configuration
-        let preparedLocaleIdentifier = locale.identifier
         isPreparingCursorInput = true
         activityDetail = L10n.text("正在准备识别器…")
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await self.prepareAppleRecognition(startCapture: false)
+                try await self.preflightCursorRecognition()
                 try Task.checkCancellation()
-                self.isCursorApplePrepared = true
-                self.preparedCursorConfiguration = preparedConfiguration
-                self.preparedCursorLocaleIdentifier = preparedLocaleIdentifier
+                self.isCursorPreflightReady = true
                 self.activityDetail = L10n.text("识别器已就绪，等待 Command-Shift-S")
             } catch is CancellationError {
             } catch {
@@ -295,7 +283,7 @@ final class TranscriptionSessionModel {
         cursorPreparationTask = task
         _ = await task.result
         isPreparingCursorInput = false
-        return isCursorApplePrepared
+        return isCursorPreflightReady
     }
 
     func cancelCursorInputPreparation() {
@@ -305,8 +293,30 @@ final class TranscriptionSessionModel {
         activityDetail = L10n.text("选择设置后开始转录")
     }
 
+    func setCursorStreamingHandler(_ handler: ((String) -> Void)?) {
+        guard isCursorInput else { return }
+        cursorStreamingHandler = handler
+    }
+
     @available(macOS 26.0, *)
-    private func prepareAppleRecognition(startCapture: Bool) async throws {
+    private func preflightCursorRecognition() async throws {
+        let selectedLocale = await SpeechTranscriber.supportedLocale(equivalentTo: locale)
+        guard let selectedLocale else { throw SessionError.unsupportedLanguage(languageName) }
+        let transcriber = SpeechTranscriber(
+            locale: selectedLocale,
+            preset: .timeIndexedProgressiveTranscription
+        )
+        try await installAssetsIfNeeded(for: transcriber)
+        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+            throw SessionError.noCompatibleAudioFormat
+        }
+        // Permission, device availability, and conversion are checked while arming,
+        // but the analyzer itself is created only when dictation actually starts.
+        try await prepareMicrophone(targetFormat: format)
+    }
+
+    @available(macOS 26.0, *)
+    private func prepareAppleRecognition() async throws {
         if case .file(let url) = source {
             isUsingSecurityScopedResource = url.startAccessingSecurityScopedResource()
         }
@@ -344,9 +354,8 @@ final class TranscriptionSessionModel {
         switch source {
         case .microphone:
             try await prepareMicrophone(targetFormat: format)
-            if startCapture { try restartAppleMicrophoneCapture() }
+            try restartAppleMicrophoneCapture()
         case .file(let url):
-            guard startCapture else { throw SessionError.noMicrophone }
             try await startFile(url: url, targetFormat: format)
         case .recovered:
             phase = .finished
@@ -357,9 +366,7 @@ final class TranscriptionSessionModel {
         cursorPreparationTask?.cancel()
         cursorPreparationTask = nil
         isPreparingCursorInput = false
-        isCursorApplePrepared = false
-        preparedCursorConfiguration = nil
-        preparedCursorLocaleIdentifier = nil
+        isCursorPreflightReady = false
         stopMicrophoneCapture()
         whisperContext = nil
         whisperLiveBuffer = nil
@@ -695,7 +702,6 @@ final class TranscriptionSessionModel {
             rawText = generated
         }
         guard !rawText.isEmpty else { return }
-
         let start = max(CMTimeGetSeconds(result.range.start), 0) + recognitionTimelineOffset
         let duration = max(CMTimeGetSeconds(result.range.duration), 0.05)
         let segment = TranscriptSegment(startTime: start, endTime: start + duration, text: rawText)
@@ -718,11 +724,18 @@ final class TranscriptionSessionModel {
             refreshGeneratedText()
         } else {
             volatileSegment = segment
-            scheduleVolatileTranscriptRefresh()
+            if isCursorInput {
+                // Cursor dictation follows the live-caption path: publish every
+                // volatile result immediately instead of waiting for the editor's
+                // coalesced transcript refresh.
+                refreshGeneratedText()
+            } else {
+                scheduleVolatileTranscriptRefresh()
+            }
         }
     }
 
-    private func refreshGeneratedText() {
+    private func generatedTextIncludingVolatileResult() -> String {
         var output = stableGeneratedText
         for preview in whisperPreviewSegments {
             let text = preview.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -734,10 +747,16 @@ final class TranscriptionSessionModel {
             if !output.isEmpty { output.append("\n") }
             output.append(volatile)
         }
+        return output
+    }
+
+    private func refreshGeneratedText() {
+        let output = generatedTextIncludingVolatileResult()
         // Set the generated baseline first so SwiftUI's subsequent binding change is
         // never mistaken for a user edit.
         lastGeneratedText = output
         transcriptText = output
+        if isCursorInput { cursorStreamingHandler?(output) }
         streamingTextAnimator.submit(output, animated: usesAnimatedStreamingDisplay)
         scheduleRecoverySave()
     }
@@ -1349,11 +1368,10 @@ final class TranscriptionSessionModel {
         timerTask?.cancel()
         cursorPreparationTask?.cancel()
         cursorPreparationTask = nil
-        isCursorApplePrepared = false
-        preparedCursorConfiguration = nil
-        preparedCursorLocaleIdentifier = nil
+        isCursorPreflightReady = false
         transcriptRefreshTask?.cancel()
         transcriptRefreshTask = nil
+        cursorStreamingHandler = nil
         streamingTextAnimator.cancel()
         stopMicrophoneCapture()
         if isUsingSecurityScopedResource, case .file(let url) = source {

@@ -55,28 +55,31 @@ enum CursorInputWriter {
         var processIdentifier: pid_t = 0
         guard AXUIElementGetPid(element, &processIdentifier) == .success else { return nil }
 
-        var rangeValue: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(
+        var roleValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(
             element,
-            kAXSelectedTextRangeAttribute as CFString,
-            &rangeValue
+            kAXRoleAttribute as CFString,
+            &roleValue
         ) == .success,
-              let rangeValue,
-              CFGetTypeID(rangeValue) == AXValueGetTypeID() else { return nil }
-        let axRange = unsafeBitCast(rangeValue, to: AXValue.self)
-        var range = CFRange()
-        guard AXValueGetValue(axRange, .cfRange, &range) else { return nil }
-        guard range.location >= 0 else { return nil }
+           let role = roleValue as? String,
+           role == "AXSecureTextField" {
+            return nil
+        }
+
+        // A physical keyboard does not require AXSelectedTextRange support.
+        // Electron, browser content-editable, and several native custom editors
+        // omit that attribute even though they accept normal key events.
         return CursorInputTarget(processIdentifier: processIdentifier)
     }
 
     static func replaceGeneratedText(
         previous: String,
         current: String,
+        targetProcessIdentifier: pid_t,
         shouldContinue: () -> Bool = { true }
     ) -> Bool {
         let edit = keyboardEdit(previous: previous, current: current)
-        guard let source = CGEventSource(stateID: .hidSystemState) else { return false }
+        guard let source = CGEventSource(stateID: .privateState) else { return false }
 
         for _ in 0..<edit.deleteCount {
             guard shouldContinue() else { return false }
@@ -84,16 +87,15 @@ enum CursorInputWriter {
                   let up = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: false) else {
                 return false
             }
-            down.post(tap: .cghidEventTap)
+            down.postToPid(targetProcessIdentifier)
             Thread.sleep(forTimeInterval: 0.001)
-            up.post(tap: .cghidEventTap)
+            up.postToPid(targetProcessIdentifier)
             Thread.sleep(forTimeInterval: 0.001)
         }
 
         // Deliver one visible character at a time with a very short interval.
         // This follows the target app's normal keyboard path and gives it time
         // to apply each edit before a later streaming revision is calculated.
-        if !edit.text.isEmpty { Thread.sleep(forTimeInterval: 0.005) }
         for character in edit.text {
             guard shouldContinue() else { return false }
             var codeUnits = Array(String(character).utf16)[...]
@@ -114,10 +116,10 @@ enum CursorInputWriter {
                         unicodeString: buffer.baseAddress
                     )
                 }
-                down.post(tap: .cghidEventTap)
-                Thread.sleep(forTimeInterval: 0.001)
-                up.post(tap: .cghidEventTap)
-                Thread.sleep(forTimeInterval: 0.001)
+                down.postToPid(targetProcessIdentifier)
+                Thread.sleep(forTimeInterval: 0.0005)
+                up.postToPid(targetProcessIdentifier)
+                Thread.sleep(forTimeInterval: 0.0005)
                 codeUnits = codeUnits.dropFirst(count)
             }
         }
@@ -309,7 +311,6 @@ final class CursorInputController {
     private var followTimer: Timer?
     private var insertedText = ""
     private var pendingTranscript = ""
-    private var syncTask: Task<Void, Never>?
     @ObservationIgnored private let writerQueue = DispatchQueue(
         label: "ca.lixinchen.shengji.cursor-writer",
         qos: .userInteractive
@@ -355,26 +356,10 @@ final class CursorInputController {
     func sync(transcript: String) {
         guard state == .transcribing || state == .finishing else { return }
         pendingTranscript = transcript
-        scheduleSyncIfNeeded()
-    }
-
-    private func scheduleSyncIfNeeded() {
-        guard syncTask == nil else { return }
-        syncTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(25))
-            guard !Task.isCancelled else { return }
-            guard let self else { return }
-            self.syncTask = nil
-            self.writePendingTranscript(stopOnFailure: true)
-            if self.pendingTranscript != self.insertedText, !self.writeInFlight {
-                self.scheduleSyncIfNeeded()
-            }
-        }
+        writePendingTranscript(stopOnFailure: true)
     }
 
     func flushAndFinish() {
-        syncTask?.cancel()
-        syncTask = nil
         finishAfterPendingWrite = true
         writePendingTranscript(stopOnFailure: false)
         finishIfReady()
@@ -405,6 +390,7 @@ final class CursorInputController {
             let succeeded = CursorInputWriter.replaceGeneratedText(
                 previous: previous,
                 current: transcript,
+                targetProcessIdentifier: target.processIdentifier,
                 shouldContinue: { !token.isCancelled }
             )
             Task { @MainActor [weak self] in
@@ -458,8 +444,6 @@ final class CursorInputController {
         activeWriteToken = nil
         writeInFlight = false
         finishAfterPendingWrite = false
-        syncTask?.cancel()
-        syncTask = nil
         keyMonitor.stop()
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         mouseMonitor = nil

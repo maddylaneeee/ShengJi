@@ -148,9 +148,6 @@ struct TranscriptionView: View {
 
     private var observedContent: some View {
         primaryObservedContent
-        .onChange(of: session.transcriptText) { _, text in
-            if session.isCursorInput { cursorInput.sync(transcript: text) }
-        }
         .onChange(of: session.phase) { _, phase in
             handleCursorSessionPhase(phase)
             if phase == .finished { autoPrepareGemmaIfNeeded() }
@@ -1180,7 +1177,14 @@ struct TranscriptionView: View {
             } stop: {
                 Task { await session.stop() }
             }
-            if !armed { session.cancelCursorInputPreparation() }
+            if armed {
+                session.setCursorStreamingHandler { text in
+                    cursorInput.sync(transcript: text)
+                }
+            } else {
+                session.setCursorStreamingHandler(nil)
+                session.cancelCursorInputPreparation()
+            }
         }
     }
 
@@ -1298,6 +1302,7 @@ struct TranscriptionView: View {
         gemmaTask?.cancel()
         Task { await GemmaOptimizationService.shared.cancel() }
         if session.isCursorInput {
+            session.setCursorStreamingHandler(nil)
             cursorInput.finish()
             session.cancelCursorInputPreparation()
         }
@@ -1307,7 +1312,9 @@ struct TranscriptionView: View {
         guard session.isCursorInput else { return }
         if phase == .finished {
             cursorInput.flushAndFinish()
+            session.setCursorStreamingHandler(nil)
         } else if case .failed = phase {
+            session.setCursorStreamingHandler(nil)
             cursorInput.finish()
         }
     }
