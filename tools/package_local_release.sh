@@ -9,6 +9,11 @@ BUILD="${BUILD:-$(plutil -extract CFBundleVersion raw "$INFO_PLIST")}"
 INSTALL_LOCAL_COPY="${INSTALL_LOCAL_COPY:-0}"
 GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}"
 RELEASE_TAG="${RELEASE_TAG:-${GITHUB_REF_NAME:-v${VERSION}}}"
+RELEASE_CHANNEL="$(tr -d '[:space:]' < "$ROOT/.github/release-channel")"
+if [[ "$RELEASE_CHANNEL" != "stable" && "$RELEASE_CHANNEL" != "beta" ]]; then
+  print -u2 "不支持的发布通道：$RELEASE_CHANNEL"
+  exit 2
+fi
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK_ROOT="${TMPDIR:-/tmp}/codex-macos-packager/shengji-${VERSION}-${BUILD}-${RUN_ID}"
 ARCHIVE="$WORK_ROOT/声迹.xcarchive"
@@ -265,13 +270,19 @@ else
   DOWNLOAD_URL="file://$ZIP"
 fi
 
+if [[ "$RELEASE_CHANNEL" == "beta" ]]; then
+  RELEASE_NOTES="ShengJi 1.7.0 Beta adds local Gemma transcript optimization and new preview workflows. Known issue: cursor dictation is unreliable and may have substantial preview and text-insertion delays."
+else
+  RELEASE_NOTES="ShengJi 1.7.0 adds local Gemma transcript optimization, safe helper-process teardown, and cursor-following transcription input."
+fi
+
 cat > "$UPDATE_MANIFEST" <<EOF
 {
   "version": "$VERSION",
   "build": "$BUILD",
   "download_url": "$DOWNLOAD_URL",
   "sha256": "$SHA256",
-  "release_notes": "ShengJi 1.7.0 adds local Gemma transcript optimization, safe helper-process teardown, and robust cursor-following transcription input.",
+  "release_notes": "$RELEASE_NOTES",
   "minimum_system_version": "15.5",
   "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "size_bytes": $(stat -f %z "$ZIP")
@@ -285,6 +296,7 @@ cat > "$REPORT" <<EOF
 - Source: $ROOT
 - Build time (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)
 - Bundle ID: ca.lixinchen.localscribe
+- Release channel: $RELEASE_CHANNEL
 - Architecture: arm64
 - Minimum system version: macOS 15.5
 - Signing: $SIGNING_DESCRIPTION; Hardened Runtime; timestamp=none
@@ -303,7 +315,7 @@ cat > "$REPORT" <<EOF
 - Local delivery: creates only the updater ZIP by default; set INSTALL_LOCAL_COPY=1 to replace the locally installed app
 - Gatekeeper: rejection by spctl is expected for a local non-Developer-ID certificate and is not treated as package corruption
 - Runtime verification: see RUNTIME-VERIFICATION-${VERSION}-${BUILD}.md for Debug, Release, Analyze, unit test, and real GUI/CLI Whisper regression results
-- Change summary: see FILE-DIFF-${VERSION}-${BUILD}.md
+- Change summary: local Gemma optimization, AI preview and export improvements, and experimental cursor dictation; cursor dictation is a known beta issue and may have substantial delays
 - macOS 15.5: static compatibility was audited; real feature regression testing was completed on macOS 26.5.2 without creating a 15.5 VM
 EOF
 
