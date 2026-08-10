@@ -11,10 +11,21 @@ private final class AppleSpeechSessionState {
     var bridge: AnalyzerInputBridge?
 }
 
+private struct AITranscriptUndoSnapshot {
+    let transcriptText: String
+    let segments: [TranscriptSegment]
+    let translatedText: String
+    let translatedSegments: [TranscriptSegment]
+    let segmentTranslations: [SegmentTranslation]
+    let translationError: String?
+    let hasManualEdits: Bool
+}
+
 @MainActor
 @Observable
 final class TranscriptionSessionModel {
     let source: TranscriptionSource
+    let isCursorInput: Bool
     var locale: Locale
     var configuration: RecognitionConfiguration
     private(set) var translationConfiguration: TranslationConfiguration?
@@ -32,11 +43,13 @@ final class TranscriptionSessionModel {
     var progress: Double = 0
     private(set) var progressIsIndeterminate = false
     private(set) var activityDetail = L10n.text("选择设置后开始转录")
+    private(set) var isPreparingCursorInput = false
     var audioLevel: Double = 0
     var elapsed: TimeInterval = 0
     var isShowingInspector = true
     var hasManualEdits = false
     private(set) var isImportedTranscript = false
+    private var aiUndoSnapshot: AITranscriptUndoSnapshot?
 
     private(set) var segments: [TranscriptSegment] = []
     private var pendingFinalSegments: [TranscriptSegment] = []
@@ -73,11 +86,15 @@ final class TranscriptionSessionModel {
     private var elapsedBeforeCurrentRun: Duration = .zero
     private var recoveryID = UUID()
     private var recoveryCreatedAt = Date()
+    private var shouldPersistRecovery = true
     private var recoverySaveTask: Task<Void, Never>?
     private var recoverySaveGeneration = 0
     private let recoveryWriter = RecoverySnapshotWriter()
     private var translationTask: Task<Void, Never>?
     private var transcriptRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var cursorStreamingHandler: ((String) -> Void)?
+    @ObservationIgnored private var cursorPreparationTask: Task<Void, Never>?
+    private var isCursorPreflightReady = false
     @ObservationIgnored private lazy var streamingTextAnimator = AdaptiveStreamingTextAnimator { [weak self] text in
         self?.animatedTranscriptText = text
     }
@@ -112,16 +129,22 @@ final class TranscriptionSessionModel {
         source: TranscriptionSource,
         locale: Locale,
         configuration: RecognitionConfiguration,
-        translationConfiguration: TranslationConfiguration? = nil
+        translationConfiguration: TranslationConfiguration? = nil,
+        isCursorInput: Bool = false
     ) {
         self.source = source
+        self.isCursorInput = isCursorInput
         self.locale = locale
         self.configuration = configuration
         self.translationConfiguration = translationConfiguration
+        if isCursorInput {
+            activityDetail = L10n.text("选择识别设置，然后点击“准备开始”")
+        }
     }
 
     init(snapshot: RecoverySnapshot) {
         self.source = .recovered(snapshot.sourceTitle)
+        self.isCursorInput = false
         self.locale = Locale(identifier: snapshot.localeIdentifier)
         self.configuration = snapshot.configuration
         self.translationConfiguration = snapshot.translationConfiguration
@@ -147,9 +170,11 @@ final class TranscriptionSessionModel {
         imported: ImportedTranscript,
         continueWithMicrophone: Bool,
         locale: Locale,
-        configuration: RecognitionConfiguration
+        configuration: RecognitionConfiguration,
+        persistRecovery: Bool = true
     ) {
         self.source = continueWithMicrophone ? .microphone : .recovered(imported.title)
+        self.isCursorInput = false
         self.locale = locale
         self.configuration = configuration
         self.phase = continueWithMicrophone ? .preparing : .finished
@@ -165,6 +190,7 @@ final class TranscriptionSessionModel {
         self.segmentFingerprints = Set(imported.segments.map(Self.segmentFingerprint))
         self.hasManualEdits = false
         self.isImportedTranscript = !continueWithMicrophone
+        self.shouldPersistRecovery = persistRecovery
     }
 
     var languageName: String {
@@ -176,6 +202,9 @@ final class TranscriptionSessionModel {
     var canStop: Bool { phase == .transcribing || phase == .paused }
     var canEdit: Bool { phase == .paused || phase == .finished || phase.failedMessage != nil }
     var canStart: Bool { phase == .preparing }
+    var canUndoAIChange: Bool { aiUndoSnapshot != nil }
+    var displayTitle: String { isCursorInput ? L10n.text("光标输入") : source.title }
+    var displaySymbol: String { isCursorInput ? "cursorarrow.motionlines" : source.symbol }
 
     func configure(
         locale: Locale,
@@ -206,58 +235,149 @@ final class TranscriptionSessionModel {
             fail(SessionError.requiresMacOS26)
             return
         }
+        if isCursorInput, case .microphone = source {
+            _ = await cursorPreparationTask?.result
+            guard phase == .preparing else { return }
+            // Preflight intentionally does not start SpeechAnalyzer. An analyzer
+            // left consuming an empty stream before the hotkey was pressed can
+            // defer its volatile results until a long pause. Start with the same
+            // fresh, live analyzer/capture lifecycle as ordinary microphone mode.
+            discardPreparedCursorInput()
+        }
         do {
-            if case .file(let url) = source {
-                isUsingSecurityScopedResource = url.startAccessingSecurityScopedResource()
-            }
-
-            let selectedLocale = await SpeechTranscriber.supportedLocale(equivalentTo: locale)
-            guard let selectedLocale else {
-                throw SessionError.unsupportedLanguage(languageName)
-            }
-
-            let transcriber = SpeechTranscriber(locale: selectedLocale, preset: .timeIndexedProgressiveTranscription)
-            appleSpeechState.transcriber = transcriber
-            try await installAssetsIfNeeded(for: transcriber)
-
-            guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
-                throw SessionError.noCompatibleAudioFormat
-            }
-
-            let analyzer = SpeechAnalyzer(
-                modules: [transcriber],
-                options: .init(priority: .userInitiated, modelRetention: .processLifetime)
-            )
-            appleSpeechState.analyzer = analyzer
-            try await analyzer.prepareToAnalyze(in: format)
-
-            let bridge = AnalyzerInputBridge()
-            appleSpeechState.bridge = bridge
-            startResultCollection(transcriber)
-            analysisTask = Task { [weak self, analyzer, bridge] in
-                do {
-                    _ = try await analyzer.analyzeSequence(bridge.stream)
-                } catch is CancellationError {
-                } catch {
-                    self?.fail(error)
-                }
-            }
-
-            switch source {
-            case .microphone:
-                try await startMicrophone(targetFormat: format)
-            case .file(let url):
-                try await startFile(url: url, targetFormat: format)
-            case .recovered:
-                phase = .finished
-                return
-            }
-
+            try await prepareAppleRecognition()
             phase = .transcribing
             if case .microphone = source { beginTimer() }
         } catch {
             fail(error)
         }
+    }
+
+    func prepareCursorInput() async -> Bool {
+        guard isCursorInput,
+              phase == .preparing,
+              configuration.engine == .apple else { return false }
+        if isCursorPreflightReady { return true }
+        if let cursorPreparationTask {
+            _ = await cursorPreparationTask.result
+            return isCursorPreflightReady
+        }
+        guard #available(macOS 26.0, *) else {
+            fail(SessionError.requiresMacOS26)
+            return false
+        }
+        isPreparingCursorInput = true
+        activityDetail = L10n.text("正在准备识别器…")
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await self.preflightCursorRecognition()
+                try Task.checkCancellation()
+                self.isCursorPreflightReady = true
+                self.activityDetail = L10n.text("识别器已就绪，等待 Command-Shift-S")
+            } catch is CancellationError {
+            } catch {
+                self.fail(error)
+            }
+        }
+        cursorPreparationTask = task
+        _ = await task.result
+        isPreparingCursorInput = false
+        return isCursorPreflightReady
+    }
+
+    func cancelCursorInputPreparation() {
+        guard isCursorInput, phase == .preparing else { return }
+        discardPreparedCursorInput()
+        isPreparingCursorInput = false
+        activityDetail = L10n.text("选择设置后开始转录")
+    }
+
+    func setCursorStreamingHandler(_ handler: ((String) -> Void)?) {
+        guard isCursorInput else { return }
+        cursorStreamingHandler = handler
+    }
+
+    @available(macOS 26.0, *)
+    private func preflightCursorRecognition() async throws {
+        let selectedLocale = await SpeechTranscriber.supportedLocale(equivalentTo: locale)
+        guard let selectedLocale else { throw SessionError.unsupportedLanguage(languageName) }
+        let transcriber = SpeechTranscriber(
+            locale: selectedLocale,
+            preset: .timeIndexedProgressiveTranscription
+        )
+        try await installAssetsIfNeeded(for: transcriber)
+        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+            throw SessionError.noCompatibleAudioFormat
+        }
+        // Permission, device availability, and conversion are checked while arming,
+        // but the analyzer itself is created only when dictation actually starts.
+        try await prepareMicrophone(targetFormat: format)
+    }
+
+    @available(macOS 26.0, *)
+    private func prepareAppleRecognition() async throws {
+        if case .file(let url) = source {
+            isUsingSecurityScopedResource = url.startAccessingSecurityScopedResource()
+        }
+
+        let selectedLocale = await SpeechTranscriber.supportedLocale(equivalentTo: locale)
+        guard let selectedLocale else { throw SessionError.unsupportedLanguage(languageName) }
+        let transcriber = SpeechTranscriber(
+            locale: selectedLocale,
+            preset: .timeIndexedProgressiveTranscription
+        )
+        appleSpeechState.transcriber = transcriber
+        try await installAssetsIfNeeded(for: transcriber)
+        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+            throw SessionError.noCompatibleAudioFormat
+        }
+
+        let analyzer = SpeechAnalyzer(
+            modules: [transcriber],
+            options: .init(priority: .userInitiated, modelRetention: .processLifetime)
+        )
+        appleSpeechState.analyzer = analyzer
+        try await analyzer.prepareToAnalyze(in: format)
+        let bridge = AnalyzerInputBridge()
+        appleSpeechState.bridge = bridge
+        startResultCollection(transcriber)
+        analysisTask = Task { [weak self, analyzer, bridge] in
+            do {
+                _ = try await analyzer.analyzeSequence(bridge.stream)
+            } catch is CancellationError {
+            } catch {
+                self?.fail(error)
+            }
+        }
+
+        switch source {
+        case .microphone:
+            try await prepareMicrophone(targetFormat: format)
+            try restartAppleMicrophoneCapture()
+        case .file(let url):
+            try await startFile(url: url, targetFormat: format)
+        case .recovered:
+            phase = .finished
+        }
+    }
+
+    private func discardPreparedCursorInput() {
+        cursorPreparationTask?.cancel()
+        cursorPreparationTask = nil
+        isPreparingCursorInput = false
+        isCursorPreflightReady = false
+        stopMicrophoneCapture()
+        whisperContext = nil
+        whisperLiveBuffer = nil
+        appleSpeechStorage = nil
+        analysisTask?.cancel()
+        analysisTask = nil
+        resultsTask?.cancel()
+        resultsTask = nil
+        audioEngine = nil
+        microphoneConverter = nil
+        microphoneFormat = nil
     }
 
     func pause() {
@@ -387,11 +507,72 @@ final class TranscriptionSessionModel {
         guard canEdit else { return }
         if transcriptText != lastGeneratedText {
             hasManualEdits = true
+            aiUndoSnapshot = nil
             translatedText = ""
             translatedSegments = []
             segmentTranslations = []
         }
         scheduleRecoverySave()
+    }
+
+    @discardableResult
+    func applyAIOptimization(_ result: GemmaOptimizationResult) -> Bool {
+        guard phase == .finished else { return false }
+        let replacementText = (result.summary ?? result.text)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !replacementText.isEmpty else { return false }
+        aiUndoSnapshot = AITranscriptUndoSnapshot(
+            transcriptText: transcriptText,
+            segments: segments,
+            translatedText: translatedText,
+            translatedSegments: translatedSegments,
+            segmentTranslations: segmentTranslations,
+            translationError: translationError,
+            hasManualEdits: hasManualEdits
+        )
+        let replacementSegments: [TranscriptSegment]
+        if result.summary != nil {
+            let duration = max(max(elapsed, segments.last?.endTime ?? 0), 0.05)
+            replacementSegments = [TranscriptSegment(startTime: 0, endTime: duration, text: replacementText)]
+        } else {
+            replacementSegments = result.segments
+        }
+        segments = replacementSegments
+        transcriptText = replacementText
+        animatedTranscriptText = replacementText
+        committedText = replacementText
+        stableGeneratedText = committedText
+        lastGeneratedText = committedText
+        segmentFingerprints = Set(segments.map(Self.segmentFingerprint))
+        // AI proofreading preserves segment identity and timestamps; summaries
+        // intentionally become one full-duration cue. Both can export directly.
+        hasManualEdits = false
+        translatedText = ""
+        translatedSegments = []
+        segmentTranslations = []
+        translationError = nil
+        Task { await transcriptRepository.replaceManualTranscript(text: replacementText, segments: replacementSegments) }
+        saveRecoveryNow()
+        return true
+    }
+
+    func undoLastAIChange() {
+        guard phase == .finished, let snapshot = aiUndoSnapshot else { return }
+        aiUndoSnapshot = nil
+        transcriptText = snapshot.transcriptText
+        animatedTranscriptText = snapshot.transcriptText
+        segments = snapshot.segments
+        translatedText = snapshot.translatedText
+        translatedSegments = snapshot.translatedSegments
+        segmentTranslations = snapshot.segmentTranslations
+        translationError = snapshot.translationError
+        hasManualEdits = snapshot.hasManualEdits
+        committedText = snapshot.transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        stableGeneratedText = committedText
+        lastGeneratedText = committedText
+        segmentFingerprints = Set(snapshot.segments.map(Self.segmentFingerprint))
+        Task { await transcriptRepository.replaceManualTranscript(text: snapshot.transcriptText, segments: snapshot.segments) }
+        saveRecoveryNow()
     }
 
     func translate(targetLanguage: TranslationTargetLanguage, provider: TranslationProvider = .apple) {
@@ -446,7 +627,8 @@ final class TranscriptionSessionModel {
             ? TranscriptSegment.sentenceSegments(from: transcriptText, duration: elapsed)
             : segments.sorted { $0.startTime < $1.startTime }
         let locale = self.locale
-        translationTask = Task { [weak self] in
+        let progressObserver = TranslationProgressObserver(session: self)
+        translationTask = Task { [weak self, progressObserver] in
             let units = sourceSegments.enumerated().map { index, segment in
                 TranslationUnit(segment: segment, ordinal: index)
             }
@@ -455,9 +637,7 @@ final class TranscriptionSessionModel {
                 sourceLocale: locale,
                 configuration: translationConfiguration
             ) { progress in
-                Task { @MainActor [weak self] in
-                    self?.translationProgress = progress
-                }
+                Task { @MainActor in progressObserver.update(progress) }
             }
             guard !Task.isCancelled, let self,
                   self.translationConfiguration == translationConfiguration else {
@@ -476,6 +656,10 @@ final class TranscriptionSessionModel {
             self.translationTask = nil
             self.saveRecoveryNow()
         }
+    }
+
+    fileprivate func updateTranslationProgress(_ progress: TranslationProgress) {
+        translationProgress = progress
     }
 
     @available(macOS 26.0, *)
@@ -518,7 +702,6 @@ final class TranscriptionSessionModel {
             rawText = generated
         }
         guard !rawText.isEmpty else { return }
-
         let start = max(CMTimeGetSeconds(result.range.start), 0) + recognitionTimelineOffset
         let duration = max(CMTimeGetSeconds(result.range.duration), 0.05)
         let segment = TranscriptSegment(startTime: start, endTime: start + duration, text: rawText)
@@ -541,11 +724,18 @@ final class TranscriptionSessionModel {
             refreshGeneratedText()
         } else {
             volatileSegment = segment
-            scheduleVolatileTranscriptRefresh()
+            if isCursorInput {
+                // Cursor dictation follows the live-caption path: publish every
+                // volatile result immediately instead of waiting for the editor's
+                // coalesced transcript refresh.
+                refreshGeneratedText()
+            } else {
+                scheduleVolatileTranscriptRefresh()
+            }
         }
     }
 
-    private func refreshGeneratedText() {
+    private func generatedTextIncludingVolatileResult() -> String {
         var output = stableGeneratedText
         for preview in whisperPreviewSegments {
             let text = preview.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -557,10 +747,16 @@ final class TranscriptionSessionModel {
             if !output.isEmpty { output.append("\n") }
             output.append(volatile)
         }
+        return output
+    }
+
+    private func refreshGeneratedText() {
+        let output = generatedTextIncludingVolatileResult()
         // Set the generated baseline first so SwiftUI's subsequent binding change is
         // never mistaken for a user edit.
         lastGeneratedText = output
         transcriptText = output
+        if isCursorInput { cursorStreamingHandler?(output) }
         streamingTextAnimator.submit(output, animated: usesAnimatedStreamingDisplay)
         scheduleRecoverySave()
     }
@@ -568,8 +764,10 @@ final class TranscriptionSessionModel {
     private func scheduleVolatileTranscriptRefresh() {
         guard transcriptRefreshTask == nil else { return }
         transcriptRefreshTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(120))
-            guard !Task.isCancelled, let self else { return }
+            guard let self else { return }
+            let delay: Duration = self.isCursorInput ? .milliseconds(50) : .milliseconds(120)
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
             self.transcriptRefreshTask = nil
             self.refreshGeneratedText()
         }
@@ -615,7 +813,7 @@ final class TranscriptionSessionModel {
     }
 
     @available(macOS 26.0, *)
-    private func startMicrophone(targetFormat: AVAudioFormat) async throws {
+    private func prepareMicrophone(targetFormat: AVAudioFormat) async throws {
         let microphoneAllowed = await AVCaptureDevice.requestAccess(for: .audio)
         guard microphoneAllowed else { throw SessionError.microphonePermissionDenied }
 
@@ -631,7 +829,6 @@ final class TranscriptionSessionModel {
         audioEngine = engine
         microphoneConverter = converter
         microphoneFormat = naturalFormat
-        try restartMicrophoneCapture()
     }
 
     private func restartMicrophoneCapture() throws {
@@ -655,7 +852,8 @@ final class TranscriptionSessionModel {
             hasMicrophoneTap = false
         }
         let levelLimiter = audioLevelLimiter
-        engine.inputNode.installTap(onBus: 0, bufferSize: 2_048, format: naturalFormat) { [weak self, bridge, levelLimiter] buffer, _ in
+        let streamingBufferSize: AVAudioFrameCount = isCursorInput ? 1_024 : 2_048
+        engine.inputNode.installTap(onBus: 0, bufferSize: streamingBufferSize, format: naturalFormat) { [weak self, bridge, levelLimiter] buffer, _ in
             do {
                 let output = try AudioFileFeeder.convert(buffer, using: converter, to: converter.outputFormat)
                 _ = bridge.yield(AnalyzerInput(buffer: output))
@@ -1168,8 +1366,12 @@ final class TranscriptionSessionModel {
 
     private func cleanupResources() {
         timerTask?.cancel()
+        cursorPreparationTask?.cancel()
+        cursorPreparationTask = nil
+        isCursorPreflightReady = false
         transcriptRefreshTask?.cancel()
         transcriptRefreshTask = nil
+        cursorStreamingHandler = nil
         streamingTextAnimator.cancel()
         stopMicrophoneCapture()
         if isUsingSecurityScopedResource, case .file(let url) = source {
@@ -1183,6 +1385,9 @@ final class TranscriptionSessionModel {
         whisperContext = nil
         whisperLiveBuffer = nil
         appleSpeechStorage = nil
+        audioEngine = nil
+        microphoneConverter = nil
+        microphoneFormat = nil
         analysisTask = nil
         resultsTask = nil
         feederTask = nil
@@ -1222,7 +1427,7 @@ final class TranscriptionSessionModel {
     }
 
     private func scheduleRecoverySave() {
-        guard hasRecoverableContent else { return }
+        guard shouldPersistRecovery, hasRecoverableContent else { return }
         recoverySaveGeneration += 1
         let generation = recoverySaveGeneration
         recoverySaveTask?.cancel()
@@ -1237,7 +1442,7 @@ final class TranscriptionSessionModel {
     }
 
     private func saveRecoveryNow() {
-        guard hasRecoverableContent else { return }
+        guard shouldPersistRecovery, hasRecoverableContent else { return }
         recoverySaveGeneration += 1
         let snapshot = makeRecoverySnapshot()
         recoverySaveTask?.cancel()
@@ -1328,6 +1533,19 @@ final class TranscriptionSessionModel {
         let rms = sqrt(sum / Float(buffer.frameLength))
         let decibels = 20 * log10(max(rms, 0.000_001))
         return min(max(Double((decibels + 60) / 60), 0), 1)
+    }
+}
+
+private final class TranslationProgressObserver: @unchecked Sendable {
+    private weak var session: TranscriptionSessionModel?
+
+    init(session: TranscriptionSessionModel) {
+        self.session = session
+    }
+
+    @MainActor
+    func update(_ progress: TranslationProgress) {
+        session?.updateTranslationProgress(progress)
     }
 }
 

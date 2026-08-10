@@ -7,6 +7,7 @@ struct StartView: View {
     @Bindable var liveCaptions: LiveCaptionController
     let recoverySnapshot: RecoverySnapshot?
     let startMicrophone: () -> Void
+    let startCursorInput: () -> Void
     let chooseFile: () -> Void
     let chooseTranscript: () -> Void
     let restoreRecovery: () -> Void
@@ -21,10 +22,9 @@ struct StartView: View {
                     recoveryCard(recoverySnapshot)
                 }
                 enginePanel
-                importAndTranslationRow
+                importAndCursorInputRow
                 actionGrid
                 liveCaptionCard
-                privacyNote
                 Spacer(minLength: 18)
             }
             .frame(maxWidth: 900)
@@ -180,24 +180,18 @@ struct StartView: View {
     }
 
     private var liveCaptionControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 18) {
-                    liveCaptionLanguageControl
-                        .frame(width: 250, alignment: .leading)
-                    liveCaptionInputControl
-                        .frame(minWidth: 410, maxWidth: .infinity, alignment: .leading)
-                }
-
-                VStack(alignment: .leading, spacing: 14) {
-                    liveCaptionLanguageControl
-                    liveCaptionInputControl
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 18) {
+                liveCaptionLanguageControl
+                    .frame(width: 250, alignment: .leading)
+                liveCaptionInputControl
+                    .frame(minWidth: 410, maxWidth: .infinity, alignment: .leading)
             }
 
-            Label("实时字幕翻译已暂时关闭；转录完成后的翻译仍可在结果页使用。", systemImage: "pause.circle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 14) {
+                liveCaptionLanguageControl
+                liveCaptionInputControl
+            }
         }
     }
 
@@ -273,33 +267,23 @@ struct StartView: View {
             && (preferences.engine != .apple || catalog.isSpeechAvailable)
     }
 
-    private var translationPanel: some View {
+    private var cursorInputPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Label("转录后翻译", systemImage: "translate")
+                    Label("光标输入", systemImage: "cursorarrow.motionlines")
                         .font(.headline)
-                    Text("转录完成后可生成译文，也可选择完全离线的翻译方式。")
+                    Text("将语音实时输入到其他 App 的当前光标位置。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Image(systemName: "apple.logo")
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Apple 默认")
+                Button("打开", systemImage: "arrow.up.right") { startCursorInput() }
+                    .buttonStyle(.bordered)
+                    .disabled(!canStartMicrophone)
             }
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) {
-                    Label("首次使用某个语言组合时，macOS 可能下载语言资源。", systemImage: "info.circle")
-                    Spacer()
-                    Label("在这台 Mac 上处理", systemImage: "lock.shield")
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("首次使用某个语言组合时，macOS 可能下载语言资源。", systemImage: "info.circle")
-                    Label("在这台 Mac 上处理", systemImage: "lock.shield")
-                }
-            }
+            Label("准备后移动光标，按 Command-Shift-S 开始，按 Esc 结束。", systemImage: "keyboard")
             .font(.caption)
             .foregroundStyle(.secondary)
         }
@@ -309,11 +293,11 @@ struct StartView: View {
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private var importAndTranslationRow: some View {
+    private var importAndCursorInputRow: some View {
         Grid(horizontalSpacing: 12, verticalSpacing: 12) {
             GridRow(alignment: .top) {
                 importPanel
-                translationPanel
+                cursorInputPanel
             }
         }
     }

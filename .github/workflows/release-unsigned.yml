@@ -28,6 +28,8 @@ jobs:
         run: |
           version="$(plutil -extract CFBundleShortVersionString raw LocalScribe/Resources/Info.plist)"
           test "$GITHUB_REF_NAME" = "v$version"
+          channel="$(tr -d '[:space:]' < .github/release-channel)"
+          test "$channel" = "stable" || test "$channel" = "beta"
 
       - name: Build ad-hoc signed release
         env:
@@ -55,20 +57,38 @@ jobs:
         run: |
           output="$(dirname "$(find dist -name ShengJi-macOS-arm64.dmg -type f -print -quit)")"
           test -n "$output"
+          channel="$(tr -d '[:space:]' < .github/release-channel)"
           notes="$RUNNER_TEMP/release-notes.md"
           {
+            if [[ "$channel" = "beta" ]]; then
+              echo '> **Beta prerelease:** This build is intended for manual testing and is not delivered through the stable in-app update channel.'
+              echo
+              echo '## Known issue: cursor dictation'
+              echo
+              echo '**Cursor dictation is currently not working reliably and may experience substantial delays in both preview and text insertion. Do not rely on it for time-sensitive or important input.**'
+              echo
+              echo "Read the [complete beta notes]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/Documentation/BETA.md)."
+              echo
+            fi
             echo '## Installation'
             echo
             echo 'Download `ShengJi-macOS-arm64.dmg`, open it, and drag ShengJi to Applications.'
             echo
             echo '> This build is not Developer ID signed or notarized by Apple. After the first blocked launch, open System Settings → Privacy & Security, click Open Anyway, and then confirm Open. Continue only if you trust this repository.'
           } > "$notes"
+          release_title="ShengJi $GITHUB_REF_NAME"
+          release_flags=()
+          if [[ "$channel" = "beta" ]]; then
+            release_title="$release_title Beta"
+            release_flags+=(--prerelease)
+          fi
           gh release create "$GITHUB_REF_NAME" \
             "$output/ShengJi-macOS-arm64.dmg" \
             "$output/ShengJi-macOS-arm64.dmg.sha256" \
             "$output/ShengJi-macOS-arm64.zip" \
             "$output/ShengJi-macOS-arm64.zip.sha256" \
             "$output/update.json" \
-            --title "ShengJi $GITHUB_REF_NAME" \
+            --title "$release_title" \
             --notes-file "$notes" \
+            "${release_flags[@]}" \
             --verify-tag

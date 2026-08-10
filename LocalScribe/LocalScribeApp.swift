@@ -4,6 +4,7 @@ import Translation
 
 @main
 struct LocalScribeApp: App {
+    @NSApplicationDelegateAdaptor(AppLifecycleDelegate.self) private var appDelegate
     @State private var updateController = AppUpdateController()
     @State private var presentationPreferences = AppPresentationPreferences()
 
@@ -44,6 +45,12 @@ struct LocalScribeApp: App {
             .environment(\.locale, presentationPreferences.language.locale)
             .preferredColorScheme(presentationPreferences.appearance.colorScheme)
         }
+    }
+}
+
+private final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillTerminate(_ notification: Notification) {
+        GemmaProcessRegistry.terminateAll()
     }
 }
 

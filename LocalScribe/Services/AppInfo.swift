@@ -70,6 +70,18 @@ enum AppInfo {
             role: L10n.text("可选转录后本机翻译后端"),
             license: "CC-BY-NC-4.0 / MIT / Apache-2.0",
             url: URL(string: "https://huggingface.co/osa911/nllb-200-distilled-600M-ct2-int8")!
+        ),
+        OpenSourceDependency(
+            name: "Gemma 4 E2B / E4B IT",
+            role: L10n.text("本机转录纠错、润色与总结模型"),
+            license: "Apache-2.0",
+            url: URL(string: "https://ai.google.dev/gemma")!
+        ),
+        OpenSourceDependency(
+            name: "llama.cpp b10333",
+            role: L10n.text("Gemma Metal 推理运行环境"),
+            license: "MIT",
+            url: URL(string: "https://github.com/ggml-org/llama.cpp")!
         )
     ] }
 }

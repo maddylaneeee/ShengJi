@@ -276,6 +276,10 @@ enum NLLBTranslationRuntime {
             .path
     }
 
+    static func shutdown() async {
+        await shared.shutdown()
+    }
+
     fileprivate static var runtimeExecutableURL: URL? {
         let candidates = Bundle.main.urls(
             forResourcesWithExtension: nil,
@@ -340,6 +344,10 @@ actor NLLBTranslationProcess {
             )
         }
         return try await translate(units: units, sourceLocale: sourceLocale, targetLanguage: targetLanguage)
+    }
+
+    func shutdown() {
+        terminate()
     }
 
     func translate(

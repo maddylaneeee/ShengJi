@@ -37,12 +37,14 @@ enum ManagedPermission: Sendable {
     case microphone
     case speechRecognition
     case screenRecording
+    case accessibility
 
     var settingsAnchor: String {
         switch self {
         case .microphone: "Privacy_Microphone"
         case .speechRecognition: "Privacy_SpeechRecognition"
         case .screenRecording: "Privacy_ScreenCapture"
+        case .accessibility: "Privacy_Accessibility"
         }
     }
 }
@@ -55,6 +57,7 @@ final class PermissionCenter {
     private(set) var microphone: AppPermissionState = .notDetermined
     private(set) var speechRecognition: AppPermissionState = .notDetermined
     private(set) var screenRecording: AppPermissionState = .notDetermined
+    private(set) var accessibility: AppPermissionState = .notDetermined
 
     init() {
         refresh()
@@ -70,6 +73,7 @@ final class PermissionCenter {
         } else {
             screenRecording = .notDetermined
         }
+        accessibility = AXIsProcessTrusted() ? .authorized : .denied
     }
 
     func requestMicrophone() async {
@@ -87,6 +91,13 @@ final class PermissionCenter {
     func requestScreenRecording() {
         UserDefaults.standard.set(true, forKey: Self.screenPermissionRequestedKey)
         _ = CGRequestScreenCaptureAccess()
+        refresh()
+    }
+
+    func requestAccessibility() {
+        _ = AXIsProcessTrustedWithOptions([
+            kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true
+        ] as CFDictionary)
         refresh()
     }
 
