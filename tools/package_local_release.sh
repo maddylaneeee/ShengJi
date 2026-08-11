@@ -274,7 +274,7 @@ cat > "$UPDATE_MANIFEST" <<EOF
   "build": "$BUILD",
   "download_url": "$DOWNLOAD_URL",
   "sha256": "$SHA256",
-  "release_notes": "ShengJi 1.6.4 improves local AI refinement and summaries, restores live change review, and adds safe custom prompt preferences.",
+  "release_notes": "ShengJi 1.6.4 build 30 restores Apple Translation timeout protection and smaller batches, prevents NLLB helper stderr deadlocks, and includes the existing AI workflow improvements.",
   "minimum_system_version": "15.5",
   "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "size_bytes": $(stat -f %z "$ZIP")
