@@ -7,6 +7,7 @@ struct LocalScribeApp: App {
     @NSApplicationDelegateAdaptor(AppLifecycleDelegate.self) private var appDelegate
     @State private var updateController = AppUpdateController()
     @State private var presentationPreferences = AppPresentationPreferences()
+    @State private var aiPromptPreferences = AIPromptPreferences()
 
     init() {
         CLIController.runIfRequested()
@@ -17,6 +18,7 @@ struct LocalScribeApp: App {
             RootView(updateController: updateController)
                 .frame(minWidth: 840, minHeight: 600)
                 .environment(\.locale, presentationPreferences.language.locale)
+                .environment(aiPromptPreferences)
                 .preferredColorScheme(presentationPreferences.appearance.colorScheme)
                 .onAppear {
                     ApplicationMenuLocalizer.apply(presentationPreferences.language)
@@ -40,7 +42,8 @@ struct LocalScribeApp: App {
         Settings {
             SettingsView(
                 updateController: updateController,
-                presentationPreferences: presentationPreferences
+                presentationPreferences: presentationPreferences,
+                aiPromptPreferences: aiPromptPreferences
             )
             .environment(\.locale, presentationPreferences.language.locale)
             .preferredColorScheme(presentationPreferences.appearance.colorScheme)

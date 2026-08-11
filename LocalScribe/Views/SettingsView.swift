@@ -5,6 +5,7 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var updateController: AppUpdateController
     @Bindable var presentationPreferences: AppPresentationPreferences
+    @Bindable var aiPromptPreferences: AIPromptPreferences
     @Environment(\.openURL) private var openURL
     @State private var permissionCenter = PermissionCenter()
     @State private var isConfirmingInstall = false
@@ -13,6 +14,7 @@ struct SettingsView: View {
     @State private var isConfirmingUninstall = false
     @State private var launchesAtLogin = SMAppService.mainApp.status == .enabled
     @State private var gemmaModelManager = GemmaModelManager()
+    @State private var isShowingPromptEditor = false
     @AppStorage("EnableGemmaE4B") private var enableGemmaE4B = false
 
     var body: some View {
@@ -43,6 +45,11 @@ struct SettingsView: View {
                 }
         }
         .frame(minWidth: 620, idealWidth: 680, minHeight: 500, idealHeight: 560)
+        .sheet(isPresented: $isShowingPromptEditor) {
+            NavigationStack {
+                AIPromptEditorView(preferences: aiPromptPreferences)
+            }
+        }
         .alert("安装更新？", isPresented: $isConfirmingInstall) {
             Button("稍后", role: .cancel) {}
             Button("安装并重新打开") {
@@ -193,6 +200,17 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("AI 输出可能出错。纠错结果会按片段 ID、数量、非空、长度、数字、链接、邮箱和时间表达进行校验；未通过的片段保留原文。重要内容仍需人工复核。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("AI 提示词") {
+                Button {
+                    isShowingPromptEditor = true
+                } label: {
+                    Label("编辑提示词…", systemImage: "text.badge.gearshape")
+                }
+                Text("仅开放安全的附加指令；模型协议和校验规则保持受保护。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

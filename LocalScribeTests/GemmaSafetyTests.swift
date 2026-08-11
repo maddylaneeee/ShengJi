@@ -131,6 +131,61 @@ final class GemmaSafetyTests: XCTestCase {
         ))
     }
 
+    @MainActor
+    func testCustomAIPromptsPersistAndCombineWithOneTimeInstructions() throws {
+        let suiteName = "GemmaSafetyTests.AIPromptPreferences.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AIPromptPreferences(defaults: defaults, appVersion: "1.6.4")
+        preferences.proofreadInstructions = "Always use the name ShengJi."
+        preferences.summaryInstructions = "Use three concise bullets."
+        preferences.preservesAcrossUpdates = true
+
+        let restored = AIPromptPreferences(defaults: defaults, appVersion: "1.6.5")
+        XCTAssertEqual(restored.proofreadInstructions, "Always use the name ShengJi.")
+        XCTAssertEqual(restored.summaryInstructions, "Use three concise bullets.")
+        XCTAssertTrue(restored.preservesAcrossUpdates)
+        XCTAssertEqual(
+            restored.instructions(for: .proofread, oneTimeInstructions: "Prefer Canadian spelling."),
+            "Always use the name ShengJi.\n\nPrefer Canadian spelling."
+        )
+    }
+
+    @MainActor
+    func testAppUpdateClearsCustomPromptsUnlessPreservationIsEnabled() throws {
+        let suiteName = "GemmaSafetyTests.AIPromptUpdate.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let current = AIPromptPreferences(defaults: defaults, appVersion: "1.6.4")
+        current.proofreadInstructions = "Old proofreading preference"
+        current.summaryInstructions = "Old summary preference"
+        XCTAssertFalse(current.preservesAcrossUpdates)
+
+        let updated = AIPromptPreferences(defaults: defaults, appVersion: "1.6.5")
+        XCTAssertTrue(updated.proofreadInstructions.isEmpty)
+        XCTAssertTrue(updated.summaryInstructions.isEmpty)
+    }
+
+    @MainActor
+    func testCustomPromptLengthIsBoundedWithoutChangingProtectedSystemPrompt() throws {
+        let suiteName = "GemmaSafetyTests.AIPromptBoundary.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let protectedPrompt = try AIPromptLoader.load(.proofread)
+
+        let preferences = AIPromptPreferences(defaults: defaults, appVersion: "1.6.4")
+        preferences.proofreadInstructions = String(repeating: "x", count: 5_000)
+
+        XCTAssertEqual(
+            preferences.proofreadInstructions.count,
+            AIPromptPreferences.maximumCustomInstructionLength
+        )
+        XCTAssertEqual(try AIPromptLoader.load(.proofread), protectedPrompt)
+        XCTAssertTrue(protectedPrompt.contains("Return only a JSON array"))
+    }
+
     func testSummaryFactsRequireRealEvidenceAndRejectNewArtifacts() throws {
         let id = UUID().uuidString
         let evidence = [id: "Researchers found 45 wooden pieces near Stonehenge."]

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TranscriptionView: View {
     @Environment(\.locale) private var interfaceLocale
+    @Environment(AIPromptPreferences.self) private var aiPromptPreferences
     @Bindable var session: TranscriptionSessionModel
     @Bindable var catalog: LanguageCatalog
     @Bindable var recognitionPreferences: RecognitionPreferences
@@ -1167,7 +1168,7 @@ struct TranscriptionView: View {
         gemmaOriginalText = session.transcriptText
         gemmaPreviewText = gemmaKind == .summarize ? "" : session.transcriptText
         let model = gemmaModel
-        let prompt = gemmaPrompt
+        let prompt = aiPromptPreferences.instructions(for: gemmaKind, oneTimeInstructions: gemmaPrompt)
         let segments = session.aiOptimizationInputSegments
         let fallback = session.transcriptText
         gemmaTask = Task {
