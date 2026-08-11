@@ -103,6 +103,8 @@
 "卸载声迹？" = "Uninstall ShengJi?";
 "原文" = "Original";
 "取消" = "Cancel";
+"取消翻译" = "Cancel Translation";
+"导入稿件的原文语言" = "Source language of the imported transcript";
 "可以恢复上次转录" = "Previous transcript available";
 "可直接编辑，也可保留现有文字并继续麦克风转录。" = "Edit it directly, or keep the existing text and continue transcribing from the microphone.";
 "回到最新内容" = "Jump to Latest";

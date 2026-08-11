@@ -54,6 +54,7 @@ struct LocalScribeApp: App {
 private final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         GemmaProcessRegistry.terminateAll()
+        NLLBProcessRegistry.terminateAll()
     }
 }
 

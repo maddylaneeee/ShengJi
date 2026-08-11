@@ -106,7 +106,7 @@ final class LanguageCatalog {
         return result
     }
 
-    private static func bestMatch(
+    static func bestMatch(
         for locale: Locale,
         in languages: [LanguageOption]
     ) -> LanguageOption? {

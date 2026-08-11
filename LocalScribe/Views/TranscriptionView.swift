@@ -510,6 +510,7 @@ struct TranscriptionView: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
                 translationLabel
+                if session.isImportedTranscript { importedSourceLanguagePicker }
                 translationServicePicker
                 translationTargetPicker
                 translationStatus
@@ -525,6 +526,7 @@ struct TranscriptionView: View {
                     translationAction
                 }
                 HStack(spacing: 10) {
+                    if session.isImportedTranscript { importedSourceLanguagePicker }
                     translationServicePicker
                     translationTargetPicker
                 }
@@ -665,6 +667,27 @@ struct TranscriptionView: View {
         .frame(width: 170)
     }
 
+    private var importedSourceLanguagePicker: some View {
+        Picker("原文", selection: Binding(
+            get: { session.locale.identifier },
+            set: { session.updateImportedSourceLocale(Locale(identifier: $0)) }
+        )) {
+            ForEach(importedSourceLanguages) { option in
+                Text(option.displayName).tag(option.id)
+            }
+        }
+        .frame(width: 170)
+        .help("导入稿件的原文语言")
+    }
+
+    private var importedSourceLanguages: [LanguageOption] {
+        let supported: Set<String> = ["zh", "en", "ja", "ko", "es", "fr", "de", "pt", "ru"]
+        return catalog.languages.filter {
+            guard let code = $0.locale.language.languageCode?.identifier else { return false }
+            return supported.contains(code)
+        }
+    }
+
     private var translationServicePicker: some View {
         Picker("服务", selection: $translationPreferences.provider) {
             ForEach(TranslationProvider.allCases) { provider in
@@ -682,17 +705,23 @@ struct TranscriptionView: View {
             }
             .disabled(session.isTranslating || gemmaIsRunning || !GemmaHardwareSupport.isSupported)
             .help(GemmaHardwareSupport.isSupported ? "" : GemmaHardwareSupport.unsupportedReason)
-            if translationPreferences.provider == .nllb, !isNLLBTranslationReady {
+            if !session.isTranslating, translationPreferences.provider == .nllb, !isNLLBTranslationReady {
                 nllbModelDownloadAction
             }
-            Button(session.translatedText.isEmpty ? "生成译文" : "重新翻译", systemImage: "sparkles") {
-                session.translate(
-                    targetLanguage: translationPreferences.targetLanguage,
-                    provider: translationPreferences.provider
-                )
+            if session.isTranslating {
+                Button("取消翻译", systemImage: "stop.fill", role: .cancel) {
+                    session.cancelTranslation()
+                }
+            } else {
+                Button(session.translatedText.isEmpty ? "生成译文" : "重新翻译", systemImage: "sparkles") {
+                    session.translate(
+                        targetLanguage: translationPreferences.targetLanguage,
+                        provider: translationPreferences.provider
+                    )
+                }
+                .primaryActionStyle()
+                .disabled(selectedTranslationTargetMatchesSource || !selectedTranslationProviderReady)
             }
-            .primaryActionStyle()
-            .disabled(session.isTranslating || selectedTranslationTargetMatchesSource || !selectedTranslationProviderReady)
         }
     }
 
