@@ -12,7 +12,11 @@ enum TranslationProgress: Sendable, Equatable {
 enum TranslationBatchPolicy {
     static func size(for provider: TranslationProvider) -> Int {
         switch provider {
-        case .apple: 16
+        // Smaller Apple batches avoid a macOS Translation service failure mode
+        // where one longer request can hold an entire 16-item batch until the
+        // watchdog expires. Four items still amortize session overhead while
+        // making translated text and progress visible every few seconds.
+        case .apple: 4
         case .nllb: 4
         }
     }
@@ -57,7 +61,8 @@ enum TranslationService {
         units: [TranslationUnit],
         sourceLocale: Locale,
         configuration: TranslationConfiguration,
-        onProgress: (@Sendable (TranslationProgress) -> Void)? = nil
+        onProgress: (@Sendable (TranslationProgress) -> Void)? = nil,
+        onPartialResult: (@Sendable (SegmentTranslation) -> Void)? = nil
     ) async -> [SegmentTranslation] {
         if configuration.targetLanguage.isEquivalent(to: sourceLocale) {
             return units.map {
@@ -77,7 +82,12 @@ enum TranslationService {
 
         onProgress?(.preparing)
         onProgress?(.translating(completed: 0, total: units.count))
-        let batchSize = batchSize(for: configuration.provider)
+        // Apple owns its internal request chunking so every chunk stays on one
+        // TranslationSession. Recreating an equivalent SwiftUI configuration
+        // between chunks can leave the next translationTask invocation dormant.
+        let batchSize = configuration.provider == .apple
+            ? max(units.count, 1)
+            : batchSize(for: configuration.provider)
         var output: [SegmentTranslation] = []
         output.reserveCapacity(units.count)
         var cursor = 0
@@ -85,12 +95,26 @@ enum TranslationService {
             if Task.isCancelled { break }
             let end = min(cursor + batchSize, units.count)
             let batch = Array(units[cursor..<end])
+            let batchStart = cursor
+            let streamingResponseHandler: (@Sendable (Int, String, Int) -> Void)?
+            if configuration.provider == .apple {
+                streamingResponseHandler = { index, value, completed in
+                    guard batch.indices.contains(index) else { return }
+                    onPartialResult?(success(batch[index], value: value))
+                    onProgress?(.translating(completed: batchStart + completed, total: units.count))
+                }
+            } else {
+                streamingResponseHandler = nil
+            }
             do {
-                output.append(contentsOf: try await translateBatchWithFallback(
+                let results = try await translateBatchWithFallback(
                     batch,
                     sourceLocale: sourceLocale,
-                    configuration: configuration
-                ))
+                    configuration: configuration,
+                    onStreamingResponse: streamingResponseHandler
+                )
+                output.append(contentsOf: results)
+                results.forEach { onPartialResult?($0) }
             } catch {
                 // The provider stopped responding mid-run: mark everything left
                 // as failed with a visible reason instead of stalling again.
@@ -110,7 +134,8 @@ enum TranslationService {
     private static func translateBatchWithFallback(
         _ units: [TranslationUnit],
         sourceLocale: Locale,
-        configuration: TranslationConfiguration
+        configuration: TranslationConfiguration,
+        onStreamingResponse: (@Sendable (_ index: Int, _ text: String, _ completed: Int) -> Void)?
     ) async throws -> [SegmentTranslation] {
         var batchError: Error?
         for attempt in 0..<2 {
@@ -119,7 +144,8 @@ enum TranslationService {
                 let translations = try await translateUnitsPreservingIdentity(
                     units,
                     sourceLocale: sourceLocale,
-                    configuration: configuration
+                    configuration: configuration,
+                    onStreamingResponse: attempt == 0 ? onStreamingResponse : nil
                 )
                 guard translations.count == units.count else {
                     throw TranslationBatchError.invalidCount(expected: units.count, actual: translations.count)
@@ -240,7 +266,8 @@ enum TranslationService {
     private static func translateUnitsPreservingIdentity(
         _ units: [TranslationUnit],
         sourceLocale: Locale,
-        configuration: TranslationConfiguration
+        configuration: TranslationConfiguration,
+        onStreamingResponse: (@Sendable (_ index: Int, _ text: String, _ completed: Int) -> Void)? = nil
     ) async throws -> [String] {
         switch configuration.provider {
         case .apple:
@@ -248,7 +275,8 @@ enum TranslationService {
                 texts: units.map(\.sourceText),
                 sourceLocale: sourceLocale,
                 targetLanguage: configuration.targetLanguage,
-                quality: .highFidelity
+                quality: .lowLatency,
+                onResponse: onStreamingResponse
             )
         case .nllb:
             return try await NLLBTranslationRuntime.shared.translate(

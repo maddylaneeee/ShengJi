@@ -178,7 +178,8 @@ final class AppleTranslationCoordinator {
             texts: [],
             sourceLocale: sourceLocale,
             targetLanguage: targetLanguage,
-            quality: quality
+            quality: quality,
+            onResponse: nil
         )
     }
 
@@ -186,7 +187,8 @@ final class AppleTranslationCoordinator {
         texts: [String],
         sourceLocale: Locale,
         targetLanguage: TranslationTargetLanguage,
-        quality: AppleTranslationQuality = .highFidelity
+        quality: AppleTranslationQuality = .highFidelity,
+        onResponse: (@Sendable (_ index: Int, _ text: String, _ completed: Int) -> Void)? = nil
     ) async throws -> [String] {
         let cleaned = texts.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         guard !cleaned.isEmpty else { return [] }
@@ -194,7 +196,8 @@ final class AppleTranslationCoordinator {
             texts: cleaned,
             sourceLocale: sourceLocale,
             targetLanguage: targetLanguage,
-            quality: quality
+            quality: quality,
+            onResponse: onResponse
         )
     }
 
@@ -209,15 +212,27 @@ final class AppleTranslationCoordinator {
             if job.texts.isEmpty {
                 output = []
             } else {
-                let requests = job.texts.enumerated().map { index, text in
-                    TranslationSession.Request(sourceText: text, clientIdentifier: String(index))
-                }
-                let responses = try await session.translations(from: requests)
                 var indexed: [Int: String] = [:]
-                for response in responses {
-                    guard let identifier = response.clientIdentifier,
-                          let index = Int(identifier) else { continue }
-                    indexed[index] = response.targetText
+                let chunkSize = TranslationBatchPolicy.size(for: .apple)
+                for chunkStart in stride(from: 0, to: job.texts.count, by: chunkSize) {
+                    try Task.checkCancellation()
+                    let chunkEnd = min(chunkStart + chunkSize, job.texts.count)
+                    let requests = job.texts[chunkStart..<chunkEnd].enumerated().map { offset, text in
+                        TranslationSession.Request(
+                            sourceText: text,
+                            clientIdentifier: String(chunkStart + offset)
+                        )
+                    }
+                    for try await response in session.translate(batch: requests) {
+                        try Task.checkCancellation()
+                        guard let identifier = response.clientIdentifier,
+                              let index = Int(identifier),
+                              job.texts.indices.contains(index),
+                              indexed[index] == nil else { continue }
+                        indexed[index] = response.targetText
+                        refreshWatchdog(for: job)
+                        job.onResponse?(index, response.targetText, indexed.count)
+                    }
                 }
                 guard indexed.count == job.texts.count else {
                     throw AppleTranslationError.invalidResponse
@@ -236,7 +251,8 @@ final class AppleTranslationCoordinator {
         texts: [String],
         sourceLocale: Locale,
         targetLanguage: TranslationTargetLanguage,
-        quality: AppleTranslationQuality
+        quality: AppleTranslationQuality,
+        onResponse: (@Sendable (_ index: Int, _ text: String, _ completed: Int) -> Void)?
     ) async throws -> [String] {
         let source = Locale.Language(identifier: sourceLocale.identifier)
         let target = targetLanguage.language
@@ -254,6 +270,7 @@ final class AppleTranslationCoordinator {
                     source: source,
                     target: target,
                     quality: quality,
+                    onResponse: onResponse,
                     continuation: continuation
                 ))
                 activateNextJobIfNeeded()
@@ -271,23 +288,25 @@ final class AppleTranslationCoordinator {
 
         if #available(macOS 26.4, *) {
             let strategy: TranslationSession.Strategy = job.quality == .lowLatency ? .lowLatency : .highFidelity
-            configuration = TranslationSession.Configuration(
-                source: job.source,
-                target: job.target,
-                preferredStrategy: strategy
-            )
+            if configuration?.source == job.source,
+               configuration?.target == job.target,
+               configuration?.preferredStrategy == strategy {
+                configuration?.invalidate()
+            } else {
+                configuration = TranslationSession.Configuration(
+                    source: job.source,
+                    target: job.target,
+                    preferredStrategy: strategy
+                )
+            }
+        } else if configuration?.source == job.source,
+                  configuration?.target == job.target {
+            configuration?.invalidate()
         } else {
             configuration = TranslationSession.Configuration(source: job.source, target: job.target)
         }
 
-        job.watchdogTask = Task { @MainActor [weak self] in
-            do {
-                try await Task.sleep(for: Self.jobTimeout)
-            } catch {
-                return
-            }
-            self?.timeoutIfPending(jobID: job.id)
-        }
+        refreshWatchdog(for: job)
     }
 
     private func cancel(jobID: UUID) {
@@ -296,6 +315,20 @@ final class AppleTranslationCoordinator {
 
     private func timeoutIfPending(jobID: UUID) {
         settle(jobID: jobID, error: AppleTranslationError.timedOut)
+    }
+
+    /// Keep the 90-second terminal guarantee while allowing a long transcript
+    /// to run as long as the system service continues producing responses.
+    private func refreshWatchdog(for job: TranslationJob) {
+        job.watchdogTask?.cancel()
+        job.watchdogTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: Self.jobTimeout)
+            } catch {
+                return
+            }
+            self?.timeoutIfPending(jobID: job.id)
+        }
     }
 
     private func settle(jobID: UUID, error: any Error) {
@@ -317,7 +350,6 @@ final class AppleTranslationCoordinator {
         job.watchdogTask = nil
         currentJob = nil
         activeSession = nil
-        configuration = nil
         isBusy = false
         job.continuation.resume(with: result)
         Task { @MainActor [weak self] in
@@ -333,6 +365,7 @@ private final class TranslationJob {
     let source: Locale.Language
     let target: Locale.Language
     let quality: AppleTranslationQuality
+    let onResponse: (@Sendable (_ index: Int, _ text: String, _ completed: Int) -> Void)?
     let continuation: CheckedContinuation<[String], Error>
     var watchdogTask: Task<Void, Never>?
 
@@ -342,6 +375,7 @@ private final class TranslationJob {
         source: Locale.Language,
         target: Locale.Language,
         quality: AppleTranslationQuality,
+        onResponse: (@Sendable (_ index: Int, _ text: String, _ completed: Int) -> Void)?,
         continuation: CheckedContinuation<[String], Error>
     ) {
         self.id = id
@@ -349,6 +383,7 @@ private final class TranslationJob {
         self.source = source
         self.target = target
         self.quality = quality
+        self.onResponse = onResponse
         self.continuation = continuation
     }
 }
@@ -384,11 +419,13 @@ enum AppleTranslationCLI {
         let requests = texts.enumerated().map {
             TranslationSession.Request(sourceText: $0.element, clientIdentifier: String($0.offset))
         }
-        let responses = try await session.translations(from: requests)
-        let indexed = Dictionary(uniqueKeysWithValues: responses.compactMap { response -> (Int, String)? in
-            guard let identifier = response.clientIdentifier, let index = Int(identifier) else { return nil }
-            return (index, response.targetText)
-        })
+        var indexed: [Int: String] = [:]
+        for try await response in session.translate(batch: requests) {
+            guard let identifier = response.clientIdentifier,
+                  let index = Int(identifier),
+                  texts.indices.contains(index) else { continue }
+            indexed[index] = response.targetText
+        }
         guard indexed.count == texts.count else { throw AppleTranslationError.invalidResponse }
         return texts.indices.compactMap { indexed[$0] }
     }

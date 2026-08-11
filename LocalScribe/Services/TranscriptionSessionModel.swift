@@ -570,6 +570,11 @@ final class TranscriptionSessionModel {
                 self?.translationProgress = progress
             }
         }
+        let reportPartialResult: @Sendable (SegmentTranslation) -> Void = { [weak self] translation in
+            Task { @MainActor [weak self] in
+                self?.applyStreamingTranslation(translation, runID: runID)
+            }
+        }
         translationTask = Task { [weak self] in
             let units = sourceSegments.enumerated().map { index, segment in
                 TranslationUnit(segment: segment, ordinal: index)
@@ -578,7 +583,8 @@ final class TranscriptionSessionModel {
                 units: units,
                 sourceLocale: locale,
                 configuration: translationConfiguration,
-                onProgress: reportProgress
+                onProgress: reportProgress,
+                onPartialResult: reportPartialResult
             )
             guard !Task.isCancelled, let self,
                   self.translationRunID == runID,
@@ -597,6 +603,18 @@ final class TranscriptionSessionModel {
             self.translationRunID = nil
             self.saveRecoveryNow()
         }
+    }
+
+    private func applyStreamingTranslation(_ translation: SegmentTranslation, runID: UUID) {
+        guard translationRunID == runID, isTranslating else { return }
+        if let index = segmentTranslations.firstIndex(where: { $0.id == translation.id }) {
+            segmentTranslations[index] = translation
+        } else {
+            segmentTranslations.append(translation)
+        }
+        segmentTranslations.sort { $0.ordinal < $1.ordinal }
+        translatedSegments = segmentTranslations.map(\.transcriptSegment)
+        translatedText = segmentTranslations.map(\.displayText).joined(separator: "\n")
     }
 
     @available(macOS 26.0, *)
