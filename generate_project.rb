@@ -45,6 +45,7 @@ source_files = %w[
   Services/NLLBModelManager.swift
   Services/GemmaModelManager.swift
   Services/GemmaOptimization.swift
+  Services/AIPromptPreferences.swift
   Services/LiveCaptionController.swift
   Views/RootView.swift
   Views/InterfaceStyles.swift
@@ -53,6 +54,7 @@ source_files = %w[
   Views/TranscriptEditingView.swift
   Views/LiveCaptionPanelView.swift
   Views/SettingsView.swift
+  Views/AIPromptEditorView.swift
 ]
 
 source_files.each do |relative_path|

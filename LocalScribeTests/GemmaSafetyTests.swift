@@ -131,6 +131,61 @@ final class GemmaSafetyTests: XCTestCase {
         ))
     }
 
+    @MainActor
+    func testCustomAIPromptsPersistAndCombineWithOneTimeInstructions() throws {
+        let suiteName = "GemmaSafetyTests.AIPromptPreferences.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AIPromptPreferences(defaults: defaults, appVersion: "1.6.4")
+        preferences.proofreadInstructions = "Always use the name ShengJi."
+        preferences.summaryInstructions = "Use three concise bullets."
+        preferences.preservesAcrossUpdates = true
+
+        let restored = AIPromptPreferences(defaults: defaults, appVersion: "1.6.5")
+        XCTAssertEqual(restored.proofreadInstructions, "Always use the name ShengJi.")
+        XCTAssertEqual(restored.summaryInstructions, "Use three concise bullets.")
+        XCTAssertTrue(restored.preservesAcrossUpdates)
+        XCTAssertEqual(
+            restored.instructions(for: .proofread, oneTimeInstructions: "Prefer Canadian spelling."),
+            "Always use the name ShengJi.\n\nPrefer Canadian spelling."
+        )
+    }
+
+    @MainActor
+    func testAppUpdateClearsCustomPromptsUnlessPreservationIsEnabled() throws {
+        let suiteName = "GemmaSafetyTests.AIPromptUpdate.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let current = AIPromptPreferences(defaults: defaults, appVersion: "1.6.4")
+        current.proofreadInstructions = "Old proofreading preference"
+        current.summaryInstructions = "Old summary preference"
+        XCTAssertFalse(current.preservesAcrossUpdates)
+
+        let updated = AIPromptPreferences(defaults: defaults, appVersion: "1.6.5")
+        XCTAssertTrue(updated.proofreadInstructions.isEmpty)
+        XCTAssertTrue(updated.summaryInstructions.isEmpty)
+    }
+
+    @MainActor
+    func testCustomPromptLengthIsBoundedWithoutChangingProtectedSystemPrompt() throws {
+        let suiteName = "GemmaSafetyTests.AIPromptBoundary.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let protectedPrompt = try AIPromptLoader.load(.proofread)
+
+        let preferences = AIPromptPreferences(defaults: defaults, appVersion: "1.6.4")
+        preferences.proofreadInstructions = String(repeating: "x", count: 5_000)
+
+        XCTAssertEqual(
+            preferences.proofreadInstructions.count,
+            AIPromptPreferences.maximumCustomInstructionLength
+        )
+        XCTAssertEqual(try AIPromptLoader.load(.proofread), protectedPrompt)
+        XCTAssertTrue(protectedPrompt.contains("Return only a JSON array"))
+    }
+
     func testSummaryFactsRequireRealEvidenceAndRejectNewArtifacts() throws {
         let id = UUID().uuidString
         let evidence = [id: "Researchers found 45 wooden pieces near Stonehenge."]
@@ -213,7 +268,20 @@ final class GemmaSafetyTests: XCTestCase {
         XCTAssertEqual(result.values[second.id], "Keep this sentence.")
     }
 
-    func testMismatchedIDsRejectWholeBatch() {
+    func testIncompleteBatchStillAppliesValidSegments() {
+        let first = TranscriptSegment(startTime: 0, endTime: 1, text: "Um, first sentence.")
+        let second = TranscriptSegment(startTime: 1, endTime: 2, text: "Second sentence.")
+        let result = GemmaOptimizationService.validate(
+            [GemmaCorrection(id: first.id.uuidString, text: "First sentence.")],
+            originals: [first, second]
+        )
+
+        XCTAssertEqual(result.values[first.id], "First sentence.")
+        XCTAssertNil(result.values[second.id])
+        XCTAssertNotNil(result.errors[second.id])
+    }
+
+    func testMismatchedIDRejectsAffectedSegment() {
         let segment = TranscriptSegment(startTime: 0, endTime: 1, text: "Original")
         let correction = GemmaCorrection(id: UUID().uuidString, text: "Changed")
         let result = GemmaOptimizationService.validate([correction], originals: [segment])
@@ -249,14 +317,102 @@ final class GemmaSafetyTests: XCTestCase {
             TranscriptSegment(startTime: Double($0), endTime: Double($0 + 1), text: "Sentence \($0).")
         }
         let proofreadRanges = GemmaOptimizationService.proofreadRanges(for: short)
-        XCTAssertEqual(proofreadRanges.map(\.count), [16, 4])
-        XCTAssertEqual(GemmaOptimizationService.summaryBatches(for: short).count, 1)
+        XCTAssertEqual(proofreadRanges.map(\.count), [4, 4, 4, 4, 4])
+        XCTAssertEqual(GemmaOptimizationService.summaryBatches(for: short).map(\.count), [20])
 
         let long = (0..<4).map {
             TranscriptSegment(startTime: Double($0), endTime: Double($0 + 1), text: String(repeating: "a", count: 1_600))
         }
         XCTAssertEqual(GemmaOptimizationService.proofreadRanges(for: long).map(\.count), [1, 1, 1, 1])
-        XCTAssertEqual(GemmaOptimizationService.summaryBatches(for: long).map(\.count), [2, 2])
+        XCTAssertEqual(GemmaOptimizationService.summaryBatches(for: long).map(\.count), [3, 1])
+    }
+
+    func testResponseBudgetIncludesStructuredOutputOverhead() {
+        XCTAssertEqual(
+            GemmaOptimizationService.responseTokenBudget(
+                texts: ["短句", "Second"],
+                minimum: 512,
+                maximum: 3_072,
+                overheadPerItem: 96
+            ),
+            512
+        )
+        XCTAssertEqual(
+            GemmaOptimizationService.responseTokenBudget(
+                texts: [String(repeating: "中", count: 2_000)],
+                minimum: 512,
+                maximum: 3_072,
+                overheadPerItem: 96
+            ),
+            3_072
+        )
+    }
+
+    func testSummaryTargetScalesButRemainsConcise() {
+        XCTAssertEqual(GemmaOptimizationService.summaryCharacterTarget(sourceLength: 100), 65)
+        XCTAssertEqual(GemmaOptimizationService.summaryCharacterTarget(sourceLength: 1_000), 200)
+        XCTAssertEqual(GemmaOptimizationService.summaryCharacterTarget(sourceLength: 20_000), 1_200)
+    }
+
+    func testFinalSummaryRejectsTranscriptLengthAndSpeakerFraming() {
+        let source = String(repeating: "项目完成了测试并批准周二复查。", count: 30) + "共45项。"
+        let concise = "项目完成测试，并批准周二复查，共45项。"
+        XCTAssertEqual(
+            GemmaOptimizationService.validatedFinalSummary(
+                concise,
+                source: source,
+                targetCharacters: 120
+            ),
+            concise
+        )
+        XCTAssertNil(GemmaOptimizationService.validatedFinalSummary(
+            source,
+            source: source,
+            targetCharacters: 120
+        ))
+        XCTAssertNil(GemmaOptimizationService.validatedFinalSummary(
+            "说话者认为项目完成测试，并批准周二复查，共45项。",
+            source: source,
+            targetCharacters: 120
+        ))
+        XCTAssertNil(GemmaOptimizationService.validatedFinalSummary(
+            "项目完成测试，并批准周二复查，共46项。",
+            source: source,
+            targetCharacters: 120
+        ))
+    }
+
+    func testSummaryPromptRequestsSynthesisInsteadOfSegmentRewriting() {
+        let message = GemmaOptimizationService.summaryUserMessage(
+            prompt: "使用中文",
+            data: "第一段。\n第二段。",
+            targetCharacters: 120
+        )
+        XCTAssertTrue(message.contains("around 120 characters"))
+        XCTAssertTrue(message.contains("substantially shorter"))
+        XCTAssertTrue(message.contains("第一段。\n第二段。"))
+    }
+
+    func testStreamingProofreadPreviewAppliesCompletedRowsImmediately() {
+        let first = TranscriptSegment(startTime: 0, endTime: 1, text: "Um, first sentence.")
+        let second = TranscriptSegment(startTime: 1, endTime: 2, text: "Second sentence.")
+        let preview = GemmaOptimizationService.applyingPreviewCorrections(
+            [GemmaCorrection(id: first.id.uuidString, text: "First sentence.")],
+            editable: [first, second],
+            baseline: [first, second]
+        )
+        XCTAssertEqual(preview[0].text, "First sentence.")
+        XCTAssertEqual(preview[1].text, second.text)
+    }
+
+    func testExtractiveSummaryFallbackCoversBeginningAndEnd() {
+        let facts = (0..<20).map {
+            GemmaSummaryFact(text: "Fact \($0)", evidenceIDs: ["\($0)"])
+        }
+        let fallback = GemmaOptimizationService.extractiveSummaryFacts(facts, maximumCount: 8)
+        XCTAssertEqual(fallback.count, 8)
+        XCTAssertEqual(fallback.first?.text, "Fact 0")
+        XCTAssertEqual(fallback.last?.text, "Fact 19")
     }
 
     func testSummarySplitsOversizedSegmentsAndPreservesUniqueEvidenceIDs() {
@@ -321,6 +477,30 @@ final class GemmaSafetyTests: XCTestCase {
         XCTAssertEqual(session.transcriptText, original.text)
         XCTAssertEqual(session.segments, [original])
         XCTAssertFalse(session.canUndoAIChange)
+    }
+
+    @MainActor
+    func testAIInputUsesCurrentEditedPreviewInsteadOfGeneratedSegments() {
+        let original = TranscriptSegment(startTime: 0, endTime: 4, text: "Original generated text.")
+        let session = TranscriptionSessionModel(
+            imported: ImportedTranscript(
+                title: "sample",
+                text: original.text,
+                segments: [original],
+                duration: 4
+            ),
+            continueWithMicrophone: false,
+            locale: Locale(identifier: "en"),
+            configuration: RecognitionConfiguration(engine: .apple)
+        )
+        session.transcriptText = "Manually edited preview.\nA second edited sentence."
+        session.noteDirectEdit()
+
+        let input = session.aiOptimizationInputSegments
+        let inputText = input.map(\.text).joined(separator: "\n")
+        XCTAssertTrue(inputText.contains("Manually edited preview."))
+        XCTAssertTrue(inputText.contains("A second edited sentence."))
+        XCTAssertFalse(inputText.contains("Original generated text."))
     }
 
     @MainActor

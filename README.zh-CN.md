@@ -12,7 +12,7 @@
 
 ShengJi 是一款面向 Apple silicon Mac 的免费、开源原生转录应用，无需注册账号。它把本地识别、悬浮实时字幕、稿件编辑、离线翻译、字幕导入导出和长任务恢复整合在一个 SwiftUI 界面中。识别音频和导入稿件不会由应用上传。
 
-当前版本：**1.6.3（26）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+当前版本：**1.6.4（27）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
 
 ## 实际演示
 
