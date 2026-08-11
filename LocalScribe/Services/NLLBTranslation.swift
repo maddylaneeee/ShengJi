@@ -9,16 +9,26 @@ enum TranslationProgress: Sendable, Equatable {
     case translating(completed: Int, total: Int)
 }
 
-enum TranslationService {
-    /// Requests per provider call. The system TranslationSession on macOS 15
-    /// can silently stop responding when a single call carries too many
-    /// requests, so Apple batches stay small; the local NLLB runtime handles
-    /// larger batches fine and benefits from fewer process round-trips.
-    private static func batchSize(for provider: TranslationProvider) -> Int {
+enum TranslationBatchPolicy {
+    static func size(for provider: TranslationProvider) -> Int {
         switch provider {
         case .apple: 16
-        case .nllb: 64
+        case .nllb: 4
         }
+    }
+
+    /// Greedy decoding keeps the CPU-only 600M model responsive enough for
+    /// interactive transcript translation. Beam search remains substantially
+    /// slower while providing little benefit for this UI workflow.
+    static let nllbBeamSize = 1
+}
+
+enum TranslationService {
+    /// Requests per provider call. Apple stays below the system service's
+    /// observed stall threshold; NLLB uses still smaller batches so the UI can
+    /// report useful progress during CPU-only inference.
+    private static func batchSize(for provider: TranslationProvider) -> Int {
+        TranslationBatchPolicy.size(for: provider)
     }
 
     static func translate(
@@ -66,11 +76,13 @@ enum TranslationService {
         }
 
         onProgress?(.preparing)
+        onProgress?(.translating(completed: 0, total: units.count))
         let batchSize = batchSize(for: configuration.provider)
         var output: [SegmentTranslation] = []
         output.reserveCapacity(units.count)
         var cursor = 0
         while cursor < units.count {
+            if Task.isCancelled { break }
             let end = min(cursor + batchSize, units.count)
             let batch = Array(units[cursor..<end])
             do {
@@ -102,6 +114,7 @@ enum TranslationService {
     ) async throws -> [SegmentTranslation] {
         var batchError: Error?
         for attempt in 0..<2 {
+            try Task.checkCancellation()
             do {
                 let translations = try await translateUnitsPreservingIdentity(
                     units,
@@ -124,6 +137,7 @@ enum TranslationService {
                 // retry; fail fast so the run settles within one timeout.
                 throw AppleTranslationError.timedOut
             } catch {
+                try Task.checkCancellation()
                 batchError = error
                 if attempt == 0 { try? await Task.sleep(for: .milliseconds(250)) }
             }
@@ -132,6 +146,7 @@ enum TranslationService {
         var recovered: [SegmentTranslation] = []
         recovered.reserveCapacity(units.count)
         for unit in units {
+            try Task.checkCancellation()
             do {
                 let values = try await translateUnitsPreservingIdentity(
                     [unit],
@@ -263,7 +278,12 @@ enum NLLBTranslationRuntime {
     static let shared = NLLBTranslationProcess()
 
     static func shutdown() async {
+        NLLBProcessRegistry.terminateAll()
         await shared.shutdown()
+    }
+
+    static func stopImmediately() {
+        NLLBProcessRegistry.terminateAll()
     }
 
     static var isRuntimeBundled: Bool {
@@ -322,6 +342,38 @@ enum NLLBTranslationRuntime {
     }
 }
 
+enum NLLBProcessRegistry {
+    private static let lock = NSLock()
+    private nonisolated(unsafe) static var processes: [ObjectIdentifier: Process] = [:]
+
+    static func register(_ process: Process) {
+        lock.lock()
+        processes[ObjectIdentifier(process)] = process
+        lock.unlock()
+    }
+
+    static func unregister(_ process: Process?) {
+        guard let process else { return }
+        lock.lock()
+        processes.removeValue(forKey: ObjectIdentifier(process))
+        lock.unlock()
+    }
+
+    static func terminateAll() {
+        lock.lock()
+        let active = Array(processes.values)
+        processes.removeAll()
+        lock.unlock()
+        active.filter(\.isRunning).forEach { $0.terminate() }
+    }
+
+    static var activeProcessCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return processes.values.filter(\.isRunning).count
+    }
+}
+
 actor NLLBTranslationProcess {
     private var process: Process?
     private var input: FileHandle?
@@ -355,6 +407,7 @@ actor NLLBTranslationProcess {
         sourceLocale: Locale,
         targetLanguage: TranslationTargetLanguage
     ) async throws -> [String] {
+        try Task.checkCancellation()
         let lineBatch = NLLBLineBatch(units: units)
         guard !lineBatch.sourceTexts.isEmpty else { return [] }
         guard let modelURL = NLLBTranslationRuntime.installedModelURL else {
@@ -365,6 +418,7 @@ actor NLLBTranslationProcess {
         if source == target { return lineBatch.sourceTexts }
         guard !lineBatch.requestTexts.isEmpty else { return lineBatch.sourceTexts }
 
+        try Task.checkCancellation()
         try ensureRunning()
         let request = NLLBRequest(
             command: "translate",
@@ -373,7 +427,7 @@ actor NLLBTranslationProcess {
             unitIDs: lineBatch.requestIDs,
             sourceLanguage: source,
             targetLanguage: target,
-            beamSize: 4
+            beamSize: TranslationBatchPolicy.nllbBeamSize
         )
         let response: NLLBResponse = try send(request)
         guard response.ok else {
@@ -414,6 +468,7 @@ actor NLLBTranslationProcess {
         process.standardOutput = outputPipe
         process.standardError = errorPipe
         try process.run()
+        NLLBProcessRegistry.register(process)
 
         self.process = process
         self.input = inputPipe.fileHandleForWriting
@@ -480,11 +535,13 @@ actor NLLBTranslationProcess {
     }
 
     private func terminate() {
+        let activeProcess = process
         stderr?.readabilityHandler = nil
         try? input?.close()
         try? output?.close()
         try? stderr?.close()
         process?.terminate()
+        NLLBProcessRegistry.unregister(activeProcess)
         process = nil
         input = nil
         output = nil

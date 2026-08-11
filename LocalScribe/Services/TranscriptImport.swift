@@ -1,10 +1,58 @@
 import Foundation
+import NaturalLanguage
 
 struct ImportedTranscript: Sendable, Equatable {
     let title: String
     let text: String
     let segments: [TranscriptSegment]
     let duration: TimeInterval
+    let detectedLocaleIdentifier: String?
+
+    init(
+        title: String,
+        text: String,
+        segments: [TranscriptSegment],
+        duration: TimeInterval,
+        detectedLocaleIdentifier: String? = nil
+    ) {
+        self.title = title
+        self.text = text
+        self.segments = segments
+        self.duration = duration
+        self.detectedLocaleIdentifier = detectedLocaleIdentifier
+            ?? TranscriptLanguageDetector.localeIdentifier(for: text)
+    }
+
+    var detectedLocale: Locale? {
+        detectedLocaleIdentifier.map(Locale.init(identifier:))
+    }
+}
+
+enum TranscriptLanguageDetector {
+    private static let supportedLanguageCodes: Set<String> = [
+        "zh", "en", "ja", "ko", "es", "fr", "de", "pt", "ru"
+    ]
+
+    static func localeIdentifier(for text: String) -> String? {
+        let sample = String(text.prefix(20_000))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sample.isEmpty else { return nil }
+
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(sample)
+        let hypotheses = recognizer.languageHypotheses(withMaximum: 3)
+        let minimumConfidence = sample.count < 80 ? 0.25 : 0.35
+        guard let (language, confidence) = hypotheses.max(by: { $0.value < $1.value }),
+              confidence >= minimumConfidence else { return nil }
+
+        let locale = Locale(identifier: language.rawValue)
+        guard let code = locale.language.languageCode?.identifier,
+              supportedLanguageCodes.contains(code) else { return nil }
+        if code == "zh" {
+            return locale.language.script?.identifier == "Hant" ? "zh-Hant" : "zh-Hans"
+        }
+        return code
+    }
 }
 
 enum TranscriptImportError: LocalizedError {

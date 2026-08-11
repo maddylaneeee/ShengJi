@@ -88,6 +88,7 @@ final class TranscriptionSessionModel {
     private var recoverySaveGeneration = 0
     private let recoveryWriter = RecoverySnapshotWriter()
     private var translationTask: Task<Void, Never>?
+    private var translationRunID: UUID?
     private var transcriptRefreshTask: Task<Void, Never>?
     @ObservationIgnored private lazy var streamingTextAnimator = AdaptiveStreamingTextAnimator { [weak self] text in
         self?.animatedTranscriptText = text
@@ -365,7 +366,8 @@ final class TranscriptionSessionModel {
 
     func cancel() async {
         saveRecoveryNow()
-        translationTask?.cancel()
+        stopCurrentTranslation()
+        translationRunID = nil
         if configuration.engine == .whisper {
             stopMicrophoneCapture()
             whisperTask?.cancel()
@@ -480,7 +482,7 @@ final class TranscriptionSessionModel {
     }
 
     func translate(targetLanguage: TranslationTargetLanguage, provider: TranslationProvider = .apple) {
-        translationTask?.cancel()
+        stopCurrentTranslation()
         translationConfiguration = TranslationConfiguration(provider: provider, targetLanguage: targetLanguage)
         translatedText = ""
         translatedSegments = []
@@ -490,6 +492,7 @@ final class TranscriptionSessionModel {
         if targetLanguage.isEquivalent(to: locale) {
             isTranslating = false
             translationTask = nil
+            translationRunID = nil
             saveRecoveryNow()
             return
         }
@@ -497,8 +500,9 @@ final class TranscriptionSessionModel {
     }
 
     func clearTranslation(targetLanguage: TranslationTargetLanguage? = nil, provider: TranslationProvider? = nil) {
-        translationTask?.cancel()
+        stopCurrentTranslation()
         translationTask = nil
+        translationRunID = nil
         isTranslating = false
         translationProgress = nil
         if let targetLanguage {
@@ -514,9 +518,36 @@ final class TranscriptionSessionModel {
         saveRecoveryNow()
     }
 
+    func cancelTranslation() {
+        stopCurrentTranslation()
+        translationTask = nil
+        translationRunID = nil
+        isTranslating = false
+        translationProgress = nil
+        translationError = nil
+        saveRecoveryNow()
+    }
+
+    func updateImportedSourceLocale(_ locale: Locale) {
+        guard isImportedTranscript else { return }
+        cancelTranslation()
+        self.locale = locale
+        translatedText = ""
+        translatedSegments = []
+        segmentTranslations = []
+        saveRecoveryNow()
+    }
+
     func translateNow() {
         guard let translationConfiguration else { return }
         translate(targetLanguage: translationConfiguration.targetLanguage, provider: translationConfiguration.provider)
+    }
+
+    private func stopCurrentTranslation() {
+        translationTask?.cancel()
+        if isTranslating, translationConfiguration?.provider == .nllb {
+            NLLBTranslationRuntime.stopImmediately()
+        }
     }
 
     private func startConfiguredTranslationIfNeeded() {
@@ -531,6 +562,14 @@ final class TranscriptionSessionModel {
             ? TranscriptSegment.sentenceSegments(from: transcriptText, duration: elapsed)
             : segments.sorted { $0.startTime < $1.startTime }
         let locale = self.locale
+        let runID = UUID()
+        translationRunID = runID
+        let reportProgress: @Sendable (TranslationProgress) -> Void = { [weak self] progress in
+            Task { @MainActor [weak self] in
+                guard self?.translationRunID == runID else { return }
+                self?.translationProgress = progress
+            }
+        }
         translationTask = Task { [weak self] in
             let units = sourceSegments.enumerated().map { index, segment in
                 TranslationUnit(segment: segment, ordinal: index)
@@ -538,16 +577,12 @@ final class TranscriptionSessionModel {
             let translations = await TranslationService.translate(
                 units: units,
                 sourceLocale: locale,
-                configuration: translationConfiguration
-            ) { progress in
-                Task { @MainActor [weak self] in
-                    self?.translationProgress = progress
-                }
-            }
+                configuration: translationConfiguration,
+                onProgress: reportProgress
+            )
             guard !Task.isCancelled, let self,
+                  self.translationRunID == runID,
                   self.translationConfiguration == translationConfiguration else {
-                self?.isTranslating = false
-                self?.translationProgress = nil
                 return
             }
             self.segmentTranslations = translations
@@ -559,6 +594,7 @@ final class TranscriptionSessionModel {
             self.isTranslating = false
             self.translationProgress = nil
             self.translationTask = nil
+            self.translationRunID = nil
             self.saveRecoveryNow()
         }
     }

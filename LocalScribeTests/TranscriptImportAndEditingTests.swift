@@ -17,6 +17,7 @@ final class TranscriptImportAndEditingTests: XCTestCase {
         XCTAssertEqual(result.segments.count, 2)
         XCTAssertEqual(result.segments[0].startTime, 1, accuracy: 0.001)
         XCTAssertEqual(result.duration, 6.5, accuracy: 0.001)
+        XCTAssertEqual(result.detectedLocale?.language.languageCode?.identifier, "zh")
     }
 
     func testWebVTTImportRemovesMarkup() throws {
@@ -28,6 +29,48 @@ final class TranscriptImportAndEditingTests: XCTestCase {
         """
         let result = try TranscriptImporter.parse(data: Data(source.utf8), fileName: "sample.vtt")
         XCTAssertEqual(result.text, "Hello world")
+        XCTAssertEqual(result.detectedLocale?.language.languageCode?.identifier, "en")
+    }
+
+    func testInteractiveTranslationBatchPolicyStaysResponsive() {
+        XCTAssertEqual(TranslationBatchPolicy.size(for: .apple), 16)
+        XCTAssertEqual(TranslationBatchPolicy.size(for: .nllb), 4)
+        XCTAssertEqual(TranslationBatchPolicy.nllbBeamSize, 1)
+    }
+
+    func testNLLBProcessRegistryTerminatesRegisteredHelpers() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["30"]
+        try process.run()
+        NLLBProcessRegistry.register(process)
+        XCTAssertEqual(NLLBProcessRegistry.activeProcessCount, 1)
+
+        NLLBProcessRegistry.terminateAll()
+        process.waitUntilExit()
+
+        XCTAssertFalse(process.isRunning)
+        XCTAssertEqual(NLLBProcessRegistry.activeProcessCount, 0)
+    }
+
+    @MainActor
+    func testImportedTranscriptSourceLanguageCanBeCorrected() {
+        let imported = ImportedTranscript(
+            title: "sample",
+            text: "这是中文稿件。",
+            segments: [TranscriptSegment(startTime: 0, endTime: 1, text: "这是中文稿件。")],
+            duration: 1
+        )
+        let session = TranscriptionSessionModel(
+            imported: imported,
+            continueWithMicrophone: false,
+            locale: Locale(identifier: "en_CA"),
+            configuration: RecognitionConfiguration(engine: .apple)
+        )
+
+        session.updateImportedSourceLocale(Locale(identifier: "zh-Hans"))
+
+        XCTAssertEqual(session.locale.language.languageCode?.identifier, "zh")
     }
 
     func testFindReplaceAndRangeDeletion() throws {

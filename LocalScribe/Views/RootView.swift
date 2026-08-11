@@ -164,7 +164,12 @@ struct RootView: View {
 
     private func openImportedTranscript(continueWithMicrophone: Bool) {
         guard let imported = pendingImportedTranscript else { return }
-        let locale = catalog.selectedLocale
+        let detectedLocale = imported.detectedLocale.flatMap {
+            LanguageCatalog.bestMatch(for: $0, in: catalog.languages)?.locale
+        }
+        let locale = continueWithMicrophone
+            ? catalog.selectedLocale
+            : detectedLocale ?? catalog.selectedLocale
         let configuration = preferences.configuration
         // Do not mutate any SwiftUI state from the confirmation action itself.
         // AppKit is still tearing down its alert sheet at that point; invalidating
