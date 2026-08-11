@@ -33,7 +33,7 @@ final class TranscriptImportAndEditingTests: XCTestCase {
     }
 
     func testInteractiveTranslationBatchPolicyStaysResponsive() {
-        XCTAssertEqual(TranslationBatchPolicy.size(for: .apple), 16)
+        XCTAssertEqual(TranslationBatchPolicy.size(for: .apple), 4)
         XCTAssertEqual(TranslationBatchPolicy.size(for: .nllb), 4)
         XCTAssertEqual(TranslationBatchPolicy.nllbBeamSize, 1)
     }
