@@ -85,6 +85,8 @@ enum TranslationService {
                 output.append(contentsOf: units[cursor...].map {
                     fallback($0, error: error.localizedDescription)
                 })
+                cursor = units.count
+                onProgress?(.translating(completed: cursor, total: units.count))
                 break
             }
             cursor = end
@@ -109,7 +111,7 @@ enum TranslationService {
                 guard translations.count == units.count else {
                     throw TranslationBatchError.invalidCount(expected: units.count, actual: translations.count)
                 }
-                return await completeEmptyTranslations(
+                return try await completeEmptyTranslations(
                     units: units,
                     translations: translations,
                     sourceLocale: sourceLocale,
@@ -158,7 +160,7 @@ enum TranslationService {
         translations: [String],
         sourceLocale: Locale,
         configuration: TranslationConfiguration
-    ) async -> [SegmentTranslation] {
+    ) async throws -> [SegmentTranslation] {
         var output: [SegmentTranslation] = []
         output.reserveCapacity(units.count)
         for index in units.indices {
@@ -180,15 +182,13 @@ enum TranslationService {
                 }
                 output.append(success(unit, value: retried))
             } catch {
-                output.append(fallback(unit, error: error.localizedDescription))
-                // A wedged provider would stall every remaining retry in this
-                // batch; fail them fast with the same visible reason.
-                if let error = error as? AppleTranslationError, case .timedOut = error, index + 1 < units.count {
-                    output.append(contentsOf: units[(index + 1)...].map {
-                        fallback($0, error: error.localizedDescription)
-                    })
-                    return output
+                // A wedged provider would stall every remaining retry and
+                // every later batch. Propagate the terminal timeout so the
+                // caller can settle the whole run immediately.
+                if let error = error as? AppleTranslationError, case .timedOut = error {
+                    throw error
                 }
+                output.append(fallback(unit, error: error.localizedDescription))
             }
         }
         return output

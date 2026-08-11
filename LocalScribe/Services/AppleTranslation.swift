@@ -257,10 +257,6 @@ final class AppleTranslationCoordinator {
                     continuation: continuation
                 ))
                 activateNextJobIfNeeded()
-                Task { @MainActor [weak self] in
-                    try? await Task.sleep(for: Self.jobTimeout)
-                    self?.timeoutIfPending(jobID: id)
-                }
             }
         } onCancel: {
             Task { @MainActor [weak self] in self?.cancel(jobID: id) }
@@ -282,6 +278,15 @@ final class AppleTranslationCoordinator {
             )
         } else {
             configuration = TranslationSession.Configuration(source: job.source, target: job.target)
+        }
+
+        job.watchdogTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: Self.jobTimeout)
+            } catch {
+                return
+            }
+            self?.timeoutIfPending(jobID: job.id)
         }
     }
 
@@ -308,6 +313,8 @@ final class AppleTranslationCoordinator {
 
     private func finish(jobID: UUID, result: Result<[String], Error>) {
         guard let job = currentJob, job.id == jobID else { return }
+        job.watchdogTask?.cancel()
+        job.watchdogTask = nil
         currentJob = nil
         activeSession = nil
         configuration = nil
@@ -327,6 +334,7 @@ private final class TranslationJob {
     let target: Locale.Language
     let quality: AppleTranslationQuality
     let continuation: CheckedContinuation<[String], Error>
+    var watchdogTask: Task<Void, Never>?
 
     init(
         id: UUID,
