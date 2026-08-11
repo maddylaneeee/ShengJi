@@ -96,14 +96,14 @@ while IFS= read -r binary; do
   codesign --force --sign "$IDENTITY" --options runtime --timestamp=none "$binary"
 done < "$MACHO_LIST"
 
-# A local certificate without an Apple Team ID cannot satisfy dyld library
-# validation for the bundled Sherpa/ONNX and NLLB/Python runtimes.  Keep the
-# exception local to those isolated helper processes; the main App does not
-# receive it.
+# An ad-hoc or local certificate without a shared Apple Team ID cannot satisfy
+# dyld library validation for bundled helper runtimes. Keep the exception local
+# to those isolated processes; the main App does not receive it.
 HELPER_ENTITLEMENTS="$ROOT/LocalScribe/Resources/LocalScribeHelper.entitlements"
 SHERPA_HELPER="$APP/Contents/Resources/SherpaOnnx/bin/sherpa-onnx-offline"
 NLLB_HELPER="$APP/Contents/Resources/NLLBTranslator/runtime/LocalScribeNLLB/LocalScribeNLLB"
-for helper in "$SHERPA_HELPER" "$NLLB_HELPER"; do
+GEMMA_HELPER="$APP/Contents/Resources/GemmaRuntime/llama-server"
+for helper in "$SHERPA_HELPER" "$NLLB_HELPER" "$GEMMA_HELPER"; do
   [[ -f "$helper" ]]
   codesign --force --sign "$IDENTITY" --options runtime --timestamp=none \
     --entitlements "$HELPER_ENTITLEMENTS" "$helper"
@@ -122,10 +122,13 @@ while IFS= read -r binary; do
 done < "$MACHO_LIST"
 codesign -d --entitlements :- "$SHERPA_HELPER" > "$WORK_ROOT/sherpa-entitlements.plist" 2>/dev/null
 codesign -d --entitlements :- "$NLLB_HELPER" > "$WORK_ROOT/nllb-entitlements.plist" 2>/dev/null
+codesign -d --entitlements :- "$GEMMA_HELPER" > "$WORK_ROOT/gemma-entitlements.plist" 2>/dev/null
 codesign -d --entitlements :- "$APP" > "$WORK_ROOT/app-entitlements.plist" 2>/dev/null
 plutil -p "$WORK_ROOT/sherpa-entitlements.plist" | \
   grep -Eq '"com\.apple\.security\.cs\.disable-library-validation" => true'
 plutil -p "$WORK_ROOT/nllb-entitlements.plist" | \
+  grep -Eq '"com\.apple\.security\.cs\.disable-library-validation" => true'
+plutil -p "$WORK_ROOT/gemma-entitlements.plist" | \
   grep -Eq '"com\.apple\.security\.cs\.disable-library-validation" => true'
 if plutil -p "$WORK_ROOT/app-entitlements.plist" | \
   grep -Eq '"com\.apple\.security\.cs\.disable-library-validation" => true'; then
@@ -192,6 +195,9 @@ SHERPA_STATUS=$?
 "$EXTRACTED_APP/Contents/Resources/NLLBTranslator/runtime/LocalScribeNLLB/LocalScribeNLLB" \
   < /dev/null > "$WORK_ROOT/nllb-smoke.txt" 2>&1
 NLLB_STATUS=$?
+"$EXTRACTED_APP/Contents/Resources/GemmaRuntime/llama-server" --version \
+  > "$WORK_ROOT/gemma-smoke.txt" 2>&1
+GEMMA_STATUS=$?
 set -e
 if [[ "$APP_CLI_STATUS" != "0" ]]; then
   print -u2 "声迹 CLI 启动检查失败（status=$APP_CLI_STATUS）。"
@@ -210,6 +216,17 @@ fi
 if [[ "$NLLB_STATUS" != "0" ]]; then
   print -u2 "NLLB helper 启动检查失败（status=$NLLB_STATUS）。"
   cat "$WORK_ROOT/nllb-smoke.txt" >&2
+  exit 7
+fi
+if [[ "$GEMMA_STATUS" != "0" ]] || \
+  grep -Eqi 'dyld|library not loaded|different Team IDs|code signature.*not valid' "$WORK_ROOT/gemma-smoke.txt"; then
+  print -u2 "Gemma helper 无法加载其动态库（status=$GEMMA_STATUS）。"
+  cat "$WORK_ROOT/gemma-smoke.txt" >&2
+  exit 7
+fi
+if ! grep -Eqi 'version|llama' "$WORK_ROOT/gemma-smoke.txt"; then
+  print -u2 "Gemma helper 未产生版本输出。"
+  cat "$WORK_ROOT/gemma-smoke.txt" >&2
   exit 7
 fi
 
@@ -274,7 +291,7 @@ cat > "$REPORT" <<EOF
 - Architecture: arm64
 - Minimum system version: macOS 15.5
 - Signing: $SIGNING_DESCRIPTION; Hardened Runtime; timestamp=none
-- Library validation: disabled only for the isolated Sherpa and NLLB helpers to support a local certificate without a Team ID; enabled for the main app
+- Library validation: disabled only for the isolated Sherpa, NLLB, and Gemma helpers to support ad-hoc/local signing without a shared Team ID; enabled for the main app
 - Nested Mach-O count: $MACHO_COUNT
 - Whisper: whisper.cpp v1.9.1, Metal with CPU fallback; bundled Silero VAD v6.2.0; whisper.cpp advances its own windows over complete files
 - SenseVoice/Parakeet: tries Core ML first and falls back to CPU; macOS selects the actual compute units
