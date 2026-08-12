@@ -427,6 +427,40 @@ final class GemmaSafetyTests: XCTestCase {
         )
     }
 
+    func testLiveDiffInterleavesReplacementLinesInReadingOrder() {
+        let original = "Old one\nOld two\nOld three\nShared\nOld tail\nClosing"
+        let proposed = "New one\nNew two\nNew three\nShared\nNew tail\nClosing"
+        let rows = TranscriptLineDiff.rows(original: original, proposed: proposed)
+
+        XCTAssertEqual(
+            rows.map { "\($0.kind.id):\($0.number):\($0.text)" },
+            [
+                "removed:1:Old one", "inserted:1:New one",
+                "removed:2:Old two", "inserted:2:New two",
+                "removed:3:Old three", "inserted:3:New three",
+                "same:4:Shared",
+                "removed:5:Old tail", "inserted:5:New tail",
+                "same:6:Closing"
+            ]
+        )
+    }
+
+    func testLiveDiffKeepsUnbalancedReplacementAtItsAnchor() {
+        let original = "Old one\nOld two\nOld three\nOld four\nShared"
+        let proposed = "New one\nNew two\nNew three\nShared"
+        let rows = TranscriptLineDiff.rows(original: original, proposed: proposed)
+
+        XCTAssertEqual(
+            rows.map { "\($0.kind.id):\($0.text)" },
+            [
+                "removed:Old one", "inserted:New one",
+                "removed:Old two", "inserted:New two",
+                "removed:Old three", "inserted:New three",
+                "removed:Old four", "same:Shared"
+            ]
+        )
+    }
+
     func testExtractiveSummaryFallbackCoversBeginningAndEnd() {
         let facts = (0..<20).map {
             GemmaSummaryFact(text: "Fact \($0)", evidenceIDs: ["\($0)"])

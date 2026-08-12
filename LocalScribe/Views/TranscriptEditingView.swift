@@ -253,22 +253,32 @@ enum TranscriptLineDiff {
         var newIndex = 0
 
         while oldIndex < old.count || newIndex < new.count {
-            if oldIndex < old.count, removedOffsets.contains(oldIndex) {
-                result.append(Row(number: oldIndex + 1, text: old[oldIndex], kind: .removed))
-                oldIndex += 1
-            } else if newIndex < new.count, insertedOffsets.contains(newIndex) {
-                result.append(Row(number: newIndex + 1, text: new[newIndex], kind: .inserted))
-                newIndex += 1
-            } else if oldIndex < old.count, newIndex < new.count {
+            if oldIndex < old.count, newIndex < new.count,
+               !removedOffsets.contains(oldIndex), !insertedOffsets.contains(newIndex) {
                 result.append(Row(number: newIndex + 1, text: new[newIndex], kind: .unchanged))
                 oldIndex += 1
                 newIndex += 1
-            } else if oldIndex < old.count {
-                result.append(Row(number: oldIndex + 1, text: old[oldIndex], kind: .removed))
-                oldIndex += 1
             } else {
-                result.append(Row(number: newIndex + 1, text: new[newIndex], kind: .inserted))
-                newIndex += 1
+                let removedStart = oldIndex
+                let insertedStart = newIndex
+                while oldIndex < old.count, removedOffsets.contains(oldIndex) {
+                    oldIndex += 1
+                }
+                while newIndex < new.count, insertedOffsets.contains(newIndex) {
+                    newIndex += 1
+                }
+
+                let removed = old[removedStart..<oldIndex].enumerated().map { offset, text in
+                    Row(number: removedStart + offset + 1, text: text, kind: .removed)
+                }
+                let inserted = new[insertedStart..<newIndex].enumerated().map { offset, text in
+                    Row(number: insertedStart + offset + 1, text: text, kind: .inserted)
+                }
+                let pairCount = max(removed.count, inserted.count)
+                for offset in 0..<pairCount {
+                    if offset < removed.count { result.append(removed[offset]) }
+                    if offset < inserted.count { result.append(inserted[offset]) }
+                }
             }
         }
 
