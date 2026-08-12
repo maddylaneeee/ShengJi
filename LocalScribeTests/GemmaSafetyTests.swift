@@ -405,6 +405,28 @@ final class GemmaSafetyTests: XCTestCase {
         XCTAssertEqual(preview[1].text, second.text)
     }
 
+    func testLiveDiffAlignsUnchangedLinesWhenLineCountsDiffer() {
+        let original = "First\n\nKeep this\nOld wording\nFinal"
+        let proposed = "First\nKeep this\nNew wording\nFinal"
+        let rows = TranscriptLineDiff.rows(original: original, proposed: proposed)
+
+        XCTAssertEqual(rows.filter { $0.kind == .unchanged }.map(\.text), ["First", "Keep this", "Final"])
+        XCTAssertEqual(rows.filter { $0.kind == .removed }.map(\.text), ["", "Old wording"])
+        XCTAssertEqual(rows.filter { $0.kind == .inserted }.map(\.text), ["New wording"])
+    }
+
+    func testLiveDiffKeepsLaterMatchesVisibleDuringStreaming() {
+        let original = "Opening\nShared decision\nOld detail\nClosing"
+        let proposed = "Revised opening\nShared decision\nClosing"
+        let rows = TranscriptLineDiff.rows(original: original, proposed: proposed)
+
+        XCTAssertEqual(rows.filter { $0.kind == .unchanged }.map(\.text), ["Shared decision", "Closing"])
+        XCTAssertLessThan(
+            try XCTUnwrap(rows.firstIndex { $0.text == "Shared decision" }),
+            try XCTUnwrap(rows.firstIndex { $0.text == "Closing" })
+        )
+    }
+
     func testExtractiveSummaryFallbackCoversBeginningAndEnd() {
         let facts = (0..<20).map {
             GemmaSummaryFact(text: "Fact \($0)", evidenceIDs: ["\($0)"])

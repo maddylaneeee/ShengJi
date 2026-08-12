@@ -165,21 +165,8 @@ struct AIChangePreviewView: View {
     let original: String
     let proposed: String
 
-    private var rows: [DiffRow] {
-        let old = original.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let new = proposed.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        if old.count == new.count {
-            return old.indices.flatMap { index -> [DiffRow] in
-                old[index] == new[index]
-                    ? [DiffRow(number: index + 1, text: old[index], kind: .unchanged)]
-                    : [
-                        DiffRow(number: index + 1, text: old[index], kind: .removed),
-                        DiffRow(number: index + 1, text: new[index], kind: .inserted)
-                    ]
-            }
-        }
-        return old.enumerated().map { DiffRow(number: $0.offset + 1, text: $0.element, kind: .removed) }
-            + new.enumerated().map { DiffRow(number: $0.offset + 1, text: $0.element, kind: .inserted) }
+    private var rows: [TranscriptLineDiff.Row] {
+        TranscriptLineDiff.rows(original: original, proposed: proposed)
     }
 
     var body: some View {
@@ -213,7 +200,10 @@ struct AIChangePreviewView: View {
         .accessibilityLabel("AI 修改实时对比")
     }
 
-    private struct DiffRow: Identifiable {
+}
+
+enum TranscriptLineDiff {
+    struct Row: Identifiable, Equatable {
         let number: Int
         let text: String
         let kind: Kind
@@ -221,8 +211,9 @@ struct AIChangePreviewView: View {
         var id: String { "\(kind.id)-\(number)-\(text)" }
     }
 
-    private enum Kind {
+    enum Kind: Equatable {
         case unchanged, removed, inserted
+
         var id: String {
             switch self {
             case .unchanged: "same"
@@ -230,6 +221,7 @@ struct AIChangePreviewView: View {
             case .inserted: "inserted"
             }
         }
+
         var color: Color {
             switch self {
             case .unchanged: .secondary
@@ -237,5 +229,53 @@ struct AIChangePreviewView: View {
             case .inserted: .green
             }
         }
+    }
+
+    static func rows(original: String, proposed: String) -> [Row] {
+        let old = lines(in: original)
+        let new = lines(in: proposed)
+        let difference = new.difference(from: old)
+        var removedOffsets = Set<Int>()
+        var insertedOffsets = Set<Int>()
+
+        for change in difference {
+            switch change {
+            case .remove(let offset, _, _):
+                removedOffsets.insert(offset)
+            case .insert(let offset, _, _):
+                insertedOffsets.insert(offset)
+            }
+        }
+
+        var result: [Row] = []
+        result.reserveCapacity(old.count + new.count)
+        var oldIndex = 0
+        var newIndex = 0
+
+        while oldIndex < old.count || newIndex < new.count {
+            if oldIndex < old.count, removedOffsets.contains(oldIndex) {
+                result.append(Row(number: oldIndex + 1, text: old[oldIndex], kind: .removed))
+                oldIndex += 1
+            } else if newIndex < new.count, insertedOffsets.contains(newIndex) {
+                result.append(Row(number: newIndex + 1, text: new[newIndex], kind: .inserted))
+                newIndex += 1
+            } else if oldIndex < old.count, newIndex < new.count {
+                result.append(Row(number: newIndex + 1, text: new[newIndex], kind: .unchanged))
+                oldIndex += 1
+                newIndex += 1
+            } else if oldIndex < old.count {
+                result.append(Row(number: oldIndex + 1, text: old[oldIndex], kind: .removed))
+                oldIndex += 1
+            } else {
+                result.append(Row(number: newIndex + 1, text: new[newIndex], kind: .inserted))
+                newIndex += 1
+            }
+        }
+
+        return result
+    }
+
+    private static func lines(in text: String) -> [String] {
+        text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     }
 }

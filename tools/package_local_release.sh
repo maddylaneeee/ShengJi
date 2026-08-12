@@ -274,7 +274,7 @@ cat > "$UPDATE_MANIFEST" <<EOF
   "build": "$BUILD",
   "download_url": "$DOWNLOAD_URL",
   "sha256": "$SHA256",
-  "release_notes": "ShengJi 1.6.4 build 32 streams Apple Translation responses into the transcript as they arrive, uses the low-latency strategy on supported systems, and retains the imported-language and NLLB responsiveness fixes from build 31.",
+  "release_notes": "ShengJi 1.6.4 build 33 keeps unchanged transcript lines aligned during live AI proofreading previews, so blank-line cleanup and changing line counts no longer render the entire original and proposed texts as removed and inserted.",
   "minimum_system_version": "15.5",
   "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "size_bytes": $(stat -f %z "$ZIP")
