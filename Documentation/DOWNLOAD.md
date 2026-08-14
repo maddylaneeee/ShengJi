@@ -1,12 +1,12 @@
-# ShengJi Download and Installation Guide
+# LocalScribe Download and Installation Guide
 
 **English** | [Chinese (Simplified)](DOWNLOAD.zh-CN.md)
 
-This guide is for people who want to install ShengJi without reading or building the source code. Installation normally takes 2–5 minutes.
+This guide is for people who want to install LocalScribe without reading or building the source code. Installation normally takes 2–5 minutes.
 
-[Download the latest DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg)
+[Download the latest DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg)
 
-![Four-step ShengJi download and installation guide](MediaKit/download-flow-en.png)
+![Four-step LocalScribe download and installation guide](MediaKit/download-flow-en.png)
 
 ## Before you install
 
@@ -20,16 +20,16 @@ Choose Apple menu → About This Mac if you are unsure which chip or macOS versi
 ## Step 1: Download the installer
 
 1. Open the [latest Release](https://github.com/maddylaneeee/ShengJi/releases/latest).
-2. Download `ShengJi-macOS-arm64.dmg`.
+2. Download `LocalScribe-macOS-arm64.dmg`.
 3. Your browser normally saves it in Downloads.
 
 Most users only need the DMG. The ZIP is primarily for in-app updates and advanced users; `.sha256` files verify download integrity.
 
-## Step 2: Move ShengJi to Applications
+## Step 2: Move LocalScribe to Applications
 
-1. Double-click `ShengJi-macOS-arm64.dmg`.
-2. Drag ShengJi to Applications in the window that appears.
-3. Eject the ShengJi disk image after the copy finishes.
+1. Double-click `LocalScribe-macOS-arm64.dmg`.
+2. Drag LocalScribe to Applications in the window that appears.
+3. Eject the LocalScribe disk image after the copy finishes.
 
 Run the installed copy from Applications instead of leaving the app inside the DMG. This makes permissions and updates more reliable.
 
@@ -37,9 +37,9 @@ Run the installed copy from Applications instead of leaving the app inside the D
 
 The current public build is not Apple Developer ID signed or notarized, so macOS blocks the first launch.
 
-1. Double-click ShengJi in Applications, allow macOS to show the blocked-app message, and close the message.
+1. Double-click LocalScribe in Applications, allow macOS to show the blocked-app message, and close the message.
 2. Open System Settings → Privacy & Security.
-3. Find the message saying ShengJi was blocked and click Open Anyway.
+3. Find the message saying LocalScribe was blocked and click Open Anyway.
 4. Confirm Open.
 
 Only override the warning when the app came from this project's GitHub Release and you trust the project. macOS normally remembers the choice for that installed copy.
@@ -70,13 +70,13 @@ If you previously selected Don't Allow, reopen the relevant permission in System
 
 ## Verify SHA-256 (optional)
 
-Each Release includes `ShengJi-macOS-arm64.dmg.sha256`. Advanced users can open Terminal, change to the download directory, and run:
+Each Release includes `LocalScribe-macOS-arm64.dmg.sha256`. Advanced users can open Terminal, change to the download directory, and run:
 
 ```sh
-shasum -a 256 -c ShengJi-macOS-arm64.dmg.sha256
+shasum -a 256 -c LocalScribe-macOS-arm64.dmg.sha256
 ```
 
-`ShengJi-macOS-arm64.dmg: OK` means the file matches the checksum published with the Release.
+`LocalScribe-macOS-arm64.dmg: OK` means the file matches the checksum published with the Release.
 
 ## Troubleshooting
 
@@ -94,7 +94,7 @@ Confirm that the model download finished and check the network connection and fr
 
 ### The app cannot update itself
 
-Make sure ShengJi is in Applications and that your account can write to the installed app. You can also download the latest DMG and install over the existing copy.
+Make sure LocalScribe is in Applications and that your account can write to the installed app. You can also download the latest DMG and install over the existing copy.
 
 ### Report a problem
 
@@ -102,7 +102,7 @@ Open a [GitHub Issue](https://github.com/maddylaneeee/ShengJi/issues) and includ
 
 - Mac chip;
 - macOS version;
-- ShengJi version;
+- LocalScribe version;
 - recognition engine and model;
 - reproduction steps and the exact error message.
 

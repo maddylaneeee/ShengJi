@@ -1,4 +1,4 @@
-# ShengJi Acceptance Record
+# LocalScribe Acceptance Record
 
 This document summarizes the public acceptance and regression history in English. The complete earlier record is preserved in [Chinese (Simplified)](ACCEPTANCE.zh-CN.md).
 
@@ -19,7 +19,7 @@ This document summarizes the public acceptance and regression history in English
 - Localization uses standard language resource directories so additional languages can be added without changing feature code.
 - Privacy descriptions, menus, model details, progress states, errors, inspector values, and update views are localized.
 - The public GitHub workflow builds an Apple silicon DMG and ZIP with an ad hoc signature, verifies both packages, and publishes checksums and an update manifest.
-- The unsigned installation path is documented clearly: open the DMG, drag ShengJi to Applications, attempt the first launch, and use System Settings > Privacy & Security > Open Anyway.
+- The unsigned installation path is documented clearly: open the DMG, drag LocalScribe to Applications, attempt the first launch, and use System Settings > Privacy & Security > Open Anyway.
 - The release is intentionally not Developer ID signed or notarized. Gatekeeper warnings are expected, and users are instructed to continue only when they trust the repository.
 - The packaged NLLB helper includes its required Python base library, and release smoke-test failures are surfaced by the packaging workflow.
 
@@ -40,7 +40,7 @@ This document summarizes the public acceptance and regression history in English
 ## 1.3.4 (16): transcript tools and subtitle import
 
 - The transcript editor supports native selection, keyboard editing, undo, search, replacement, selection deletion, and node-range trimming.
-- SRT, WebVTT, TXT, Markdown, and ShengJi JSON imports are supported.
+- SRT, WebVTT, TXT, Markdown, and LocalScribe JSON imports are supported.
 - Imported content can open directly in the completed editor or be retained while a new microphone session appends additional text.
 - Automated coverage includes subtitle parsing, timestamp retention, search and replacement, and range deletion.
 
@@ -97,10 +97,10 @@ This document summarizes the public acceptance and regression history in English
 
 Each public release may include:
 
-- `ShengJi-macOS-arm64.dmg`
-- `ShengJi-macOS-arm64.dmg.sha256`
-- `ShengJi-macOS-arm64.zip`
-- `ShengJi-macOS-arm64.zip.sha256`
+- `LocalScribe-macOS-arm64.dmg`
+- `LocalScribe-macOS-arm64.dmg.sha256`
+- `LocalScribe-macOS-arm64.zip`
+- `LocalScribe-macOS-arm64.zip.sha256`
 - `update.json`
 
 The current file sizes and SHA-256 values are authoritative in the matching GitHub Release assets and update manifest.

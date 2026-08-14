@@ -1,17 +1,17 @@
-# Contributing to ShengJi
+# Contributing to LocalScribe
 
-Thank you for helping improve ShengJi. Bug reports, reproducible test cases, documentation fixes, translations, and focused pull requests are welcome.
+Thank you for helping improve LocalScribe. Bug reports, reproducible test cases, documentation fixes, translations, and focused pull requests are welcome.
 
 ## Before opening an issue
 
 - Search existing issues first.
-- For bugs, include the ShengJi version, macOS version, Mac model, selected recognition engine and model, clear reproduction steps, and the expected and actual behavior.
+- For bugs, include the LocalScribe version, macOS version, Mac model, selected recognition engine and model, clear reproduction steps, and the expected and actual behavior.
 - Remove private audio, transcripts, file paths, names, and other sensitive information from logs and screenshots.
 - For feature proposals, explain the user problem and workflow before suggesting a particular implementation.
 
 ## Development setup
 
-ShengJi requires an Apple silicon Mac with Xcode and its Command Line Tools.
+LocalScribe requires an Apple silicon Mac with Xcode and its Command Line Tools.
 
 ```sh
 ruby generate_project.rb

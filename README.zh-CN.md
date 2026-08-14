@@ -1,4 +1,4 @@
-# ShengJi（LocalScribe，中文名“声迹”）
+# 声迹
 
 [English](README.md) | **简体中文**
 
@@ -6,16 +6,16 @@
 [![Apple silicon](https://img.shields.io/badge/Apple%20silicon-arm64-555555)](https://support.apple.com/guide/mac-help/about-this-mac-mchl3a2c2cb0/mac)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/maddylaneeee/ShengJi/actions/workflows/ci.yml/badge.svg)](https://github.com/maddylaneeee/ShengJi/actions/workflows/ci.yml)
-[![下载 macOS 版](https://img.shields.io/badge/下载-macOS%20DMG-0A84FF?logo=github)](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg)
+[![下载 macOS 版](https://img.shields.io/badge/下载-macOS%20DMG-0A84FF?logo=github)](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg)
 
 **把麦克风、音视频文件和 Mac 正在播放的声音，在本机转成可编辑文字与字幕。**
 
-ShengJi 是一款面向 Apple silicon Mac 的免费、开源原生语音转文字与音视频转录应用，无需注册账号。它把本地识别、悬浮实时字幕、字幕编辑与导出、离线翻译、长任务恢复，以及 Gemma 4 文稿优化整合在一个 SwiftUI 界面中。识别音频、导入稿件和 AI 处理内容不会由应用上传。
+声迹是一款面向 Apple silicon Mac 的免费、开源原生语音转文字与音视频转录应用，无需注册账号。它把本地识别、悬浮实时字幕、字幕编辑与导出、离线翻译、长任务恢复，以及 Gemma 4 文稿优化整合在一个 SwiftUI 界面中。识别音频、导入稿件和 AI 处理内容不会由应用上传。
 
-当前版本：**1.6.4（34）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+当前版本：**1.6.4（35）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **1.6.4 新增本机 Gemma 4 文稿优化：** 转录完成后可直接纠错、润色或总结，支持自定义提示词、实时结果预览与一键撤销；稿件全程留在 Mac 上。[查看 Gemma 4 功能与真实界面](#用-gemma-4-把转录稿变成可交付文稿164-新增)
+> **Build 35 名称更新：** 英文界面与英文资料统一使用 LocalScribe，中文界面继续使用“声迹”。本版本也包含 1.6.4 已加入的本机 Gemma 4 文稿优化。[查看 Gemma 4 功能与真实界面](#用-gemma-4-把转录稿变成可交付文稿164-新增)
 
 ## 实际演示
 
@@ -70,8 +70,8 @@ ShengJi 是一款面向 Apple silicon Mac 的免费、开源原生语音转文�
 
 ## 下载与安装
 
-1. [下载最新版 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg)。
-2. 打开 DMG，把“声迹”拖到“应用程序”。
+1. [下载最新版 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg)。
+2. 打开 DMG，把 `LocalScribe.app`（中文系统中显示为“声迹”）拖到“应用程序”。
 3. 第一次尝试打开时，macOS 会阻止启动。进入“系统设置 → 隐私与安全性”，找到声迹提示并点击“仍要打开”，然后确认“打开”。
 
 完整图文步骤、常见问题和 SHA-256 校验方法见：[下载与安装指南](Documentation/DOWNLOAD.zh-CN.md)。
@@ -151,9 +151,9 @@ CI 使用 GitHub 的 macOS 26 Apple silicon runner 执行测试和 Release 静�
 ## CLI
 
 ```sh
-声迹.app/Contents/MacOS/LocalScribe --cli help
-声迹.app/Contents/MacOS/LocalScribe --cli models --json
-声迹.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
+LocalScribe.app/Contents/MacOS/LocalScribe --cli help
+LocalScribe.app/Contents/MacOS/LocalScribe --cli models --json
+LocalScribe.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
   --engine whisper --language zh_CN --format srt --output output.srt
 ```
 

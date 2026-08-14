@@ -1,4 +1,4 @@
-# ShengJi (LocalScribe)
+# LocalScribe
 
 **English** | [Chinese (Simplified)](README.zh-CN.md)
 
@@ -6,30 +6,30 @@
 [![Apple silicon](https://img.shields.io/badge/Apple%20silicon-arm64-555555)](https://support.apple.com/guide/mac-help/about-this-mac-mchl3a2c2cb0/mac)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/maddylaneeee/ShengJi/actions/workflows/ci.yml/badge.svg)](https://github.com/maddylaneeee/ShengJi/actions/workflows/ci.yml)
-[![Download for macOS](https://img.shields.io/badge/download-macOS%20DMG-0A84FF?logo=github)](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg)
+[![Download for macOS](https://img.shields.io/badge/download-macOS%20DMG-0A84FF?logo=github)](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg)
 
 **Turn microphones, media files, and the sound playing on your Mac into editable text and subtitles—locally.**
 
-ShengJi is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Audio, imported transcripts, and AI processing content are not uploaded by the app.
+LocalScribe is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Audio, imported transcripts, and AI processing content are not uploaded by the app.
 
-Current version: **1.6.4 (34)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current version: **1.6.4 (35)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **New in 1.6.4 — on-device Gemma 4 transcript enhancement:** Proofread, refine, or summarize completed transcripts with custom instructions, live result previews, and one-click undo. Your transcript stays on your Mac. [Explore Gemma 4 AI enhancement](#on-device-gemma-4-transcript-enhancement-new-in-164)
+> **New in build 35 — one clear English name:** The English app and product name is now LocalScribe. The Simplified Chinese interface keeps its existing localized name. This build also includes the on-device Gemma 4 transcript enhancement introduced in 1.6.4. [Explore Gemma 4 AI enhancement](#on-device-gemma-4-transcript-enhancement-new-in-164)
 
 ## See it in action
 
-![ShengJi opening an audio file, choosing local transcription settings, and producing editable text in English](Documentation/MediaKit/shengji-demo-en.gif)
+![LocalScribe home and editable transcript views in English](Documentation/MediaKit/localscribe-demo-en.gif)
 
-Open app → choose audio → select language and model → get editable local text. The demo uses non-private sample content.
+Open LocalScribe → choose an input → get editable local text. The demo uses deterministic, non-private preview content.
 
 > [!IMPORTANT]
 > **Apple SpeechAnalyzer recognition and floating live captions require macOS 26.** The app itself supports macOS 15.5 or later. On macOS 15.5–25, manually select Whisper, SenseVoice, or Parakeet on the home screen. SenseVoice and Parakeet currently support file transcription only.
 
 ## Download and install
 
-1. [Download the latest DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg).
-2. Open it and drag ShengJi to Applications.
+1. [Download the latest DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg).
+2. Open it and drag LocalScribe to Applications.
 3. The first launch will be blocked. After trying once, open System Settings → Privacy & Security, click Open Anyway, then confirm Open.
 
 For illustrated steps, troubleshooting, and SHA-256 verification, see the [Download and Installation Guide](Documentation/DOWNLOAD.md).
@@ -37,7 +37,7 @@ For illustrated steps, troubleshooting, and SHA-256 verification, see the [Downl
 > [!WARNING]
 > This build has an ad-hoc integrity signature only. It is neither Developer ID signed nor notarized by Apple. Override the warning only if you trust this repository and its Release. SHA-256 files are included with every Release.
 
-![ShengJi home screen in English with model selection, import, translation and live-caption controls](Documentation/Screenshots/home-en.png)
+![LocalScribe home screen in English with model selection, import, translation and live-caption controls](Documentation/Screenshots/home-en.png)
 
 ## On-device Gemma 4 transcript enhancement (new in 1.6.4)
 
@@ -51,9 +51,9 @@ Gemma removes filler, repetition, and obvious transcription errors while preserv
 
 Summaries replace the text preview while keeping an undo snapshot of the original. Add one-time instructions for names, terminology, writing style, summary length, priorities, or format, and optionally save reusable instructions in Settings. AI output should still be reviewed.
 
-The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of about 4.6 GB can be enabled in Settings. Models are downloaded on demand, verified, and run on the Mac through llama.cpp and Metal. AI Enhancement is disabled on Macs with 6 GB of physical memory or less. Before loading Gemma, ShengJi releases its active recognition and NLLB translation runtimes; the Gemma helper exits when the task finishes.
+The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of about 4.6 GB can be enabled in Settings. Models are downloaded on demand, verified, and run on the Mac through llama.cpp and Metal. AI Enhancement is disabled on Macs with 6 GB of physical memory or less. Before loading Gemma, LocalScribe releases its active recognition and NLLB translation runtimes; the Gemma helper exits when the task finishes.
 
-## Why ShengJi?
+## Why LocalScribe?
 
 - **Local by default.** Recognition and optional translation run on the Mac; input audio and imported transcripts are not uploaded by the app.
 - **More than dictation.** Use microphone input, media files, Mac audio, floating live captions, transcript editing, recovery, and subtitle export in one workflow.
@@ -65,13 +65,13 @@ The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of ab
 
 ## Transcript editing and translation
 
-![ShengJi transcript editor in English with local translation, search, range editing, export and privacy details](Documentation/Screenshots/transcript-editor-en.png)
+![LocalScribe transcript editor in English with local translation, search, range editing, export and privacy details](Documentation/Screenshots/transcript-editor-en.png)
 
-The screenshots are from version 1.6.0 of the real macOS app and use an isolated profile with non-private test transcript content. ShengJi includes complete English and Simplified Chinese interfaces.
+The screenshots are from version 1.6.0 of the real macOS app and use an isolated profile with non-private test transcript content. LocalScribe includes complete English and Simplified Chinese interfaces.
 
 ## Languages
 
-ShengJi follows the preferred language order in macOS by default. You can also switch the app immediately between English and Simplified Chinese in Settings without changing the system language; the menu bar and live-caption source controls update at the same time. Recognition-language menus place English and the Mac's language in a deduplicated Recommended Languages section. Settings also provide System, Light, and Dark appearance choices, plus current microphone, speech-recognition, and system-audio permission status.
+LocalScribe follows the preferred language order in macOS by default. You can also switch the app immediately between English and Simplified Chinese in Settings without changing the system language; the menu bar and live-caption source controls update at the same time. Recognition-language menus place English and the Mac's language in a deduplicated Recommended Languages section. Settings also provide System, Light, and Dark appearance choices, plus current microphone, speech-recognition, and system-audio permission status.
 
 ## Recognition and translation engines
 
@@ -155,9 +155,9 @@ By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` t
 ## CLI
 
 ```sh
-ShengJi.app/Contents/MacOS/LocalScribe --cli help
-ShengJi.app/Contents/MacOS/LocalScribe --cli models --json
-ShengJi.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
+LocalScribe.app/Contents/MacOS/LocalScribe --cli help
+LocalScribe.app/Contents/MacOS/LocalScribe --cli models --json
+LocalScribe.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
   --engine whisper --language en_US --format srt --output output.srt
 ```
 
@@ -180,6 +180,6 @@ The built-in updater checks at launch and every six hours by default, reads `upd
 
 ## License
 
-ShengJi source code is available under the [MIT License](LICENSE). Third-party components and models retain their original licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the license files under `Vendor`.
+LocalScribe source code is available under the [MIT License](LICENSE). Third-party components and models retain their original licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the license files under `Vendor`.
 
 The optional NLLB model is distributed upstream under CC-BY-NC-4.0.

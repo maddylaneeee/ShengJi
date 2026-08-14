@@ -10,15 +10,15 @@ INSTALL_LOCAL_COPY="${INSTALL_LOCAL_COPY:-0}"
 GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}"
 RELEASE_TAG="${RELEASE_TAG:-${GITHUB_REF_NAME:-v${VERSION}}}"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
-WORK_ROOT="${TMPDIR:-/tmp}/codex-macos-packager/shengji-${VERSION}-${BUILD}-${RUN_ID}"
-ARCHIVE="$WORK_ROOT/声迹.xcarchive"
+WORK_ROOT="${TMPDIR:-/tmp}/codex-macos-packager/localscribe-${VERSION}-${BUILD}-${RUN_ID}"
+ARCHIVE="$WORK_ROOT/LocalScribe.xcarchive"
 STAGE="$WORK_ROOT/stage"
 VERIFY="$WORK_ROOT/verify"
-APP="$STAGE/声迹.app"
+APP="$STAGE/LocalScribe.app"
 OUTPUT="$ROOT/dist/${VERSION}-${BUILD}"
-ZIP_NAME="ShengJi-macOS-arm64.zip"
+ZIP_NAME="LocalScribe-macOS-arm64.zip"
 ZIP="$OUTPUT/$ZIP_NAME"
-DMG_NAME="ShengJi-macOS-arm64.dmg"
+DMG_NAME="LocalScribe-macOS-arm64.dmg"
 DMG="$OUTPUT/$DMG_NAME"
 DMG_STAGE="$WORK_ROOT/dmg"
 DMG_MOUNT="$WORK_ROOT/dmg-mount"
@@ -235,10 +235,10 @@ print -r -- "$SHA256  $ZIP_NAME" > "$ZIP.sha256"
 
 rm -rf "$DMG_STAGE" "$DMG_MOUNT"
 mkdir -p "$DMG_STAGE" "$DMG_MOUNT"
-ditto --norsrc "$APP" "$DMG_STAGE/声迹.app"
+ditto --norsrc "$APP" "$DMG_STAGE/LocalScribe.app"
 ln -s /Applications "$DMG_STAGE/Applications"
 rm -f "$DMG"
-hdiutil create -quiet -fs HFS+ -format UDZO -volname "声迹 ${VERSION}" \
+hdiutil create -quiet -fs HFS+ -format UDZO -volname "LocalScribe ${VERSION}" \
   -srcfolder "$DMG_STAGE" "$DMG"
 hdiutil verify "$DMG"
 MOUNT_DEVICE="$(hdiutil attach -quiet -readonly -nobrowse -mountpoint "$DMG_MOUNT" "$DMG" | awk 'NR == 1 { print $1 }')"
@@ -256,7 +256,7 @@ detach_dmg() {
   MOUNT_DEVICE=""
 }
 trap 'detach_dmg || true' EXIT
-codesign --verify --deep --strict --verbose=2 "$DMG_MOUNT/声迹.app"
+codesign --verify --deep --strict --verbose=2 "$DMG_MOUNT/LocalScribe.app"
 [[ -L "$DMG_MOUNT/Applications" ]]
 detach_dmg
 DMG_SHA256="$(shasum -a 256 "$DMG" | awk '{print $1}')"
@@ -274,7 +274,7 @@ cat > "$UPDATE_MANIFEST" <<EOF
   "build": "$BUILD",
   "download_url": "$DOWNLOAD_URL",
   "sha256": "$SHA256",
-  "release_notes": "ShengJi 1.6.4 build 34 presents live AI proofreading replacements in reading order by pairing each removed line with its proposed replacement while keeping extra insertions or deletions at the correct unchanged-text anchor.",
+  "release_notes": "LocalScribe is a free, open-source native macOS app for private, on-device transcription, live captions, editing, translation, and transcript enhancement. Build 35 changes the English product name from ShengJi to LocalScribe while preserving the existing Simplified Chinese localized name.",
   "minimum_system_version": "15.5",
   "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "size_bytes": $(stat -f %z "$ZIP")
@@ -283,7 +283,7 @@ EOF
 
 MACHO_COUNT="$(wc -l < "$MACHO_LIST" | tr -d ' ')"
 cat > "$REPORT" <<EOF
-# ShengJi ${VERSION} (${BUILD}) Local Release Report
+# LocalScribe ${VERSION} (${BUILD}) Local Release Report
 
 - Source: $ROOT
 - Build time (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)

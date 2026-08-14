@@ -1,5 +1,5 @@
-"CFBundleDisplayName" = "ShengJi";
-"CFBundleName" = "ShengJi";
+"CFBundleDisplayName" = "LocalScribe";
+"CFBundleName" = "LocalScribe";
 "NSFileProviderDomainUsageDescription" = "Read audio or video you select and save transcripts to a location you choose.";
 "NSMicrophoneUsageDescription" = "Use the microphone to transcribe what you say in real time on this Mac.";
 "NSScreenCaptureUsageDescription" = "Capture system audio playing on this Mac for on-device live captions; screen images are not saved.";

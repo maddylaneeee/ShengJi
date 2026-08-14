@@ -31,7 +31,7 @@ struct StartView: View {
             .padding(.horizontal, 32)
             .frame(maxWidth: .infinity)
         }
-        .navigationTitle("声迹")
+        .navigationTitle(L10n.text("声迹"))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("选择文件", systemImage: "plus") { chooseFile() }

@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-ShengJi includes or optionally uses the third-party components below. Their license files are retained in the source tree or application bundle. This summary does not replace the full upstream license terms.
+LocalScribe includes or optionally uses the third-party components below. Their license files are retained in the source tree or application bundle. This summary does not replace the full upstream license terms.
 
 | Component | Purpose | License / upstream project |
 | --- | --- | --- |

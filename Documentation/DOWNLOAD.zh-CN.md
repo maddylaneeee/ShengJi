@@ -4,7 +4,7 @@
 
 本指南面向不需要阅读或编译源码的普通用户。整个安装过程通常需要 2～5 分钟。
 
-[直接下载最新版 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg)
+[直接下载最新版 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg)
 
 ![声迹下载与安装四步图](MediaKit/download-flow-zh-CN.png)
 
@@ -20,16 +20,16 @@
 ## 第一步：下载安装包
 
 1. 打开 [最新版 Release](https://github.com/maddylaneeee/ShengJi/releases/latest)。
-2. 下载 `ShengJi-macOS-arm64.dmg`。
+2. 下载 `LocalScribe-macOS-arm64.dmg`。
 3. 浏览器通常会把文件保存到“下载”文件夹。
 
 普通用户只需要 DMG。ZIP 主要用于应用内更新和高级用户；`.sha256` 文件用于校验下载完整性。
 
 ## 第二步：拖入“应用程序”
 
-1. 双击下载好的 `ShengJi-macOS-arm64.dmg`。
-2. 在出现的窗口中，把“声迹”拖到“Applications / 应用程序”。
-3. 拖动完成后，可以推出名为“声迹 1.4.0”的磁盘映像。
+1. 双击下载好的 `LocalScribe-macOS-arm64.dmg`。
+2. 在出现的窗口中，把 `LocalScribe.app`（中文系统中显示为“声迹”）拖到“Applications / 应用程序”。
+3. 拖动完成后，可以推出名为“LocalScribe 1.6.4”的磁盘映像。
 
 不要直接长期运行 DMG 里的 App；从“应用程序”文件夹运行，更新和权限状态会更稳定。
 
@@ -70,13 +70,13 @@ Apple SpeechAnalyzer 不可用。请在首页选择“第三方模型”，然�
 
 ## 验证 SHA-256（可选）
 
-Release 同时提供 `ShengJi-macOS-arm64.dmg.sha256`。高级用户可以在“终端”中进入下载目录后执行：
+Release 同时提供 `LocalScribe-macOS-arm64.dmg.sha256`。高级用户可以在“终端”中进入下载目录后执行：
 
 ```sh
-shasum -a 256 -c ShengJi-macOS-arm64.dmg.sha256
+shasum -a 256 -c LocalScribe-macOS-arm64.dmg.sha256
 ```
 
-看到 `ShengJi-macOS-arm64.dmg: OK` 表示下载内容与 Release 提供的校验值一致。
+看到 `LocalScribe-macOS-arm64.dmg: OK` 表示下载内容与 Release 提供的校验值一致。
 
 ## 常见问题
 

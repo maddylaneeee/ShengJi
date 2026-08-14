@@ -28,7 +28,7 @@ final class AppUpdateControllerTests: XCTestCase {
         let probe = UpdateClientProbe()
         let manifest = newerManifest
         let preparedURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Prepared-ShengJi.app", isDirectory: true)
+            .appendingPathComponent("Prepared-LocalScribe.app", isDirectory: true)
         let controller = AppUpdateController(
             defaults: defaults,
             currentVersion: "1.6.0",
@@ -85,7 +85,7 @@ final class AppUpdateControllerTests: XCTestCase {
         AppUpdateManifest(
             version: "9.0.0",
             build: "99",
-            downloadURL: URL(string: "https://example.invalid/ShengJi.zip")!,
+            downloadURL: URL(string: "https://example.invalid/LocalScribe.zip")!,
             sha256: String(repeating: "a", count: 64),
             releaseNotes: nil,
             minimumSystemVersion: "15.5",

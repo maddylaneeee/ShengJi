@@ -195,7 +195,7 @@ final class WhisperPipelineTests: XCTestCase {
             preference: .metal
         )
         var options = WhisperAdvancedOptions.default
-        options.initialPrompt = "Sherpa ONNX, NVIDIA Parakeet, ShengJi."
+        options.initialPrompt = "Sherpa ONNX, NVIDIA Parakeet, LocalScribe."
         options.temperature = 0.1
         options.beamSize = 3
         let result = try await WhisperFileProcessor.process(

@@ -138,17 +138,17 @@ final class GemmaSafetyTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let preferences = AIPromptPreferences(defaults: defaults, appVersion: "1.6.4")
-        preferences.proofreadInstructions = "Always use the name ShengJi."
+        preferences.proofreadInstructions = "Always use the name LocalScribe."
         preferences.summaryInstructions = "Use three concise bullets."
         preferences.preservesAcrossUpdates = true
 
         let restored = AIPromptPreferences(defaults: defaults, appVersion: "1.6.5")
-        XCTAssertEqual(restored.proofreadInstructions, "Always use the name ShengJi.")
+        XCTAssertEqual(restored.proofreadInstructions, "Always use the name LocalScribe.")
         XCTAssertEqual(restored.summaryInstructions, "Use three concise bullets.")
         XCTAssertTrue(restored.preservesAcrossUpdates)
         XCTAssertEqual(
             restored.instructions(for: .proofread, oneTimeInstructions: "Prefer Canadian spelling."),
-            "Always use the name ShengJi.\n\nPrefer Canadian spelling."
+            "Always use the name LocalScribe.\n\nPrefer Canadian spelling."
         )
     }
 
