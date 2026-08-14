@@ -10,9 +10,12 @@
 
 **Turn microphones, media files, and the sound playing on your Mac into editable text and subtitles—locally.**
 
-ShengJi is a free, open-source native macOS app with no account required. It can transcribe microphones, audio and video files, and audio playing on your Mac. It combines Apple Speech, whisper.cpp, SenseVoice, NVIDIA Parakeet, Apple Translation, and NLLB behind one SwiftUI interface.
+ShengJi is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Audio, imported transcripts, and AI processing content are not uploaded by the app.
 
 Current version: **1.6.4 (34)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/ShengJi-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+
+> [!TIP]
+> **New in 1.6.4 — on-device Gemma 4 transcript enhancement:** Proofread, refine, or summarize completed transcripts with custom instructions, live result previews, and one-click undo. Your transcript stays on your Mac. [Explore Gemma 4 AI enhancement](#on-device-gemma-4-transcript-enhancement-new-in-164)
 
 ## See it in action
 
@@ -43,6 +46,7 @@ For illustrated steps, troubleshooting, and SHA-256 verification, see the [Downl
 - **Multiple offline engines.** Choose Apple Speech, whisper.cpp with Metal, SenseVoice, or NVIDIA Parakeet instead of being locked to one model family.
 - **Long-task workflow.** Progressive results, append-only recovery journals, bounded transcript rendering, pause/resume, and resumable sessions are designed for long recordings.
 - **Editable deliverables.** Import, search, replace, trim, translate, and export TXT, Markdown, JSON, PDF, SRT, or WebVTT.
+- **On-device AI transcript enhancement.** Use Gemma 4 to proofread, refine, or summarize a transcript, with custom instructions for terminology, style, focus, and format.
 - **System-aware interface.** English and Simplified Chinese switch automatically with the Mac language preference, using an extensible localization structure.
 
 ## Transcript editing and translation
@@ -65,6 +69,7 @@ ShengJi follows the preferred language order in macOS by default. You can also s
 | NVIDIA Parakeet | Files | sherpa-onnx, Core ML eligible path with CPU fallback |
 | Apple Translation | Default post-transcription translation | macOS Translation framework |
 | NLLB | Optional post-transcription translation | CTranslate2 CPU/int8 |
+| Gemma 4 | Transcript proofreading, refinement, and summarization | On-device llama.cpp inference with Metal |
 
 Whisper file transcription uses the model's internal sliding windows rather than fixed, non-overlapping application chunks. For longer media, the bundled Silero VAD can skip silence while retaining speech padding and overlap. Output filtering considers silence, confidence, repetition, and known hallucination patterns.
 
@@ -73,6 +78,17 @@ Whisper file transcription uses the model's internal sliding windows rather than
 For supported third-party engines, the right inspector includes an Advanced section that is collapsed when a task opens. Whisper exposes a model prompt, temperature and fallback controls, beam or greedy search settings, context length, silence and confidence filters, VAD, and a guarded automatic thread policy. SenseVoice and Parakeet expose the options their local runtimes actually support. File-only and microphone-only settings appear only for the matching source.
 
 Numeric options support both direct keyboard entry and sliders or steppers, with range validation and short hover explanations. The app remembers the last engine, model, and advanced configuration for the next task; Restore Model Defaults resets only the selected engine.
+
+## On-device Gemma 4 transcript enhancement (new in 1.6.4)
+
+After transcription or transcript import, open AI Enhancement in the right inspector to continue working with the text locally:
+
+- **Proofread and refine:** Remove filler, repetition, and obvious transcription errors while preserving the intended meaning.
+- **Summarize:** Distill long transcripts into a readable, deliverable summary.
+- **Guide the output:** Add one-time instructions for names, terminology, writing style, summary length, priorities, or format, and optionally save reusable instructions in Settings.
+- **Stay in control:** Watch progress and output update live. Segments that fail validation keep their original text, and applied changes can be undone in one click. AI output should still be reviewed.
+
+The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of about 4.6 GB can be enabled in Settings. Models are downloaded on demand, verified, and run on the Mac through llama.cpp and Metal. AI Enhancement is disabled on Macs with 6 GB of physical memory or less. Before loading Gemma, ShengJi releases its active recognition and NLLB translation runtimes; the Gemma helper exits when the task finishes.
 
 ## Highlights
 
@@ -94,13 +110,14 @@ Numeric options support both direct keyboard entry and sliders or steppers, with
 - Apple SpeechAnalyzer recognition and live captions require macOS 26.
 - On macOS 15.5–25, select Whisper, SenseVoice, or Parakeet manually. SenseVoice and Parakeet currently support file transcription only.
 - Live-caption translation is currently disabled; post-transcription translation remains available.
+- Gemma 4 AI Enhancement requires more than 6 GB of physical memory; models are downloaded on demand and run locally.
 - Public Developer ID signing and Apple notarization are still pending.
 
 Microphone input requires microphone permission. Capturing Mac audio requires Screen & System Audio Recording permission. Apple Speech and Apple Translation may download language assets managed by macOS.
 
 ## Build from source
 
-Install Xcode and its Command Line Tools. The repository includes the native runtimes required by the app; large recognition and NLLB models are downloaded only when selected.
+Install Xcode and its Command Line Tools. The repository includes the native runtimes required by the app; large recognition, NLLB, and Gemma 4 models are downloaded only when selected.
 
 ```sh
 ruby generate_project.rb
@@ -143,7 +160,7 @@ ShengJi.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
 
 ## Privacy and updates
 
-LocalScribe does not upload recognition audio or imported transcripts. Network access is used for model downloads, automatic or manual update checks and downloads, and opening external documentation. Automatic updates can be disabled in Settings.
+LocalScribe does not upload recognition audio, imported transcripts, or content processed by Gemma. Recognition, translation, and AI transcript enhancement run on the Mac. Network access is used for on-demand recognition, translation, and Gemma model downloads, automatic or manual update checks and downloads, and opening external documentation. Automatic updates can be disabled in Settings.
 
 The built-in updater checks at launch and every six hours by default, reads `update.json` from the latest GitHub Release, downloads its ZIP, verifies SHA-256, checks the bundle identifier and version, and asks before replacing and relaunching the app. This update path is not a substitute for a notarized public release.
 
