@@ -95,7 +95,7 @@
 		2694EE6C025FD3D99C8CA1F54AD235FE /* TranscriptionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TranscriptionModels.swift; path = Models/TranscriptionModels.swift; sourceTree = "<group>"; };
 		2D31A44294CC177B62C1CB8D06076F67 /* TranscriptImport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TranscriptImport.swift; path = Services/TranscriptImport.swift; sourceTree = "<group>"; };
 		2E7A7370740F9FBDB3ADB0A00E23E70F /* LongTaskStorageTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LongTaskStorageTests.swift; sourceTree = "<group>"; };
-		2F6C276186381B21A86FB98D0BC65D87 /* 声迹.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = "声迹.app"; path = LocalScribe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2F6C276186381B21A86FB98D0BC65D87 /* LocalScribe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = LocalScribe.app; path = LocalScribe.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		31164970CE251484D0A20003EE041174 /* ExportService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExportService.swift; path = Services/ExportService.swift; sourceTree = "<group>"; };
 		3B4520EA1E48CFDCBC8CF16C7DCDE10D /* SpeechModelStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SpeechModelStore.swift; path = Services/SpeechModelStore.swift; sourceTree = "<group>"; };
 		40D83B095E1321168C8D036F44110F13 /* SherpaOnnxEngine.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SherpaOnnxEngine.swift; path = Services/SherpaOnnxEngine.swift; sourceTree = "<group>"; };
@@ -313,7 +313,7 @@
 		E9A6D83A5B58864104663B3FF3C3C667 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				2F6C276186381B21A86FB98D0BC65D87 /* 声迹.app */,
+				2F6C276186381B21A86FB98D0BC65D87 /* LocalScribe.app */,
 				1DC5619C4A65CD9297CDF833519575AB /* LocalScribeTests.xctest */,
 			);
 			name = Products;
@@ -354,7 +354,7 @@
 			);
 			name = LocalScribe;
 			productName = LocalScribe;
-			productReference = 2F6C276186381B21A86FB98D0BC65D87 /* 声迹.app */;
+			productReference = 2F6C276186381B21A86FB98D0BC65D87 /* LocalScribe.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */

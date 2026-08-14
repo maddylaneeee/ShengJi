@@ -88,7 +88,7 @@ final class LongTaskStorageTests: XCTestCase {
           "whisperModel": "tiny",
           "advancedOptions": {
             "whisper": {
-              "initialPrompt": "ShengJi terminology",
+              "initialPrompt": "LocalScribe terminology",
               "temperature": 7,
               "beamSize": 99,
               "threadCount": -4
@@ -103,7 +103,7 @@ final class LongTaskStorageTests: XCTestCase {
         }
         """#.utf8)
         let configuration = try JSONDecoder().decode(RecognitionConfiguration.self, from: data)
-        XCTAssertEqual(configuration.advancedOptions.whisper.initialPrompt, "ShengJi terminology")
+        XCTAssertEqual(configuration.advancedOptions.whisper.initialPrompt, "LocalScribe terminology")
         XCTAssertEqual(configuration.advancedOptions.whisper.temperature, 1)
         XCTAssertEqual(configuration.advancedOptions.whisper.beamSize, 20)
         XCTAssertEqual(configuration.advancedOptions.whisper.threadCount, 0)

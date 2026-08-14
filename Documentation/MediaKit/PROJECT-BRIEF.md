@@ -1,12 +1,12 @@
-# ShengJi Project Brief
+# LocalScribe Project Brief
 
 ## One sentence
 
-ShengJi is a native, open-source, local-first macOS app that turns microphones, media files, and the sound playing on a Mac into editable text and subtitles.
+LocalScribe is a native, open-source, local-first macOS app that turns microphones, media files, and the sound playing on a Mac into editable text and subtitles.
 
 ## Short description
 
-ShengJi provides local transcription, floating Mac-audio captions, transcript editing, optional on-device translation, and subtitle export for Apple silicon Macs. The app does not upload recognition audio or imported transcripts.
+LocalScribe provides local transcription, floating Mac-audio captions, transcript editing, optional on-device translation, and subtitle export for Apple silicon Macs. The app does not upload recognition audio or imported transcripts.
 
 ## Highlights
 

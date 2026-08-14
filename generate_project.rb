@@ -14,7 +14,7 @@ project.root_object.development_region = "zh-Hans"
 project.root_object.known_regions = ["zh-Hans", "en", "Base"]
 
 target = project.new_target(:application, "LocalScribe", :osx, "15.5")
-target.product_reference.name = "声迹.app"
+target.product_reference.name = "LocalScribe.app"
 
 main_group = project.main_group.new_group("LocalScribe", "LocalScribe")
 source_files = %w[

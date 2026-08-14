@@ -276,7 +276,7 @@ struct SettingsView: View {
 
             Section("当前版本") {
                 LabeledContent("版本", value: "\(AppInfo.version) (\(AppInfo.build))")
-                Text("更新由 ShengJi 的官方 GitHub Release 提供。")
+                Text("更新由声迹的官方 GitHub Release 提供。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -38,12 +38,12 @@ jobs:
       - name: Save workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ShengJi-macOS-${{ github.ref_name }}
+          name: LocalScribe-macOS-${{ github.ref_name }}
           path: |
-            dist/**/ShengJi-macOS-arm64.dmg
-            dist/**/ShengJi-macOS-arm64.dmg.sha256
-            dist/**/ShengJi-macOS-arm64.zip
-            dist/**/ShengJi-macOS-arm64.zip.sha256
+            dist/**/LocalScribe-macOS-arm64.dmg
+            dist/**/LocalScribe-macOS-arm64.dmg.sha256
+            dist/**/LocalScribe-macOS-arm64.zip
+            dist/**/LocalScribe-macOS-arm64.zip.sha256
             dist/**/update.json
             dist/**/BUILD-REPORT-*.md
             dist/**/MACHO-AUDIT-*.txt
@@ -53,37 +53,44 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          output="$(dirname "$(find dist -name ShengJi-macOS-arm64.dmg -type f -print -quit)")"
+          output="$(dirname "$(find dist -name LocalScribe-macOS-arm64.dmg -type f -print -quit)")"
           test -n "$output"
           build="$(plutil -extract build raw "$output/update.json")"
           release_notes="$(plutil -extract release_notes raw "$output/update.json")"
           notes="$RUNNER_TEMP/release-notes.md"
           {
-            echo "## Build $build hotfix"
+            echo "## About LocalScribe"
             echo
             echo "$release_notes"
             echo
             echo '## Installation'
             echo
-            echo 'Download `ShengJi-macOS-arm64.dmg`, open it, and drag ShengJi to Applications.'
+            echo 'Download `LocalScribe-macOS-arm64.dmg`, open it, and drag LocalScribe to Applications.'
             echo
             echo '> This build is not Developer ID signed or notarized by Apple. After the first blocked launch, open System Settings → Privacy & Security, click Open Anyway, and then confirm Open. Continue only if you trust this repository.'
           } > "$notes"
           assets=(
-            "$output/ShengJi-macOS-arm64.dmg"
-            "$output/ShengJi-macOS-arm64.dmg.sha256"
-            "$output/ShengJi-macOS-arm64.zip"
-            "$output/ShengJi-macOS-arm64.zip.sha256"
+            "$output/LocalScribe-macOS-arm64.dmg"
+            "$output/LocalScribe-macOS-arm64.dmg.sha256"
+            "$output/LocalScribe-macOS-arm64.zip"
+            "$output/LocalScribe-macOS-arm64.zip.sha256"
             "$output/update.json"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            for superseded_asset in \
+              ShengJi-macOS-arm64.dmg \
+              ShengJi-macOS-arm64.dmg.sha256 \
+              ShengJi-macOS-arm64.zip \
+              ShengJi-macOS-arm64.zip.sha256; do
+              gh release delete-asset "$GITHUB_REF_NAME" "$superseded_asset" --yes 2>/dev/null || true
+            done
             gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "ShengJi $GITHUB_REF_NAME" \
+              --title "LocalScribe $GITHUB_REF_NAME" \
               --notes-file "$notes"
           else
             gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
-              --title "ShengJi $GITHUB_REF_NAME" \
+              --title "LocalScribe $GITHUB_REF_NAME" \
               --notes-file "$notes" \
               --verify-tag
           fi

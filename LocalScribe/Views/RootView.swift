@@ -57,11 +57,11 @@ struct RootView: View {
             }
             if ProcessInfo.processInfo.environment["LOCALSCRIBE_RESULT_PREVIEW"] == "1" {
                 let preview = TranscriptionSessionModel(
-                    source: .recovered("转录结果预览"),
+                    source: .recovered("LocalScribe sample"),
                     locale: Locale(identifier: "en_US"),
                     configuration: RecognitionConfiguration(engine: .apple)
                 )
-                preview.transcriptText = "Some people say the secret to happiness is having no expectations. The transcript remains editable after recognition finishes."
+                preview.transcriptText = "LocalScribe turns speech into editable text on this Mac. Recognition and optional translation run on the device. You can search, replace, and refine the transcript after recognition finishes. Export options include text, Markdown, subtitles, and PDF. Your recording and transcript are not uploaded by the app."
                 preview.elapsed = 18
                 preview.phase = .finished
                 session = preview

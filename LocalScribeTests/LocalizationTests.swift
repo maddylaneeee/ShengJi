@@ -8,9 +8,17 @@ final class LocalizationTests: XCTestCase {
         let english = try XCTUnwrap(localizationBundle(language: "en"))
         let chinese = try XCTUnwrap(localizationBundle(language: "zh-Hans"))
 
-        XCTAssertEqual(english.localizedString(forKey: "声迹", value: nil, table: nil), "ShengJi")
+        XCTAssertEqual(english.localizedString(forKey: "声迹", value: nil, table: nil), "LocalScribe")
         XCTAssertEqual(english.localizedString(forKey: "开始转录", value: nil, table: nil), "Start Transcription")
         XCTAssertEqual(chinese.localizedString(forKey: "声迹", value: nil, table: nil), "声迹")
+        XCTAssertEqual(
+            english.localizedString(forKey: "CFBundleDisplayName", value: nil, table: "InfoPlist"),
+            "LocalScribe"
+        )
+        XCTAssertEqual(
+            chinese.localizedString(forKey: "CFBundleDisplayName", value: nil, table: "InfoPlist"),
+            "声迹"
+        )
     }
 
     func testEveryRuntimeLocalizationKeyHasEnglishAndChineseValues() throws {

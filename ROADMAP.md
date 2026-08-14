@@ -1,6 +1,6 @@
-# ShengJi Roadmap
+# LocalScribe Roadmap
 
-ShengJi is developed around local processing, transparent behavior, reliable long-running tasks, and a native macOS experience. This roadmap describes priorities, not promised dates.
+LocalScribe is developed around local processing, transparent behavior, reliable long-running tasks, and a native macOS experience. This roadmap describes priorities, not promised dates.
 
 ## Current priorities
 
