@@ -39,6 +39,20 @@ For illustrated steps, troubleshooting, and SHA-256 verification, see the [Downl
 
 ![ShengJi home screen in English with model selection, import, translation and live-caption controls](Documentation/Screenshots/home-en.png)
 
+## On-device Gemma 4 transcript enhancement (new in 1.6.4)
+
+**Transcription is only the starting point.** After transcription or transcript import, open AI Enhancement in the right inspector to turn the result into a cleaner, deliverable document without copying it to another AI service or uploading it.
+
+### Proofread and refine with a live diff
+
+Gemma removes filler, repetition, and obvious transcription errors while preserving the intended meaning. Original and suggested text update in a live diff alongside batch progress, model status, and the on-device privacy indicator. Segments that fail validation keep their original text.
+
+### Distill long transcripts into focused summaries
+
+Summaries replace the text preview while keeping an undo snapshot of the original. Add one-time instructions for names, terminology, writing style, summary length, priorities, or format, and optionally save reusable instructions in Settings. AI output should still be reviewed.
+
+The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of about 4.6 GB can be enabled in Settings. Models are downloaded on demand, verified, and run on the Mac through llama.cpp and Metal. AI Enhancement is disabled on Macs with 6 GB of physical memory or less. Before loading Gemma, ShengJi releases its active recognition and NLLB translation runtimes; the Gemma helper exits when the task finishes.
+
 ## Why ShengJi?
 
 - **Local by default.** Recognition and optional translation run on the Mac; input audio and imported transcripts are not uploaded by the app.
@@ -78,17 +92,6 @@ Whisper file transcription uses the model's internal sliding windows rather than
 For supported third-party engines, the right inspector includes an Advanced section that is collapsed when a task opens. Whisper exposes a model prompt, temperature and fallback controls, beam or greedy search settings, context length, silence and confidence filters, VAD, and a guarded automatic thread policy. SenseVoice and Parakeet expose the options their local runtimes actually support. File-only and microphone-only settings appear only for the matching source.
 
 Numeric options support both direct keyboard entry and sliders or steppers, with range validation and short hover explanations. The app remembers the last engine, model, and advanced configuration for the next task; Restore Model Defaults resets only the selected engine.
-
-## On-device Gemma 4 transcript enhancement (new in 1.6.4)
-
-After transcription or transcript import, open AI Enhancement in the right inspector to continue working with the text locally:
-
-- **Proofread and refine:** Remove filler, repetition, and obvious transcription errors while preserving the intended meaning.
-- **Summarize:** Distill long transcripts into a readable, deliverable summary.
-- **Guide the output:** Add one-time instructions for names, terminology, writing style, summary length, priorities, or format, and optionally save reusable instructions in Settings.
-- **Stay in control:** Watch progress and output update live. Segments that fail validation keep their original text, and applied changes can be undone in one click. AI output should still be reviewed.
-
-The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of about 4.6 GB can be enabled in Settings. Models are downloaded on demand, verified, and run on the Mac through llama.cpp and Metal. AI Enhancement is disabled on Macs with 6 GB of physical memory or less. Before loading Gemma, ShengJi releases its active recognition and NLLB translation runtimes; the Gemma helper exits when the task finishes.
 
 ## Highlights
 
