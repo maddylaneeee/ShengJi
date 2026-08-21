@@ -59,13 +59,13 @@ jobs:
           release_notes="$(plutil -extract release_notes raw "$output/update.json")"
           notes="$RUNNER_TEMP/release-notes.md"
           {
-            echo "## About LocalScribe"
+            echo "## About ShengJi"
             echo
             echo "$release_notes"
             echo
             echo '## Installation'
             echo
-            echo 'Download `LocalScribe-macOS-arm64.dmg`, open it, and drag LocalScribe to Applications.'
+            echo 'Download `LocalScribe-macOS-arm64.dmg`, open it, and drag the app to Applications.'
             echo
             echo '> This build is not Developer ID signed or notarized by Apple. After the first blocked launch, open System Settings → Privacy & Security, click Open Anyway, and then confirm Open. Continue only if you trust this repository.'
           } > "$notes"
@@ -86,11 +86,11 @@ jobs:
             done
             gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "LocalScribe $GITHUB_REF_NAME" \
+              --title "ShengJi $GITHUB_REF_NAME" \
               --notes-file "$notes"
           else
             gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
-              --title "LocalScribe $GITHUB_REF_NAME" \
+              --title "ShengJi $GITHUB_REF_NAME" \
               --notes-file "$notes" \
               --verify-tag
           fi

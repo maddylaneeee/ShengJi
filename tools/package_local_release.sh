@@ -272,14 +272,21 @@ cat > "$UPDATE_MANIFEST" <<EOF
 {
   "version": "$VERSION",
   "build": "$BUILD",
+  "bundle_id": "ca.lixinchen.localscribe",
   "download_url": "$DOWNLOAD_URL",
   "sha256": "$SHA256",
-  "release_notes": "LocalScribe is a free, open-source native macOS app for private, on-device transcription, live captions, editing, translation, and transcript enhancement. Build 35 changes the English product name from ShengJi to LocalScribe while preserving the existing Simplified Chinese localized name.",
+  "release_notes": "ShengJi 1.6.5 adds one-source-at-a-time Mac System Audio, system-default microphone, and specific input-device selection to ordinary realtime transcription. It also improves resource cleanup and large-result text presentation while leaving existing live-caption source modes unchanged.",
   "minimum_system_version": "15.5",
   "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "size_bytes": $(stat -f %z "$ZIP")
 }
 EOF
+
+[[ "$(plutil -extract version raw "$UPDATE_MANIFEST")" == "$VERSION" ]]
+[[ "$(plutil -extract build raw "$UPDATE_MANIFEST")" == "$BUILD" ]]
+[[ "$(plutil -extract bundle_id raw "$UPDATE_MANIFEST")" == "ca.lixinchen.localscribe" ]]
+[[ "$(plutil -extract sha256 raw "$UPDATE_MANIFEST")" == "$SHA256" ]]
+[[ "$(plutil -extract download_url raw "$UPDATE_MANIFEST")" == "$DOWNLOAD_URL" ]]
 
 MACHO_COUNT="$(wc -l < "$MACHO_LIST" | tr -d ' ')"
 cat > "$REPORT" <<EOF
@@ -302,11 +309,11 @@ cat > "$REPORT" <<EOF
 - DMG SHA-256: $DMG_SHA256
 - Static verification: bundle metadata, arm64 architecture, Mach-O deployment targets, source leakage checks, leaf signing, and strict deep signing passed
 - Extraction verification: strict signing and CLI/helper startup checks passed after extraction to a non-iCloud temporary directory
-- Local delivery: creates only the updater ZIP by default; set INSTALL_LOCAL_COPY=1 to replace the locally installed app
+- Local delivery: creates candidate ZIP and DMG assets by default; set INSTALL_LOCAL_COPY=1 only after a separate installation approval
 - Gatekeeper: rejection by spctl is expected for a local non-Developer-ID certificate and is not treated as package corruption
-- Runtime verification: see RUNTIME-VERIFICATION-${VERSION}-${BUILD}.md for Debug, Release, Analyze, unit test, and real GUI/CLI Whisper regression results
-- Change summary: see FILE-DIFF-${VERSION}-${BUILD}.md
-- macOS 15.5: static compatibility was audited; real feature regression testing was completed on macOS 26.5.2 without creating a 15.5 VM
+- Runtime verification: this packaging command performs static package checks and bounded CLI/helper startup checks only; GUI, permissions, physical-device, and real-audio acceptance remain separate
+- Change summary: see RELEASE_NOTES_1.6.5.md in the source checkout
+- macOS 15.5: architecture and deployment-target compatibility are audited statically; no macOS 15.5 virtual-machine acceptance is claimed
 EOF
 
 if [[ "$INSTALL_LOCAL_COPY" == "1" ]]; then

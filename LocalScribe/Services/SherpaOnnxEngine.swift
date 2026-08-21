@@ -41,9 +41,12 @@ enum SherpaOnnxFileProcessor {
         }
 
         let prepared = try await MediaAudioPreparer.prepare(sourceURL)
-        let wav = try SherpaAudioPreparer.makeMonoPCM16Wav(from: prepared.url)
         defer {
             if prepared.isTemporary { try? FileManager.default.removeItem(at: prepared.url) }
+        }
+        try Task.checkCancellation()
+        let wav = try await SherpaAudioPreparer.makeMonoPCM16Wav(from: prepared.url)
+        defer {
             try? FileManager.default.removeItem(at: wav.url)
         }
 
@@ -264,6 +267,7 @@ private final class SherpaSubprocess: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
     private var continuation: CheckedContinuation<SherpaSubprocessResult, Error>?
+    private var cancellationRequested = false
 
     func run(
         executableURL: URL,
@@ -311,13 +315,24 @@ private final class SherpaSubprocess: @unchecked Sendable {
                     self?.finish(.success(result))
                 }
 
-                lock.withLock {
+                let wasCancelled = lock.withLock {
                     self.continuation = continuation
                     self.process = process
+                    return cancellationRequested
+                }
+
+                if wasCancelled {
+                    try? stdout.close()
+                    try? stderr.close()
+                    try? FileManager.default.removeItem(at: tempDirectory)
+                    finish(.failure(CancellationError()))
+                    return
                 }
 
                 do {
                     try process.run()
+                    let shouldTerminate = lock.withLock { cancellationRequested }
+                    if shouldTerminate, process.isRunning { process.terminate() }
                 } catch {
                     try? stdout.close()
                     try? stderr.close()
@@ -331,9 +346,11 @@ private final class SherpaSubprocess: @unchecked Sendable {
     }
 
     private func terminate() {
-        lock.withLock {
-            process?.terminate()
+        let runningProcess = lock.withLock {
+            cancellationRequested = true
+            return process?.isRunning == true ? process : nil
         }
+        runningProcess?.terminate()
     }
 
     private func finish(_ result: Result<SherpaSubprocessResult, Error>) {
@@ -347,8 +364,9 @@ private final class SherpaSubprocess: @unchecked Sendable {
     }
 }
 
-private enum SherpaAudioPreparer {
-    static func makeMonoPCM16Wav(from url: URL) throws -> (url: URL, duration: TimeInterval) {
+enum SherpaAudioPreparer {
+    static func makeMonoPCM16Wav(from url: URL) async throws -> (url: URL, duration: TimeInterval) {
+        try Task.checkCancellation()
         let inputFile = try AVAudioFile(forReading: url)
         let sourceFormat = inputFile.processingFormat
         let duration = Double(inputFile.length) / sourceFormat.sampleRate
@@ -365,6 +383,10 @@ private enum SherpaAudioPreparer {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("LocalScribe-Sherpa-\(UUID().uuidString)")
             .appendingPathExtension("wav")
+        var shouldRemoveOutput = true
+        defer {
+            if shouldRemoveOutput { try? FileManager.default.removeItem(at: outputURL) }
+        }
         let outputFile = try AVAudioFile(
             forWriting: outputURL,
             settings: targetFormat.settings,
@@ -374,6 +396,7 @@ private enum SherpaAudioPreparer {
 
         let readCapacity: AVAudioFrameCount = 8_192
         while inputFile.framePosition < inputFile.length {
+            try Task.checkCancellation()
             let remaining = inputFile.length - inputFile.framePosition
             let frameCount = AVAudioFrameCount(min(AVAudioFramePosition(readCapacity), remaining))
             guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: readCapacity) else {
@@ -384,6 +407,8 @@ private enum SherpaAudioPreparer {
             try outputFile.write(from: outputBuffer)
         }
 
+        try Task.checkCancellation()
+        shouldRemoveOutput = false
         return (outputURL, duration)
     }
 }

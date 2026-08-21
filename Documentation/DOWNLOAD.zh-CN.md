@@ -29,7 +29,7 @@
 
 1. 双击下载好的 `LocalScribe-macOS-arm64.dmg`。
 2. 在出现的窗口中，把 `LocalScribe.app`（中文系统中显示为“声迹”）拖到“Applications / 应用程序”。
-3. 拖动完成后，可以推出名为“LocalScribe 1.6.4”的磁盘映像。
+3. 拖动完成后，可以推出名为“LocalScribe 1.6.5”的磁盘映像。
 
 不要直接长期运行 DMG 里的 App；从“应用程序”文件夹运行，更新和权限状态会更稳定。
 

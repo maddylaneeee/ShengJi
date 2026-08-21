@@ -107,16 +107,22 @@ actor WhisperModelContext {
         preserveContext: Bool = true,
         mode: DecodingMode = .accurate,
         progressHandler: (@Sendable (Double) -> Void)? = nil
-    ) throws -> [TranscriptSegment] {
-        try samples.withUnsafeBufferPointer {
-            try transcribe(
-                sampleBuffer: $0,
-                languageCode: languageCode,
-                options: options,
-                preserveContext: preserveContext,
-                mode: mode,
-                progressHandler: progressHandler
-            )
+    ) async throws -> [TranscriptSegment] {
+        let cancellation = WhisperCancellationObserver()
+        return try await withTaskCancellationHandler {
+            try samples.withUnsafeBufferPointer {
+                try transcribe(
+                    sampleBuffer: $0,
+                    languageCode: languageCode,
+                    options: options,
+                    preserveContext: preserveContext,
+                    mode: mode,
+                    progressHandler: progressHandler,
+                    cancellation: cancellation
+                )
+            }
+        } onCancel: {
+            cancellation.cancel()
         }
     }
 
@@ -127,20 +133,26 @@ actor WhisperModelContext {
         preserveContext: Bool = true,
         incrementalSegmentHandler: (@Sendable ([TranscriptSegment]) -> Void)? = nil,
         progressHandler: (@Sendable (Double) -> Void)? = nil
-    ) throws -> [TranscriptSegment] {
+    ) async throws -> [TranscriptSegment] {
         guard mappedPCMData.count.isMultiple(of: MemoryLayout<Float>.stride) else {
             throw WhisperEngineError.invalidAudio
         }
-        return try mappedPCMData.withUnsafeBytes { rawBuffer in
-            try transcribe(
-                sampleBuffer: rawBuffer.bindMemory(to: Float.self),
-                languageCode: languageCode,
-                options: options,
-                preserveContext: preserveContext,
-                mode: .accurate,
-                incrementalSegmentHandler: incrementalSegmentHandler,
-                progressHandler: progressHandler
-            )
+        let cancellation = WhisperCancellationObserver()
+        return try await withTaskCancellationHandler {
+            try mappedPCMData.withUnsafeBytes { rawBuffer in
+                try transcribe(
+                    sampleBuffer: rawBuffer.bindMemory(to: Float.self),
+                    languageCode: languageCode,
+                    options: options,
+                    preserveContext: preserveContext,
+                    mode: .accurate,
+                    incrementalSegmentHandler: incrementalSegmentHandler,
+                    progressHandler: progressHandler,
+                    cancellation: cancellation
+                )
+            }
+        } onCancel: {
+            cancellation.cancel()
         }
     }
 
@@ -192,7 +204,8 @@ actor WhisperModelContext {
         preserveContext: Bool,
         mode: DecodingMode,
         incrementalSegmentHandler: (@Sendable ([TranscriptSegment]) -> Void)? = nil,
-        progressHandler: (@Sendable (Double) -> Void)?
+        progressHandler: (@Sendable (Double) -> Void)?,
+        cancellation: WhisperCancellationObserver
     ) throws -> [TranscriptSegment] {
         guard samples.count >= WhisperAudio.sampleRate / 3 else { return [] }
         guard samples.count <= Int(Int32.max) else { throw WhisperEngineError.invalidAudio }
@@ -224,6 +237,15 @@ actor WhisperModelContext {
             }
             parameters.new_segment_callback_user_data = Unmanaged.passUnretained(segmentObserver).toOpaque()
         }
+
+        parameters.abort_callback = { userData in
+            guard let userData else { return false }
+            return Unmanaged<WhisperCancellationObserver>
+                .fromOpaque(userData)
+                .takeUnretainedValue()
+                .isCancelled
+        }
+        parameters.abort_callback_user_data = Unmanaged.passUnretained(cancellation).toOpaque()
 
         let useVAD = options.useVAD
             && mode == .accurate
@@ -261,6 +283,7 @@ actor WhisperModelContext {
                 return runInference()
             }
         }
+        if cancellation.isCancelled { throw CancellationError() }
         guard result == 0 else { throw WhisperEngineError.inferenceFailed(result) }
 
         let decoded = Self.decodedSegments(context: context)
@@ -355,6 +378,17 @@ private final class WhisperIncrementalSegmentObserver: @unchecked Sendable {
         let segments = WhisperModelContext.decodedSegments(context: context, range: start..<total)
             .map(\.segment)
         if !segments.isEmpty { handler(segments) }
+    }
+}
+
+private final class WhisperCancellationObserver: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    var isCancelled: Bool { lock.withLock { cancelled } }
+
+    func cancel() {
+        lock.withLock { cancelled = true }
     }
 }
 
@@ -622,6 +656,11 @@ enum WhisperFileProcessor {
         case finalizing
     }
 
+    static func temporaryPCMURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("LocalScribe-Whisper-\(UUID().uuidString).f32")
+    }
+
     static func process(
         url: URL,
         context: WhisperModelContext,
@@ -640,8 +679,7 @@ enum WhisperFileProcessor {
         let converter = AVAudioConverter(from: sourceFormat, to: WhisperAudio.format)
         guard let converter else { throw WhisperEngineError.invalidAudio }
         WhisperAudio.configure(converter)
-        let pcmURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("LocalScribe-Whisper-(UUID().uuidString).f32")
+        let pcmURL = temporaryPCMURL()
         FileManager.default.createFile(atPath: pcmURL.path, contents: nil)
         let pcmHandle = try FileHandle(forWritingTo: pcmURL)
         var pcmHandleClosed = false

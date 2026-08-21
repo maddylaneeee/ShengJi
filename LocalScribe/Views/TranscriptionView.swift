@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TranscriptionView: View {
     @Environment(\.locale) private var interfaceLocale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AIPromptPreferences.self) private var aiPromptPreferences
     @Bindable var session: TranscriptionSessionModel
     @Bindable var catalog: LanguageCatalog
@@ -42,6 +43,7 @@ struct TranscriptionView: View {
     @State private var gemmaTask: Task<Void, Never>?
     @State private var gemmaPreviewText = ""
     @State private var gemmaOriginalText = ""
+    @State private var permissionCenter = PermissionCenter()
     @FocusState private var gemmaPromptFocused: Bool
     @AppStorage("EnableGemmaE4B") private var enableGemmaE4B = false
 
@@ -53,7 +55,10 @@ struct TranscriptionView: View {
         VStack(spacing: 0) {
             statusStrip
             Divider()
-            if session.phase == .preparing {
+            if isShowingRealtimeAudioFailure {
+                realtimeAudioFailureBanner
+                Divider()
+            } else if session.phase == .preparing {
                 preflightPanel
                 Divider()
             } else if session.phase == .finished {
@@ -112,8 +117,13 @@ struct TranscriptionView: View {
             isAdvancedExpanded = false
             nllbModelManager.refresh()
             gemmaModelManager.refresh()
+            session.refreshRealtimeAudioSources()
+            session.updateReduceMotion(reduceMotion)
             syncPendingConfiguration()
             autoPrepareGemmaIfNeeded()
+        }
+        .onChange(of: reduceMotion) { _, enabled in
+            session.updateReduceMotion(enabled)
         }
         .onChange(of: catalog.selectedLocaleIdentifier) { _, _ in syncPendingConfiguration() }
         .onChange(of: recognitionPreferences.configuration) { _, _ in syncPendingConfiguration() }
@@ -261,7 +271,10 @@ struct TranscriptionView: View {
                     segments: session.displaySegments,
                     totalCount: session.segments.count,
                     isActive: session.phase.isActive,
-                    animatedText: session.usesAnimatedStreamingDisplay ? session.animatedTranscriptText : nil
+                    animatedText: reduceMotion && session.phase.isActive
+                        && (session.configuration.engine == .apple || session.configuration.engine == .whisper)
+                            ? session.transcriptText
+                            : (session.usesAnimatedStreamingDisplay ? session.animatedTranscriptText : nil)
                 )
             }
 
@@ -325,6 +338,31 @@ struct TranscriptionView: View {
             Label(computePreferenceHint, systemImage: "arrow.triangle.2.circlepath")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if case .microphone = session.source,
+               session.selectedRealtimeAudioSource == .systemAudio {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label(
+                        "仅在采集 Mac 正在播放的声音时使用。声迹不会录制屏幕画面。",
+                        systemImage: "rectangle.slash"
+                    )
+                    Label("识别在本机完成", systemImage: "lock.shield")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            if let notice = session.realtimeAudioSourceNotice {
+                Label(notice, systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let error = session.realtimeAudioSourceError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 14)
@@ -847,7 +885,7 @@ struct TranscriptionView: View {
 
     private var transportControls: some View {
         HStack(spacing: 10) {
-            if session.canStart {
+            if session.phase == .preparing {
                 Button("开始转录", systemImage: "record.circle") {
                     syncPendingConfiguration()
                     Task { await session.start() }
@@ -884,12 +922,86 @@ struct TranscriptionView: View {
         .shadow(color: .black.opacity(0.08), radius: 14, y: 5)
     }
 
+    private var isShowingRealtimeAudioFailure: Bool {
+        guard case .microphone = session.source,
+              case .failed = session.phase,
+              session.realtimeAudioSourceError != nil else { return false }
+        return true
+    }
+
+    private var realtimeAudioFailureMessage: String {
+        if let error = session.realtimeAudioSourceError { return error }
+        if case .failed(let message) = session.phase { return message }
+        return L10n.text("未知错误")
+    }
+
+    private var realtimeAudioFailureBanner: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(realtimeAudioFailureMessage)
+                    .font(.callout.weight(.medium))
+                Text(session.selectedRealtimeAudioSourceTitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button("打开系统设置", systemImage: "gear") {
+                let permission: ManagedPermission = session.selectedRealtimeAudioSource == .systemAudio
+                    ? .screenRecording
+                    : .microphone
+                permissionCenter.openSystemSettings(for: permission)
+            }
+            Button("重试", systemImage: "arrow.clockwise") {
+                Task { await session.retryRealtimeAudioSource() }
+            }
+            .primaryActionStyle()
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 12)
+        .background(Color.orange.opacity(0.08))
+        .accessibilityElement(children: .contain)
+    }
+
+    private var realtimeAudioSourceMenu: some View {
+        let title = session.selectedRealtimeAudioSourceTitle
+        return Menu {
+            Picker("来源", selection: Binding(
+                get: { session.selectedRealtimeAudioSource },
+                set: { session.selectRealtimeAudioSource($0) }
+            )) {
+                ForEach(session.realtimeAudioSourceOptions) { source in
+                    Label(
+                        session.realtimeAudioSourceTitle(for: source),
+                        systemImage: session.realtimeAudioSourceSymbol(for: source)
+                    )
+                    .tag(source)
+                }
+            }
+            .labelsHidden()
+        } label: {
+            Label(title, systemImage: session.selectedRealtimeAudioSourceSymbol)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .disabled(session.phase != .preparing)
+        .help(title)
+        .accessibilityLabel(L10n.text("来源"))
+        .accessibilityValue(title)
+    }
+
     private var inspector: some View {
         Form {
             Section("转录") {
                 LabeledContent("来源") {
-                    Label(session.source.title, systemImage: session.source.symbol)
-                        .lineLimit(1)
+                    if case .microphone = session.source {
+                        realtimeAudioSourceMenu
+                    } else {
+                        Label(session.source.title, systemImage: session.source.symbol)
+                            .lineLimit(1)
+                    }
                 }
                 LabeledContent("语言", value: session.languageName)
                 if session.isImportedTranscript {
@@ -1786,6 +1898,10 @@ struct TranscriptionView: View {
 
     private var canStartSession: Bool {
         guard !catalog.isLoading else { return false }
+        if case .microphone = session.source,
+           !session.isSelectedRealtimeAudioSourceAvailable {
+            return false
+        }
         if case .microphone = session.source, !recognitionPreferences.engine.supportsRealtimeMicrophone {
             return false
         }

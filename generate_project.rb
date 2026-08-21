@@ -20,12 +20,15 @@ main_group = project.main_group.new_group("LocalScribe", "LocalScribe")
 source_files = %w[
   LocalScribeApp.swift
   Models/TranscriptionModels.swift
+  Models/RealtimeAudioSource.swift
   Services/LanguageCatalog.swift
   Services/Localization.swift
   Services/AppPresentationPreferences.swift
   Services/ApplicationMenuLocalizer.swift
   Services/PermissionCenter.swift
   Services/AudioPipeline.swift
+  Services/AudioInputDeviceRepository.swift
+  Services/RealtimeAudioCapture.swift
   Services/AppStoragePaths.swift
   Services/AppInfo.swift
   Services/AppUpdateController.swift
@@ -73,6 +76,9 @@ test_target.add_dependency(target)
   LocalizationTests.swift
   AppUpdateControllerTests.swift
   GemmaSafetyTests.swift
+  RealtimeAudioSourceTests.swift
+  StreamingTextAnimatorTests.swift
+  TranscriptionLifecycleTests.swift
 ].each do |relative_path|
   reference = tests_group.new_file(relative_path)
   test_target.source_build_phase.add_file_reference(reference)

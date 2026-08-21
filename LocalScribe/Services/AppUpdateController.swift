@@ -6,6 +6,7 @@ import Observation
 struct AppUpdateManifest: Codable, Equatable, Sendable {
     let version: String
     let build: String
+    var bundleIdentifier: String? = nil
     let downloadURL: URL
     let sha256: String
     let releaseNotes: String?
@@ -16,6 +17,7 @@ struct AppUpdateManifest: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case version
         case build
+        case bundleIdentifier = "bundle_id"
         case downloadURL = "download_url"
         case sha256
         case releaseNotes = "release_notes"
@@ -342,6 +344,10 @@ private actor UpdatePreparationActor {
         manifest: AppUpdateManifest,
         expectedBundleIdentifier: String
     ) throws {
+        if let declaredBundleIdentifier = manifest.bundleIdentifier,
+           declaredBundleIdentifier != expectedBundleIdentifier {
+            throw UpdateError.invalidBundle
+        }
         let infoURL = appURL.appendingPathComponent("Contents/Info.plist")
         guard let bundle = Bundle(url: appURL),
               bundle.bundleIdentifier == expectedBundleIdentifier,

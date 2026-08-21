@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreGraphics
 import Foundation
 import Observation
 import Speech
@@ -19,6 +20,49 @@ private struct AITranscriptUndoSnapshot {
     let segmentTranslations: [SegmentTranslation]
     let translationError: String?
     let hasManualEdits: Bool
+}
+
+struct TranscriptionTaskJoinSet {
+    private let tasks: [Task<Void, Never>]
+
+    init(_ tasks: [Task<Void, Never>?]) {
+        self.tasks = tasks.compactMap { $0 }
+    }
+
+    func cancel() {
+        tasks.forEach { $0.cancel() }
+    }
+
+    func wait() async {
+        for task in tasks { _ = await task.result }
+    }
+}
+
+@MainActor
+final class TranscriptionSessionRegistry {
+    static let shared = TranscriptionSessionRegistry()
+
+    private final class WeakSession {
+        weak var value: TranscriptionSessionModel?
+        init(_ value: TranscriptionSessionModel) { self.value = value }
+    }
+
+    private var sessions: [WeakSession] = []
+
+    func register(_ session: TranscriptionSessionModel) {
+        sessions.removeAll { $0.value == nil || $0.value === session }
+        sessions.append(WeakSession(session))
+    }
+
+    func unregister(_ session: TranscriptionSessionModel) {
+        sessions.removeAll { $0.value == nil || $0.value === session }
+    }
+
+    func cancelAll() async {
+        let active = sessions.compactMap(\.value)
+        for session in active { await session.cancel() }
+        sessions.removeAll()
+    }
 }
 
 @MainActor
@@ -72,6 +116,27 @@ final class TranscriptionSessionModel {
     private var sherpaTask: Task<Void, Never>?
     private var sherpaFinishedWhilePaused = false
 
+    private let audioDeviceRepository = AudioInputDeviceRepository()
+    private let realtimeAudioCaptureBuilder = DefaultRealtimeAudioCaptureBuilder()
+    private let realtimeAudioSourcePreferenceStore = UserDefaultsRealtimeAudioSourcePreferenceStore()
+    private var audioDeviceObservation: (any AudioDeviceChangeObservation)?
+    private var realtimeAudioCapture: (any RealtimeAudioCapturing)?
+    private var realtimeCaptureSessionID: UUID?
+    private var realtimeCaptureGeneration = UUID()
+    private var realtimePauseTask: Task<Void, Never>?
+    private var realtimeWatchdogTask: Task<Void, Never>?
+    private var lastRealtimeBufferAt: ContinuousClock.Instant?
+    private var activeRealtimeAudioSource: RealtimeAudioSourceID?
+    private var realtimeCaptureFormat: AVAudioFormat?
+    private var realtimeAudioBufferConsumer: (@MainActor @Sendable (AVAudioPCMBuffer) -> Void)?
+    private var defaultInputDeviceIsAvailable = false
+
+    private(set) var selectedRealtimeAudioSource: RealtimeAudioSourceID = .systemDefaultMicrophone
+    private(set) var availableInputDevices: [AudioInputDevice] = []
+    private(set) var realtimeAudioSourceNotice: String?
+    private(set) var realtimeAudioSourceError: String?
+    private(set) var reduceMotionEnabled = false
+
     private var audioEngine: AVAudioEngine?
     private var microphoneConverter: AVAudioConverter?
     private var microphoneFormat: AVAudioFormat?
@@ -90,6 +155,8 @@ final class TranscriptionSessionModel {
     private var translationTask: Task<Void, Never>?
     private var translationRunID: UUID?
     private var transcriptRefreshTask: Task<Void, Never>?
+    private var resourceCleanupTask: Task<Void, Never>?
+    private var resourcesAreClean = false
     @ObservationIgnored private lazy var streamingTextAnimator = AdaptiveStreamingTextAnimator { [weak self] text in
         self?.animatedTranscriptText = text
     }
@@ -117,7 +184,32 @@ final class TranscriptionSessionModel {
     }
     var displayTranslatedSegments: [TranscriptSegment] { Array(translatedSegments.suffix(400)) }
     var usesAnimatedStreamingDisplay: Bool {
-        phase.isActive && (configuration.engine == .apple || configuration.engine == .whisper)
+        !reduceMotionEnabled
+            && phase.isActive
+            && (configuration.engine == .apple || configuration.engine == .whisper)
+    }
+
+    var realtimeAudioSourceOptions: [RealtimeAudioSourceID] {
+        [.systemAudio, .systemDefaultMicrophone] + availableInputDevices.map { .inputDevice(uid: $0.uid) }
+    }
+
+    var selectedRealtimeAudioSourceTitle: String {
+        realtimeAudioSourceTitle(for: selectedRealtimeAudioSource)
+    }
+
+    var selectedRealtimeAudioSourceSymbol: String {
+        realtimeAudioSourceSymbol(for: selectedRealtimeAudioSource)
+    }
+
+    var isSelectedRealtimeAudioSourceAvailable: Bool {
+        switch selectedRealtimeAudioSource {
+        case .systemAudio:
+            true
+        case .systemDefaultMicrophone:
+            true
+        case .inputDevice(let uid):
+            availableInputDevices.contains { $0.uid == uid }
+        }
     }
 
     init(
@@ -130,6 +222,7 @@ final class TranscriptionSessionModel {
         self.locale = locale
         self.configuration = configuration
         self.translationConfiguration = translationConfiguration
+        prepareRealtimeAudioSourcesIfNeeded()
     }
 
     init(snapshot: RecoverySnapshot) {
@@ -153,6 +246,7 @@ final class TranscriptionSessionModel {
         self.animatedTranscriptText = snapshot.transcriptText
         self.recoveryID = snapshot.id
         self.recoveryCreatedAt = snapshot.createdAt
+        prepareRealtimeAudioSourcesIfNeeded()
     }
 
     init(
@@ -177,6 +271,7 @@ final class TranscriptionSessionModel {
         self.segmentFingerprints = Set(imported.segments.map(Self.segmentFingerprint))
         self.hasManualEdits = false
         self.isImportedTranscript = !continueWithMicrophone
+        prepareRealtimeAudioSourcesIfNeeded()
     }
 
     var languageName: String {
@@ -187,8 +282,158 @@ final class TranscriptionSessionModel {
     var canResume: Bool { phase == .paused }
     var canStop: Bool { phase == .transcribing || phase == .paused }
     var canEdit: Bool { phase == .paused || phase == .finished || phase.failedMessage != nil }
-    var canStart: Bool { phase == .preparing }
+    var canStart: Bool {
+        guard phase == .preparing else { return false }
+        if case .microphone = source { return isSelectedRealtimeAudioSourceAvailable }
+        return true
+    }
     var canUndoAIChange: Bool { aiUndoSnapshot != nil }
+    var resourcesAreReleasedForTesting: Bool {
+        resourcesAreClean
+            && audioEngine == nil
+            && microphoneConverter == nil
+            && microphoneFormat == nil
+            && whisperContext == nil
+            && whisperLiveBuffer == nil
+            && whisperTask == nil
+            && sherpaTask == nil
+            && analysisTask == nil
+            && resultsTask == nil
+            && feederTask == nil
+            && timerTask == nil
+            && temporaryAudioURL == nil
+            && !isUsingSecurityScopedResource
+    }
+
+    func realtimeAudioSourceTitle(for source: RealtimeAudioSourceID) -> String {
+        switch source {
+        case .systemAudio:
+            L10n.text("Mac 系统音频")
+        case .systemDefaultMicrophone:
+            L10n.text("系统默认麦克风")
+        case .inputDevice(let uid):
+            availableInputDevices.first(where: { $0.uid == uid })?.displayName
+                ?? L10n.text("不可用的音频输入设备")
+        }
+    }
+
+    func realtimeAudioSourceSymbol(for source: RealtimeAudioSourceID) -> String {
+        switch source {
+        case .systemAudio: "macbook.and.waveform"
+        case .systemDefaultMicrophone: "mic"
+        case .inputDevice: "mic.fill"
+        }
+    }
+
+    func selectRealtimeAudioSource(_ source: RealtimeAudioSourceID) {
+        guard (phase == .preparing || phase.failedMessage != nil),
+              realtimeAudioSourceOptions.contains(source) else { return }
+        selectedRealtimeAudioSource = source
+        realtimeAudioSourceError = nil
+        realtimeAudioSourceNotice = nil
+    }
+
+    func refreshRealtimeAudioSources() {
+        guard case .microphone = source else { return }
+        do {
+            let devices = try audioDeviceRepository.availableInputDevices()
+            let defaultAvailable = (try? audioDeviceRepository.resolveSystemID(for: .systemDefaultMicrophone)) != nil
+            applyRealtimeAudioDeviceUpdate(devices, defaultInputAvailable: defaultAvailable)
+            realtimeAudioSourceError = nil
+        } catch {
+            availableInputDevices = []
+            defaultInputDeviceIsAvailable = false
+            realtimeAudioSourceError = L10n.text("无法读取音频输入设备列表。")
+        }
+    }
+
+    func retryRealtimeAudioSource() async {
+        guard case .microphone = source, phase.failedMessage != nil else { return }
+        await cleanupResources()
+        resourcesAreClean = false
+        realtimeAudioSourceError = nil
+        phase = .preparing
+        refreshRealtimeAudioSources()
+        startAudioDeviceObservationIfNeeded()
+        guard canStart else { return }
+        await start()
+    }
+
+    func setReduceMotionEnabled(_ enabled: Bool) {
+        reduceMotionEnabled = enabled
+        guard enabled else { return }
+        streamingTextAnimator.flush()
+        animatedTranscriptText = transcriptText
+    }
+
+    func updateReduceMotion(_ enabled: Bool) {
+        setReduceMotionEnabled(enabled)
+    }
+
+    private func prepareRealtimeAudioSourcesIfNeeded() {
+        guard case .microphone = source else { return }
+        do {
+            let devices = try audioDeviceRepository.availableInputDevices()
+            availableInputDevices = devices
+            defaultInputDeviceIsAvailable = (try? audioDeviceRepository.resolveSystemID(
+                for: .systemDefaultMicrophone
+            )) != nil
+            let resolution = RealtimeAudioSourcePreferencePolicy.resolve(
+                persistedSource: realtimeAudioSourcePreferenceStore.load(),
+                availableDevices: devices
+            )
+            selectedRealtimeAudioSource = resolution.selectedSource
+            if resolution.didFallBackFromUnavailableDevice {
+                realtimeAudioSourceNotice = L10n.text("上次使用的音频输入设备当前不可用，已改用系统默认麦克风。")
+            }
+        } catch {
+            availableInputDevices = []
+            defaultInputDeviceIsAvailable = false
+            selectedRealtimeAudioSource = .systemDefaultMicrophone
+            realtimeAudioSourceError = L10n.text("无法读取音频输入设备列表。")
+        }
+
+        startAudioDeviceObservationIfNeeded()
+    }
+
+    private func startAudioDeviceObservationIfNeeded() {
+        guard audioDeviceObservation == nil, case .microphone = source else { return }
+        do {
+            audioDeviceObservation = try audioDeviceRepository.observeChanges { [weak self] devices in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let defaultAvailable = (try? self.audioDeviceRepository.resolveSystemID(
+                        for: .systemDefaultMicrophone
+                    )) != nil
+                    self.applyRealtimeAudioDeviceUpdate(
+                        devices,
+                        defaultInputAvailable: defaultAvailable
+                    )
+                }
+            }
+        } catch {
+            realtimeAudioSourceError = L10n.text("无法监听音频输入设备变化。")
+        }
+    }
+
+    private func applyRealtimeAudioDeviceUpdate(
+        _ devices: [AudioInputDevice],
+        defaultInputAvailable: Bool
+    ) {
+        availableInputDevices = devices
+        defaultInputDeviceIsAvailable = defaultInputAvailable
+        guard case .inputDevice(let uid) = selectedRealtimeAudioSource,
+              !devices.contains(where: { $0.uid == uid }) else { return }
+
+        if realtimeAudioCapture != nil {
+            realtimeAudioSourceError = L10n.text("正在使用的音频输入设备已断开。现有文字已保留。")
+            fail(SessionError.audioInputDeviceDisconnected)
+            return
+        }
+
+        selectedRealtimeAudioSource = .systemDefaultMicrophone
+        realtimeAudioSourceNotice = L10n.text("所选音频输入设备已断开，已改用系统默认麦克风。")
+    }
 
     func configure(
         locale: Locale,
@@ -203,6 +448,10 @@ final class TranscriptionSessionModel {
 
     func start() async {
         guard phase == .preparing else { return }
+        // Lock the run before the first suspension point so concurrent Start
+        // requests cannot create more than one analyzer/capture pipeline.
+        phase = configuration.engine == .whisper ? .loadingModel : .preparingAudio
+        TranscriptionSessionRegistry.shared.register(self)
         streamingTextAnimator.reset()
         switch configuration.engine {
         case .whisper:
@@ -239,7 +488,7 @@ final class TranscriptionSessionModel {
 
             let analyzer = SpeechAnalyzer(
                 modules: [transcriber],
-                options: .init(priority: .userInitiated, modelRetention: .processLifetime)
+                options: .init(priority: .userInitiated, modelRetention: .whileInUse)
             )
             appleSpeechState.analyzer = analyzer
             try await analyzer.prepareToAnalyze(in: format)
@@ -279,7 +528,9 @@ final class TranscriptionSessionModel {
         freezeTimer()
         switch source {
         case .microphone:
-            stopMicrophoneCapture()
+            realtimePauseTask = Task { [weak self] in
+                await self?.stopRealtimeAudioCapture(retainCapture: true)
+            }
         case .file:
             Task { await pauseGate.pause() }
         case .recovered:
@@ -300,7 +551,7 @@ final class TranscriptionSessionModel {
                 phase = .finished
                 progress = 1
                 saveRecoveryNow()
-                cleanupResources()
+                await cleanupResources()
             } else {
                 phase = .transcribing
             }
@@ -313,7 +564,9 @@ final class TranscriptionSessionModel {
         do {
             switch source {
             case .microphone:
-                try restartMicrophoneCapture()
+                await realtimePauseTask?.value
+                realtimePauseTask = nil
+                try await restartRealtimeAudioCapture()
             case .file:
                 await pauseGate.resume()
             case .recovered:
@@ -337,7 +590,7 @@ final class TranscriptionSessionModel {
             return
         }
         guard #available(macOS 26.0, *) else {
-            cleanupResources()
+            await cleanupResources()
             return
         }
         if phase == .paused {
@@ -345,6 +598,9 @@ final class TranscriptionSessionModel {
         }
         phase = .finishing
         freezeTimer()
+        await realtimePauseTask?.value
+        realtimePauseTask = nil
+        await stopRealtimeAudioCapture(retainCapture: true)
         stopMicrophoneCapture()
         feederTask?.cancel()
         await pauseGate.resume()
@@ -358,7 +614,7 @@ final class TranscriptionSessionModel {
             phase = .finished
             progress = 1
             if case .file = source { elapsed = sourceDuration }
-            cleanupResources()
+            await cleanupResources()
         } catch {
             fail(error)
         }
@@ -369,32 +625,18 @@ final class TranscriptionSessionModel {
         stopCurrentTranslation()
         translationRunID = nil
         if configuration.engine == .whisper {
-            stopMicrophoneCapture()
-            whisperTask?.cancel()
-            feederTask?.cancel()
-            timerTask?.cancel()
-            await whisperLiveBuffer?.finish()
-            cleanupResources()
+            await cleanupResources()
             return
         }
         if configuration.engine == .senseVoice || configuration.engine == .parakeet {
-            sherpaTask?.cancel()
-            timerTask?.cancel()
-            cleanupResources()
+            await cleanupResources()
             return
         }
-        stopMicrophoneCapture()
-        feederTask?.cancel()
-        timerTask?.cancel()
         guard #available(macOS 26.0, *) else {
-            cleanupResources()
+            await cleanupResources()
             return
         }
-        existingAppleSpeechState?.bridge?.finish()
-        await existingAppleSpeechState?.analyzer?.cancelAndFinishNow()
-        analysisTask?.cancel()
-        resultsTask?.cancel()
-        cleanupResources()
+        await cleanupResources()
     }
 
     func noteDirectEdit() {
@@ -755,22 +997,208 @@ final class TranscriptionSessionModel {
 
     @available(macOS 26.0, *)
     private func startMicrophone(targetFormat: AVAudioFormat) async throws {
-        let microphoneAllowed = await AVCaptureDevice.requestAccess(for: .audio)
-        guard microphoneAllowed else { throw SessionError.microphonePermissionDenied }
-
-        let engine = AVAudioEngine()
-        let naturalFormat = engine.inputNode.outputFormat(forBus: 0)
-        guard naturalFormat.channelCount > 0, naturalFormat.sampleRate > 0 else {
-            throw SessionError.noMicrophone
-        }
-        guard let converter = AVAudioConverter(from: naturalFormat, to: targetFormat) else {
+        guard let bridge = existingAppleSpeechState?.bridge else {
             throw SessionError.noCompatibleAudioFormat
         }
+        try await startRealtimeAudioCapture(targetFormat: targetFormat) { [weak self, bridge] buffer in
+            _ = bridge.yield(AnalyzerInput(buffer: buffer))
+            self?.updateRealtimeAudioLevel(from: buffer)
+        }
+    }
 
-        audioEngine = engine
-        microphoneConverter = converter
-        microphoneFormat = naturalFormat
-        try restartMicrophoneCapture()
+    private func startRealtimeAudioCapture(
+        targetFormat: AVAudioFormat,
+        consume: @escaping @MainActor @Sendable (AVAudioPCMBuffer) -> Void
+    ) async throws {
+        let selectedSource = selectedRealtimeAudioSource
+        if RealtimeAudioPermissionDecision.mayRequestMicrophone(for: selectedSource) {
+            let microphoneAllowed = await AVCaptureDevice.requestAccess(for: .audio)
+            guard microphoneAllowed else { throw SessionError.microphonePermissionDenied }
+        } else if RealtimeAudioPermissionDecision.mayStartScreenCapture(for: selectedSource),
+                  !CGPreflightScreenCaptureAccess() {
+            let granted = CGRequestScreenCaptureAccess()
+            guard !granted else { throw SessionError.screenRecordingPermissionRequiresRestart }
+            throw SessionError.screenRecordingPermissionDenied
+        }
+
+        let capture: any RealtimeAudioCapturing
+        do {
+            switch selectedSource {
+            case .systemAudio:
+                capture = realtimeAudioCaptureBuilder.makeSystemAudioCapture(targetFormat: targetFormat)
+            case .systemDefaultMicrophone:
+                capture = realtimeAudioCaptureBuilder.makeDefaultInputCapture(targetFormat: targetFormat)
+            case .inputDevice:
+                let systemID = try audioDeviceRepository.resolveSystemID(for: selectedSource)
+                capture = realtimeAudioCaptureBuilder.makeSpecificInputCapture(
+                    systemID: systemID,
+                    targetFormat: targetFormat
+                )
+            }
+        } catch {
+            throw SessionError.audioInputDeviceUnavailable
+        }
+
+        realtimeAudioCapture = capture
+        activeRealtimeAudioSource = selectedSource
+        realtimeCaptureFormat = targetFormat
+        realtimeAudioBufferConsumer = consume
+        try await startPreparedRealtimeAudioCapture(capture, source: selectedSource)
+    }
+
+    private func startPreparedRealtimeAudioCapture(
+        _ capture: any RealtimeAudioCapturing,
+        source: RealtimeAudioSourceID
+    ) async throws {
+        let generation = UUID()
+        realtimeCaptureGeneration = generation
+        do {
+            let sessionID = try await capture.start(
+                onBuffer: { [weak self] captured in
+                    Task { @MainActor [weak self] in
+                        guard let self,
+                              self.realtimeCaptureGeneration == generation,
+                              self.realtimeCaptureSessionID == nil
+                                || self.realtimeCaptureSessionID == captured.sessionID else { return }
+                        self.lastRealtimeBufferAt = .now
+                        self.realtimeAudioBufferConsumer?(captured.buffer)
+                    }
+                },
+                onError: { [weak self] error in
+                    Task { @MainActor [weak self] in
+                        self?.handleRealtimeAudioCaptureError(error, generation: generation)
+                    }
+                }
+            )
+            guard realtimeCaptureGeneration == generation, phase.failedMessage == nil else {
+                await capture.stop()
+                throw CancellationError()
+            }
+            realtimeCaptureSessionID = sessionID
+            // Capture.start only returns after its first validated buffer.
+            realtimeAudioSourcePreferenceStore.saveSuccessfullyStartedSource(source)
+            realtimeAudioSourceError = nil
+            beginRealtimeAudioWatchdog(generation: generation, source: source)
+        } catch {
+            await capture.stop()
+            if realtimeCaptureGeneration == generation {
+                realtimeCaptureSessionID = nil
+            }
+            throw sanitizedRealtimeAudioError(error)
+        }
+    }
+
+    private func restartRealtimeAudioCapture() async throws {
+        guard let source = activeRealtimeAudioSource,
+              let targetFormat = realtimeCaptureFormat,
+              realtimeAudioBufferConsumer != nil else {
+            throw SessionError.noMicrophone
+        }
+        let capture: any RealtimeAudioCapturing
+        switch source {
+        case .systemAudio:
+            capture = realtimeAudioCaptureBuilder.makeSystemAudioCapture(targetFormat: targetFormat)
+        case .systemDefaultMicrophone:
+            capture = realtimeAudioCaptureBuilder.makeDefaultInputCapture(targetFormat: targetFormat)
+        case .inputDevice:
+            let systemID: UInt32
+            do {
+                systemID = try audioDeviceRepository.resolveSystemID(for: source)
+            } catch {
+                throw SessionError.audioInputDeviceUnavailable
+            }
+            capture = realtimeAudioCaptureBuilder.makeSpecificInputCapture(
+                systemID: systemID,
+                targetFormat: targetFormat
+            )
+        }
+        realtimeAudioCapture = capture
+        try await startPreparedRealtimeAudioCapture(capture, source: source)
+    }
+
+    private func stopRealtimeAudioCapture(retainCapture: Bool) async {
+        realtimeCaptureGeneration = UUID()
+        realtimeCaptureSessionID = nil
+        let watchdog = realtimeWatchdogTask
+        realtimeWatchdogTask = nil
+        watchdog?.cancel()
+        _ = await watchdog?.result
+        lastRealtimeBufferAt = nil
+        let capture = realtimeAudioCapture
+        await capture?.stop()
+        audioLevel = 0
+        if !retainCapture {
+            realtimeAudioCapture = nil
+            realtimeAudioBufferConsumer = nil
+            activeRealtimeAudioSource = nil
+            realtimeCaptureFormat = nil
+        }
+    }
+
+    private func beginRealtimeAudioWatchdog(
+        generation: UUID,
+        source: RealtimeAudioSourceID
+    ) {
+        realtimeWatchdogTask?.cancel()
+        guard source.requiresInputDevice else {
+            realtimeWatchdogTask = nil
+            return
+        }
+        if lastRealtimeBufferAt == nil { lastRealtimeBufferAt = .now }
+        realtimeWatchdogTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled, let self,
+                      self.realtimeCaptureGeneration == generation else { return }
+
+                if AVCaptureDevice.authorizationStatus(for: .audio) != .authorized {
+                    self.realtimeAudioSourceError = L10n.text("麦克风权限已被撤销。现有文字已保留。")
+                    self.fail(SessionError.microphonePermissionRevoked)
+                    return
+                }
+
+                guard let lastBuffer = self.lastRealtimeBufferAt,
+                      lastBuffer.duration(to: .now) >= .seconds(2) else { continue }
+                self.realtimeAudioSourceError = L10n.text("音频缓冲已停止。现有文字已保留。")
+                self.fail(SessionError.realtimeAudioBufferStopped)
+                return
+            }
+        }
+    }
+
+    private func updateRealtimeAudioLevel(from buffer: AVAudioPCMBuffer) {
+        guard audioLevelLimiter.shouldEmit(every: .milliseconds(80)) else { return }
+        audioLevel = AudioLevelEstimator.normalizedLevel(from: buffer)
+    }
+
+    private func handleRealtimeAudioCaptureError(_ error: Error, generation: UUID) {
+        guard realtimeCaptureGeneration == generation, phase.isActive || phase == .paused else { return }
+        realtimeAudioSourceError = sanitizedRealtimeAudioError(error).localizedDescription
+        fail(sanitizedRealtimeAudioError(error))
+    }
+
+    private func sanitizedRealtimeAudioError(_ error: Error) -> Error {
+        if error is AudioInputDeviceRepositoryError { return SessionError.audioInputDeviceUnavailable }
+        if error is CancellationError { return error }
+        if let captureError = error as? RealtimeAudioCaptureError {
+            switch captureError {
+            case .unavailableInputDevice, .coreAudio, .invalidAudioFormat, .invalidAudioBuffer:
+                return SessionError.audioInputDeviceUnavailable
+            case .alreadyRunning, .stoppedBeforeFirstBuffer, .firstBufferTimedOut:
+                return SessionError.realtimeAudioStartFailed
+            case .noCapturableDisplay:
+                return SessionError.noCapturableDisplay
+            case .screenRecordingPermissionDenied:
+                return SessionError.screenRecordingPermissionDenied
+            case .screenRecordingPermissionRequiresRestart:
+                return SessionError.screenRecordingPermissionRequiresRestart
+            case .missingScreenCaptureEntitlement, .failedToStartSystemAudio:
+                return SessionError.systemAudioCaptureFailed
+            case .screenCapture:
+                return SessionError.systemAudioCaptureFailed
+            }
+        }
+        return SessionError.realtimeAudioStartFailed
     }
 
     private func restartMicrophoneCapture() throws {
@@ -799,7 +1227,7 @@ final class TranscriptionSessionModel {
                 let output = try AudioFileFeeder.convert(buffer, using: converter, to: converter.outputFormat)
                 _ = bridge.yield(AnalyzerInput(buffer: output))
                 if levelLimiter.shouldEmit(every: .milliseconds(80)) {
-                    let level = Self.level(from: buffer)
+                    let level = AudioLevelEstimator.normalizedLevel(from: buffer)
                     Task { @MainActor [weak self] in self?.audioLevel = level }
                 }
             } catch {
@@ -906,25 +1334,8 @@ final class TranscriptionSessionModel {
     }
 
     private func startWhisperMicrophone(context: WhisperModelContext) async throws {
-        let microphoneAllowed = await AVCaptureDevice.requestAccess(for: .audio)
-        guard microphoneAllowed else { throw SessionError.microphonePermissionDenied }
-
-        let engine = AVAudioEngine()
-        let naturalFormat = engine.inputNode.outputFormat(forBus: 0)
-        guard naturalFormat.channelCount > 0, naturalFormat.sampleRate > 0 else {
-            throw SessionError.noMicrophone
-        }
-        guard let converter = AVAudioConverter(from: naturalFormat, to: WhisperAudio.format) else {
-            throw WhisperEngineError.invalidAudio
-        }
-        WhisperAudio.configure(converter)
-
         let liveBuffer = WhisperLiveSampleBuffer()
         whisperLiveBuffer = liveBuffer
-        audioEngine = engine
-        microphoneConverter = converter
-        microphoneFormat = naturalFormat
-        try restartWhisperMicrophoneCapture()
 
         let owner = self
         let language = whisperLanguageCode
@@ -972,6 +1383,12 @@ final class TranscriptionSessionModel {
                 await owner.fail(error)
             }
         }
+
+        try await startRealtimeAudioCapture(targetFormat: WhisperAudio.format) { [weak self, liveBuffer] buffer in
+            let samples = WhisperAudio.floatSamples(from: buffer)
+            Task { await liveBuffer.append(samples) }
+            self?.updateRealtimeAudioLevel(from: buffer)
+        }
     }
 
     private func restartWhisperMicrophoneCapture() throws {
@@ -992,7 +1409,7 @@ final class TranscriptionSessionModel {
                 let samples = try WhisperAudio.convert(buffer, using: converter)
                 Task { await liveBuffer.append(samples) }
                 if levelLimiter.shouldEmit(every: .milliseconds(80)) {
-                    let level = Self.level(from: buffer)
+                    let level = AudioLevelEstimator.normalizedLevel(from: buffer)
                     Task { @MainActor [weak self] in self?.audioLevel = level }
                 }
             } catch {
@@ -1099,7 +1516,7 @@ final class TranscriptionSessionModel {
         phase = .finished
         progress = 1
         saveRecoveryNow()
-        cleanupResources()
+        await cleanupResources()
     }
 
     private func receiveSherpaSegments(_ newSegments: [TranscriptSegment]) {
@@ -1129,13 +1546,16 @@ final class TranscriptionSessionModel {
         phase = .finished
         progress = 1
         saveRecoveryNow()
-        cleanupResources()
+        scheduleResourceCleanup()
     }
 
     private func stopWhisper() async {
         if phase == .paused { commitEditsAndCurrentOutput() }
         phase = .finishing
         freezeTimer()
+        await realtimePauseTask?.value
+        realtimePauseTask = nil
+        await stopRealtimeAudioCapture(retainCapture: true)
         stopMicrophoneCapture()
         await pauseGate.resume()
 
@@ -1157,7 +1577,7 @@ final class TranscriptionSessionModel {
         progress = 1
         if case .file = source { elapsed = sourceDuration }
         saveRecoveryNow()
-        cleanupResources()
+        await cleanupResources()
     }
 
     private func finishWhisperAutomatically() {
@@ -1169,7 +1589,7 @@ final class TranscriptionSessionModel {
         progress = 1
         elapsed = sourceDuration
         saveRecoveryNow()
-        cleanupResources()
+        scheduleResourceCleanup()
     }
 
     private func finishWhisperFileAutomatically(finalSegments: [TranscriptSegment]) {
@@ -1189,7 +1609,7 @@ final class TranscriptionSessionModel {
         activityDetail = finalSegments.isEmpty ? L10n.text("未检测到可转写的语音") : L10n.text("转录与幻觉过滤已完成")
         elapsed = sourceDuration
         saveRecoveryNow()
-        cleanupResources()
+        scheduleResourceCleanup()
     }
 
     private func receiveWhisperPreviewSegments(_ newSegments: [TranscriptSegment]) {
@@ -1276,7 +1696,7 @@ final class TranscriptionSessionModel {
             progress = 1
             elapsed = sourceDuration
             saveRecoveryNow()
-            cleanupResources()
+            scheduleResourceCleanup()
         } catch {
             fail(error)
         }
@@ -1305,28 +1725,94 @@ final class TranscriptionSessionModel {
         timerTask?.cancel()
     }
 
-    private func cleanupResources() {
-        timerTask?.cancel()
-        transcriptRefreshTask?.cancel()
-        transcriptRefreshTask = nil
-        streamingTextAnimator.cancel()
-        stopMicrophoneCapture()
-        if isUsingSecurityScopedResource, case .file(let url) = source {
-            url.stopAccessingSecurityScopedResource()
-            isUsingSecurityScopedResource = false
+    private func scheduleResourceCleanup() {
+        guard resourceCleanupTask == nil, !resourcesAreClean else { return }
+        Task { [weak self] in
+            await self?.cleanupResources()
         }
-        if let temporaryAudioURL {
-            try? FileManager.default.removeItem(at: temporaryAudioURL)
-            self.temporaryAudioURL = nil
+    }
+
+    /// Cancels and joins every worker before releasing files, security scope, or
+    /// model/audio objects. Multiple callers share the same cleanup task so window
+    /// dismissal, failures, and explicit cancellation are safe to race.
+    private func cleanupResources() async {
+        if let resourceCleanupTask {
+            await resourceCleanupTask.value
+            return
         }
-        whisperContext = nil
-        whisperLiveBuffer = nil
-        appleSpeechStorage = nil
-        analysisTask = nil
-        resultsTask = nil
-        feederTask = nil
-        sherpaTask = nil
-        sherpaFinishedWhilePaused = false
+        guard !resourcesAreClean else { return }
+
+        let cleanupTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let analysisTask = self.analysisTask
+            let resultsTask = self.resultsTask
+            let feederTask = self.feederTask
+            let timerTask = self.timerTask
+            let whisperTask = self.whisperTask
+            let sherpaTask = self.sherpaTask
+            let transcriptRefreshTask = self.transcriptRefreshTask
+            let whisperLiveBuffer = self.whisperLiveBuffer
+            let workers = TranscriptionTaskJoinSet([
+                analysisTask,
+                resultsTask,
+                feederTask,
+                timerTask,
+                whisperTask,
+                sherpaTask,
+                transcriptRefreshTask
+            ])
+
+            await self.stopRealtimeAudioCapture(retainCapture: false)
+            self.audioDeviceObservation?.cancel()
+            self.audioDeviceObservation = nil
+            self.stopMicrophoneCapture()
+            workers.cancel()
+            await self.pauseGate.resume()
+            await whisperLiveBuffer?.finish()
+            if #available(macOS 26.0, *) {
+                self.existingAppleSpeechState?.bridge?.finish()
+                await self.existingAppleSpeechState?.analyzer?.cancelAndFinishNow()
+            }
+
+            await workers.wait()
+
+            self.streamingTextAnimator.cancel()
+            if self.isUsingSecurityScopedResource, case .file(let url) = self.source {
+                url.stopAccessingSecurityScopedResource()
+                self.isUsingSecurityScopedResource = false
+            }
+            if let temporaryAudioURL = self.temporaryAudioURL {
+                try? FileManager.default.removeItem(at: temporaryAudioURL)
+                self.temporaryAudioURL = nil
+            }
+            self.whisperContext = nil
+            self.whisperLiveBuffer = nil
+            self.whisperTask = nil
+            self.appleSpeechStorage = nil
+            self.audioEngine = nil
+            self.microphoneConverter = nil
+            self.microphoneFormat = nil
+            self.hasMicrophoneTap = false
+            self.realtimeAudioCapture = nil
+            self.realtimeCaptureSessionID = nil
+            self.realtimeWatchdogTask = nil
+            self.lastRealtimeBufferAt = nil
+            self.realtimeCaptureFormat = nil
+            self.realtimeAudioBufferConsumer = nil
+            self.activeRealtimeAudioSource = nil
+            self.analysisTask = nil
+            self.resultsTask = nil
+            self.feederTask = nil
+            self.timerTask = nil
+            self.transcriptRefreshTask = nil
+            self.sherpaTask = nil
+            self.sherpaFinishedWhilePaused = false
+            self.resourcesAreClean = true
+            TranscriptionSessionRegistry.shared.unregister(self)
+        }
+        resourceCleanupTask = cleanupTask
+        await cleanupTask.value
+        resourceCleanupTask = nil
     }
 
     @available(macOS 26.0, *)
@@ -1357,7 +1843,7 @@ final class TranscriptionSessionModel {
         stopMicrophoneCapture()
         phase = .failed(error.localizedDescription)
         saveRecoveryNow()
-        cleanupResources()
+        scheduleResourceCleanup()
     }
 
     private func scheduleRecoverySave() {
@@ -1456,18 +1942,6 @@ final class TranscriptionSessionModel {
         Task { await transcriptRepository.replaceManualTranscript(text: stableGeneratedText, segments: filtered) }
     }
 
-    private nonisolated static func level(from buffer: AVAudioPCMBuffer) -> Double {
-        guard let channels = buffer.floatChannelData, buffer.frameLength > 0 else { return 0 }
-        let samples = channels[0]
-        var sum: Float = 0
-        for index in 0..<Int(buffer.frameLength) {
-            let value = samples[index]
-            sum += value * value
-        }
-        let rms = sqrt(sum / Float(buffer.frameLength))
-        let decibels = 20 * log10(max(rms, 0.000_001))
-        return min(max(Double((decibels + 60) / 60), 0), 1)
-    }
 }
 
 private enum SessionError: LocalizedError {
@@ -1475,7 +1949,16 @@ private enum SessionError: LocalizedError {
     case unsupportedLanguage(String)
     case noCompatibleAudioFormat
     case microphonePermissionDenied
+    case microphonePermissionRevoked
+    case screenRecordingPermissionDenied
+    case screenRecordingPermissionRequiresRestart
     case noMicrophone
+    case audioInputDeviceUnavailable
+    case audioInputDeviceDisconnected
+    case realtimeAudioStartFailed
+    case noCapturableDisplay
+    case systemAudioCaptureFailed
+    case realtimeAudioBufferStopped
     case resultCollectionFailed(String)
 
     var errorDescription: String? {
@@ -1484,13 +1967,22 @@ private enum SessionError: LocalizedError {
         case .unsupportedLanguage(let language): L10n.format("本机不支持 %@ 的离线识别。", language)
         case .noCompatibleAudioFormat: L10n.text("无法找到兼容的音频格式。")
         case .microphonePermissionDenied: L10n.text("未获得麦克风权限。请在系统设置的“隐私与安全性”中允许访问。")
+        case .microphonePermissionRevoked: L10n.text("麦克风权限已被撤销。现有文字已保留；请恢复权限后重试。")
+        case .screenRecordingPermissionDenied: L10n.text("未获得“录屏与系统录音”权限。请在系统设置的“隐私与安全性”中允许声迹访问。")
+        case .screenRecordingPermissionRequiresRestart: L10n.text("“录屏与系统录音”权限已授予。请退出并重新打开声迹后重试。")
         case .noMicrophone: L10n.text("没有找到可用的音频输入设备。")
+        case .audioInputDeviceUnavailable: L10n.text("所选音频输入设备当前不可用。请选择其他音源后重试。")
+        case .audioInputDeviceDisconnected: L10n.text("正在使用的音频输入设备已断开。现有文字已保留。")
+        case .realtimeAudioStartFailed: L10n.text("音频采集未能启动。请检查所选音源和系统权限后重试。")
+        case .noCapturableDisplay: L10n.text("没有可用于系统音频采集的显示器。")
+        case .systemAudioCaptureFailed: L10n.text("Mac 系统音频采集已停止。现有文字已保留。")
+        case .realtimeAudioBufferStopped: L10n.text("音频缓冲已停止超过两秒。现有文字已保留，请检查音源后重试。")
         case .resultCollectionFailed(let message): message
         }
     }
 }
 
-private extension TranscriptionPhase {
+extension TranscriptionPhase {
     var failedMessage: String? {
         if case .failed(let message) = self { return message }
         return nil

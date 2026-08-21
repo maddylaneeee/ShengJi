@@ -52,6 +52,19 @@ struct LocalScribeApp: App {
 }
 
 private final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
+    private var terminationTask: Task<Void, Never>?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard terminationTask == nil else { return .terminateLater }
+        terminationTask = Task { @MainActor in
+            await TranscriptionSessionRegistry.shared.cancelAll()
+            GemmaProcessRegistry.terminateAll()
+            NLLBProcessRegistry.terminateAll()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         GemmaProcessRegistry.terminateAll()
         NLLBProcessRegistry.terminateAll()

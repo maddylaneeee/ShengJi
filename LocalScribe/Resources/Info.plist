@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.6.4</string>
+	<string>1.6.5</string>
 	<key>CFBundleVersion</key>
-	<string>35</string>
+	<string>36</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
@@ -32,8 +32,10 @@
 	<string>Copyright © 2026. All rights reserved.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>使用麦克风在这台 Mac 上实时转写你说的话。</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>只读取这台 Mac 正在播放的系统音频，用于本地实时转写。</string>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>采集这台 Mac 正在播放的系统音频，用于本地实时字幕；不会保存屏幕画面。</string>
+	<string>只读取这台 Mac 正在播放的系统音频；不会保存屏幕画面，转录在本机完成。</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

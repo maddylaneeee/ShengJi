@@ -11,117 +11,239 @@ enum StreamingTextPacing {
         let desiredDuration = min(max(averageInterval * 0.9, 0.28), 1.15)
         return min(max(Double(pendingCount) / desiredDuration, 18), 110)
     }
+
+    static func adaptiveCharactersPerSecond(
+        pendingCount: Int,
+        recentThreeSecondCount: Int,
+        recentTwoSecondCount: Int,
+        observationDuration: TimeInterval
+    ) -> Double {
+        guard pendingCount > 0 else { return 0 }
+        // A one-second startup denominator preserves a readable reveal for small
+        // updates instead of treating the first frame as an enormous per-second
+        // producer spike.
+        let duration = min(max(observationDuration, 1), 3)
+        let recognitionRate = Double(recentThreeSecondCount) / duration
+        let allowedBacklog = max(recentTwoSecondCount, 500)
+        let excessBacklog = max(pendingCount - allowedBacklog, 0)
+
+        // Follow the producer under normal load. If the two-second backlog gate is
+        // exceeded, add enough catch-up capacity to return below it promptly. This
+        // deliberately has no fixed upper rate: a fixed cap makes long or bursty
+        // recognition output mathematically impossible to catch up with.
+        return max(recognitionRate * 1.15, 18) + Double(excessBacklog) / 0.35
+    }
+}
+
+@MainActor
+protocol StreamingTextMonotonicClock: AnyObject {
+    var now: TimeInterval { get }
+}
+
+@MainActor
+protocol StreamingTextScheduledAnimation: AnyObject {
+    func cancel()
+}
+
+@MainActor
+protocol StreamingTextFrameScheduler: AnyObject {
+    func schedule(every interval: TimeInterval, frame: @escaping @MainActor () -> Bool) -> StreamingTextScheduledAnimation
+}
+
+@MainActor
+private final class SystemStreamingTextClock: StreamingTextMonotonicClock {
+    private let origin = ContinuousClock.now
+
+    var now: TimeInterval {
+        let duration = origin.duration(to: .now)
+        return Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+    }
+}
+
+@MainActor
+private final class TaskStreamingTextAnimation: StreamingTextScheduledAnimation {
+    private var task: Task<Void, Never>?
+
+    init(interval: TimeInterval, frame: @escaping @MainActor () -> Bool) {
+        task = Task { @MainActor in
+            let nanoseconds = Int64(max(interval, 0.001) * 1_000_000_000)
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .nanoseconds(nanoseconds))
+                guard !Task.isCancelled else { return }
+                if frame() { return }
+            }
+        }
+    }
+
+    func cancel() {
+        task?.cancel()
+        task = nil
+    }
+}
+
+@MainActor
+private final class TaskStreamingTextFrameScheduler: StreamingTextFrameScheduler {
+    func schedule(
+        every interval: TimeInterval,
+        frame: @escaping @MainActor () -> Bool
+    ) -> StreamingTextScheduledAnimation {
+        TaskStreamingTextAnimation(interval: interval, frame: frame)
+    }
 }
 
 @MainActor
 final class AdaptiveStreamingTextAnimator {
-    private var targetCharacters: [Character] = []
-    private var visibleCharacters: [Character] = []
-    private var animationTask: Task<Void, Never>?
-    private var lastSubmissionAt: ContinuousClock.Instant?
-    private var averageSubmissionInterval: TimeInterval = 0.7
+    private struct SubmissionSample {
+        let time: TimeInterval
+        let scalarCount: Int
+    }
+
+    private static let frameInterval: TimeInterval = 0.024
+    private static let immediateBatchScalarCount = 5_000
+
+    private var targetScalars: [Unicode.Scalar] = []
+    private var visibleScalarCount = 0
+    private var scheduledAnimation: StreamingTextScheduledAnimation?
+    private var submissionSamples: [SubmissionSample] = []
+    private var firstSubmissionAt: TimeInterval?
+    private var lastFrameAt: TimeInterval?
     private var characterCredit = 0.0
+    private let clock: StreamingTextMonotonicClock
+    private let frameScheduler: StreamingTextFrameScheduler
     private let onUpdate: (String) -> Void
 
     init(onUpdate: @escaping (String) -> Void) {
+        self.clock = SystemStreamingTextClock()
+        self.frameScheduler = TaskStreamingTextFrameScheduler()
+        self.onUpdate = onUpdate
+    }
+
+    init(
+        clock: StreamingTextMonotonicClock,
+        frameScheduler: StreamingTextFrameScheduler,
+        onUpdate: @escaping (String) -> Void
+    ) {
+        self.clock = clock
+        self.frameScheduler = frameScheduler
         self.onUpdate = onUpdate
     }
 
     func reset(to text: String = "") {
-        animationTask?.cancel()
-        animationTask = nil
-        targetCharacters = Array(text)
-        visibleCharacters = targetCharacters
-        lastSubmissionAt = nil
-        averageSubmissionInterval = 0.7
+        scheduledAnimation?.cancel()
+        scheduledAnimation = nil
+        targetScalars = Array(text.unicodeScalars)
+        visibleScalarCount = targetScalars.count
+        submissionSamples.removeAll(keepingCapacity: true)
+        firstSubmissionAt = nil
+        lastFrameAt = nil
         characterCredit = 0
         onUpdate(text)
     }
 
     func submit(_ text: String, animated: Bool) {
-        let newTarget = Array(text)
-        guard newTarget != targetCharacters else { return }
+        let newTarget = Array(text.unicodeScalars)
+        guard newTarget != targetScalars else { return }
 
-        let now = ContinuousClock.now
-        if let lastSubmissionAt {
-            let duration = lastSubmissionAt.duration(to: now)
-            let sample = Double(duration.components.seconds)
-                + Double(duration.components.attoseconds) / 1e18
-            averageSubmissionInterval = StreamingTextPacing.updatedAverage(
-                current: averageSubmissionInterval,
-                sample: sample
-            )
+        let sharedWithOldTarget = commonPrefixCount(targetScalars, newTarget)
+        let sharedWithVisible = min(sharedWithOldTarget, visibleScalarCount)
+        let changedScalarCount = max(newTarget.count - sharedWithOldTarget, 0)
+        let now = clock.now
+        firstSubmissionAt = firstSubmissionAt ?? now
+        submissionSamples.append(SubmissionSample(time: now, scalarCount: changedScalarCount))
+        pruneSubmissionSamples(at: now)
+        targetScalars = newTarget
+
+        if sharedWithVisible < visibleScalarCount {
+            visibleScalarCount = sharedWithVisible
+            onUpdate(visibleText())
         }
-        lastSubmissionAt = now
-        targetCharacters = newTarget
 
-        guard animated else {
+        guard animated, changedScalarCount < Self.immediateBatchScalarCount else {
             flush()
             return
-        }
-
-        let sharedCount = commonPrefixCount(visibleCharacters, targetCharacters)
-        if sharedCount < visibleCharacters.count {
-            visibleCharacters = Array(visibleCharacters.prefix(sharedCount))
-            onUpdate(String(visibleCharacters))
         }
         startAnimationIfNeeded()
     }
 
     func flush() {
-        animationTask?.cancel()
-        animationTask = nil
+        scheduledAnimation?.cancel()
+        scheduledAnimation = nil
         characterCredit = 0
-        visibleCharacters = targetCharacters
-        onUpdate(String(visibleCharacters))
+        lastFrameAt = nil
+        visibleScalarCount = targetScalars.count
+        onUpdate(visibleText())
     }
 
     func cancel() {
-        animationTask?.cancel()
-        animationTask = nil
+        scheduledAnimation?.cancel()
+        scheduledAnimation = nil
+        lastFrameAt = nil
     }
 
     private func startAnimationIfNeeded() {
-        guard visibleCharacters.count < targetCharacters.count, animationTask == nil else { return }
-        animationTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(24))
-                guard !Task.isCancelled, let self else { return }
-                if self.advance(frameDuration: 0.024) { return }
-            }
+        guard visibleScalarCount < targetScalars.count, scheduledAnimation == nil else { return }
+        lastFrameAt = clock.now
+        scheduledAnimation = frameScheduler.schedule(every: Self.frameInterval) { [weak self] in
+            guard let self else { return true }
+            return self.advanceFrame()
         }
     }
 
-    private func advance(frameDuration: TimeInterval) -> Bool {
-        let pendingCount = targetCharacters.count - visibleCharacters.count
+    private func advanceFrame() -> Bool {
+        let now = clock.now
+        let frameDuration = min(max(now - (lastFrameAt ?? now), 0), 0.25)
+        lastFrameAt = now
+        pruneSubmissionSamples(at: now)
+
+        let pendingCount = targetScalars.count - visibleScalarCount
         guard pendingCount > 0 else {
-            animationTask = nil
+            scheduledAnimation = nil
             characterCredit = 0
+            lastFrameAt = nil
             return true
         }
 
-        characterCredit += StreamingTextPacing.charactersPerSecond(
+        let recentThreeSecondCount = recentSubmissionCount(since: now - 3)
+        let recentTwoSecondCount = recentSubmissionCount(since: now - 2)
+        let observationDuration = min(max(now - (firstSubmissionAt ?? now), Self.frameInterval), 3)
+        characterCredit += StreamingTextPacing.adaptiveCharactersPerSecond(
             pendingCount: pendingCount,
-            averageInterval: averageSubmissionInterval
+            recentThreeSecondCount: recentThreeSecondCount,
+            recentTwoSecondCount: recentTwoSecondCount,
+            observationDuration: observationDuration
         ) * frameDuration
         let requestedCount = Int(characterCredit)
         guard requestedCount > 0 else { return false }
 
         let revealCount = min(requestedCount, pendingCount)
         characterCredit -= Double(revealCount)
-        let start = visibleCharacters.count
-        visibleCharacters.append(contentsOf: targetCharacters[start..<(start + revealCount)])
-        onUpdate(String(visibleCharacters))
+        visibleScalarCount += revealCount
+        onUpdate(visibleText())
 
-        if visibleCharacters.count == targetCharacters.count {
-            animationTask = nil
+        if visibleScalarCount == targetScalars.count {
+            scheduledAnimation = nil
             characterCredit = 0
+            lastFrameAt = nil
             return true
         }
         return false
     }
 
-    private func commonPrefixCount(_ lhs: [Character], _ rhs: [Character]) -> Int {
+    private func pruneSubmissionSamples(at now: TimeInterval) {
+        submissionSamples.removeAll { $0.time < now - 3 }
+    }
+
+    private func recentSubmissionCount(since cutoff: TimeInterval) -> Int {
+        submissionSamples.lazy
+            .filter { $0.time >= cutoff }
+            .reduce(0) { $0 + $1.scalarCount }
+    }
+
+    private func visibleText() -> String {
+        String(String.UnicodeScalarView(targetScalars.prefix(visibleScalarCount)))
+    }
+
+    private func commonPrefixCount(_ lhs: [Unicode.Scalar], _ rhs: [Unicode.Scalar]) -> Int {
         var index = 0
         let limit = min(lhs.count, rhs.count)
         while index < limit, lhs[index] == rhs[index] { index += 1 }

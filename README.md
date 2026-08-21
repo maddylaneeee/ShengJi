@@ -12,10 +12,10 @@
 
 LocalScribe is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Audio, imported transcripts, and AI processing content are not uploaded by the app.
 
-Current version: **1.6.4 (35)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current version: **1.6.5 (36)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **New in build 35 — one clear English name:** The English app and product name is now LocalScribe. The Simplified Chinese interface keeps its existing localized name. This build also includes the on-device Gemma 4 transcript enhancement introduced in 1.6.4. [Explore Gemma 4 AI enhancement](#on-device-gemma-4-transcript-enhancement-new-in-164)
+> **New in 1.6.5 — choose one realtime transcription source:** Ordinary realtime transcription can use Mac System Audio, the system-default microphone, or a specific input device. File recognition releases its run-specific resources before editing and export, and long results catch up without a prolonged character-by-character tail. The existing live-caption source modes are unchanged.
 
 ## See it in action
 
