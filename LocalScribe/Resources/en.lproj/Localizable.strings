@@ -601,3 +601,5 @@
 "Mac 系统音频采集已停止。现有文字已保留。" = "Mac system audio capture stopped. Existing text was preserved.";
 "未获得“录屏与系统录音”权限。请在系统设置的“隐私与安全性”中允许声迹访问。" = "Screen and System Audio Recording permission was denied. Allow ShengJi access in Privacy & Security settings.";
 "“录屏与系统录音”权限已授予。请退出并重新打开声迹后重试。" = "Screen and System Audio Recording permission was granted. Quit and reopen ShengJi, then try again.";
+
+"识别与隐私说明" = "Recognition & Privacy";

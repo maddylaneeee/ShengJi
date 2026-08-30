@@ -1,0 +1,7 @@
+"CFBundleDisplayName" = "LocalScribe";
+"CFBundleName" = "LocalScribe";
+"NSFileProviderDomainUsageDescription" = "選択した音声や動画を読み取り、指定した場所に文字起こしを保存します。";
+"NSMicrophoneUsageDescription" = "マイクを使い、このMac上で発話をリアルタイムに文字起こしします。";
+"NSAudioCaptureUsageDescription" = "このMacで再生中のシステムオーディオのみを取得し、このMac上でリアルタイムに文字起こしします。";
+"NSScreenCaptureUsageDescription" = "このMacで再生中のシステムオーディオのみを読み取ります。画面の画像は保存せず、文字起こしはこのMac上で行います。";
+"NSSpeechRecognitionUsageDescription" = "Appleのオンデバイス音声認識を使い、このMac上で文字起こしとライブ字幕を生成します。";

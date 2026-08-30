@@ -275,7 +275,7 @@ cat > "$UPDATE_MANIFEST" <<EOF
   "bundle_id": "ca.lixinchen.localscribe",
   "download_url": "$DOWNLOAD_URL",
   "sha256": "$SHA256",
-  "release_notes": "ShengJi 1.6.5 adds one-source-at-a-time Mac System Audio, system-default microphone, and specific input-device selection to ordinary realtime transcription. It also improves resource cleanup and large-result text presentation while leaving existing live-caption source modes unchanged.",
+  "release_notes": "LocalScribe 1.6.6 adds a Japanese interface and README, aligns home-screen caption controls, improves heading spacing, and moves transcription setup details into an on-demand information popover.",
   "minimum_system_version": "15.5",
   "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "size_bytes": $(stat -f %z "$ZIP")
@@ -312,7 +312,7 @@ cat > "$REPORT" <<EOF
 - Local delivery: creates candidate ZIP and DMG assets by default; set INSTALL_LOCAL_COPY=1 only after a separate installation approval
 - Gatekeeper: rejection by spctl is expected for a local non-Developer-ID certificate and is not treated as package corruption
 - Runtime verification: this packaging command performs static package checks and bounded CLI/helper startup checks only; GUI, permissions, physical-device, and real-audio acceptance remain separate
-- Change summary: see RELEASE_NOTES_1.6.5.md in the source checkout
+- Change summary: see RELEASE_NOTES_1.6.6.md in the source checkout
 - macOS 15.5: architecture and deployment-target compatibility are audited statically; no macOS 15.5 virtual-machine acceptance is claimed
 EOF
 

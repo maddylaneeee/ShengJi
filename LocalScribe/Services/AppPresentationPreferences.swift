@@ -7,6 +7,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     case system
     case english = "en"
     case simplifiedChinese = "zh-Hans"
+    case japanese = "ja"
 
     static let defaultsKey = "AppLanguage"
 
@@ -17,6 +18,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         case .system: nil
         case .english: "en"
         case .simplifiedChinese: "zh-Hans"
+        case .japanese: "ja"
         }
     }
 
@@ -25,6 +27,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         case .system: .autoupdatingCurrent
         case .english: Locale(identifier: "en")
         case .simplifiedChinese: Locale(identifier: "zh-Hans")
+        case .japanese: Locale(identifier: "ja")
         }
     }
 
@@ -33,6 +36,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         case .system: L10n.text("跟随系统")
         case .english: "English"
         case .simplifiedChinese: "简体中文"
+        case .japanese: "日本語"
         }
     }
 }

@@ -243,7 +243,8 @@ struct StartView: View {
             .id("caption-input-\(interfaceLocale.identifier)")
             .labelsHidden()
             .pickerStyle(.segmented)
-            .frame(maxWidth: .infinity)
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .disabled(liveCaptions.isRunning)
         }
     }
@@ -276,7 +277,7 @@ struct StartView: View {
     private var translationPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 8) {
                     Label("转录后翻译", systemImage: "translate")
                         .font(.headline)
                     Text("转录完成后可生成译文，也可选择完全离线的翻译方式。")
@@ -318,7 +319,7 @@ struct StartView: View {
     private var importPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 8) {
                     Label("导入稿件", systemImage: "doc.badge.plus")
                         .font(.headline)
                     Text("打开 SRT、VTT、TXT、Markdown 或声迹 JSON。")
@@ -376,7 +377,7 @@ struct StartView: View {
     }
 
     private var enginePanelTitle: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 8) {
             Label("识别模型", systemImage: "cpu")
                 .font(.headline)
             Text("使用 macOS 内置识别，或手动选择可离线使用的第三方模型。")
@@ -394,8 +395,9 @@ struct StartView: View {
             Label("第三方模型", systemImage: "shippingbox").tag(true)
         }
         .pickerStyle(.segmented)
-        .frame(width: 270)
         .labelsHidden()
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(minWidth: 270, alignment: .leading)
     }
 
     private var thirdPartyModelMenu: some View {

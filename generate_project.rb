@@ -11,7 +11,7 @@ project = Xcodeproj::Project.new(project_path)
 project.root_object.attributes["LastSwiftUpdateCheck"] = "2660"
 project.root_object.attributes["LastUpgradeCheck"] = "2660"
 project.root_object.development_region = "zh-Hans"
-project.root_object.known_regions = ["zh-Hans", "en", "Base"]
+project.root_object.known_regions = ["zh-Hans", "en", "ja", "Base"]
 
 target = project.new_target(:application, "LocalScribe", :osx, "15.5")
 target.product_reference.name = "LocalScribe.app"
@@ -105,6 +105,7 @@ resources_group.new_file("LocalScribe.entitlements")
   {
     "zh-Hans" => "zh-Hans.lproj/#{resource_name}",
     "en" => "en.lproj/#{resource_name}",
+    "ja" => "ja.lproj/#{resource_name}",
   }.each do |language, relative_path|
     reference = variant_group.new_file(relative_path)
     reference.name = language

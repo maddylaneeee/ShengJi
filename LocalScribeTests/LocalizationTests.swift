@@ -78,6 +78,11 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(LiveCaptionInputMode.microphone.title, "Microphone")
         XCTAssertEqual(LiveCaptionInputMode.systemAudio.title, "Mac Audio")
         XCTAssertEqual(LiveCaptionInputMode.both.title, "Microphone + Mac Audio")
+
+        defaults.set(AppLanguage.japanese.rawValue, forKey: AppLanguage.defaultsKey)
+        XCTAssertEqual(LiveCaptionInputMode.microphone.title, "マイク")
+        XCTAssertEqual(LiveCaptionInputMode.systemAudio.title, "Macの音声")
+        XCTAssertEqual(LiveCaptionInputMode.both.title, "マイク + Macの音声")
     }
 
     @MainActor
@@ -136,6 +141,54 @@ final class LocalizationTests: XCTestCase {
         )
 
         XCTAssertEqual(recommended.map(\.id), ["en_CA"])
+    }
+
+    func testJapaneseResourcesAndPrivacyDescriptionsAreBundled() throws {
+        let japanese = try XCTUnwrap(localizationBundle(language: "ja"))
+        XCTAssertEqual(japanese.localizedString(forKey: "声迹", value: nil, table: nil), "LocalScribe")
+        XCTAssertEqual(japanese.localizedString(forKey: "菜单：文件", value: nil, table: nil), "ファイル")
+        XCTAssertEqual(japanese.localizedString(forKey: "CFBundleDisplayName", value: nil, table: "InfoPlist"), "LocalScribe")
+        for key in ["NSMicrophoneUsageDescription", "NSAudioCaptureUsageDescription",
+                    "NSScreenCaptureUsageDescription", "NSSpeechRecognitionUsageDescription"] {
+            let value = japanese.localizedString(forKey: key, value: nil, table: "InfoPlist")
+            XCTAssertFalse(value.isEmpty)
+            XCTAssertNotEqual(value, key)
+        }
+        XCTAssertEqual(Bundle.preferredLocalizations(from: ["en", "zh-Hans", "ja"], forPreferences: ["ja-JP"]), ["ja"])
+    }
+
+    func testAllLanguagesHaveMatchingKeysAndFormatArguments() throws {
+        let english = try localizationDictionary(language: "en")
+        let format = try NSRegularExpression(pattern: "%[-+0 #]*[0-9]*(?:\\.[0-9]+)?(?:ll|l|z)?[@diufgs]")
+        func placeholders(_ text: String) -> [String] {
+            format.matches(in: text, range: NSRange(text.startIndex..., in: text)).map {
+                String(text[Range($0.range, in: text)!])
+            }
+        }
+        for language in ["zh-Hans", "ja"] {
+            let localized = try localizationDictionary(language: language)
+            XCTAssertEqual(Set(english.keys), Set(localized.keys), language)
+            for (key, value) in english {
+                let translation = try XCTUnwrap(localized[key], "Missing \(language): \(key)")
+                XCTAssertFalse(translation.isEmpty, key)
+                XCTAssertEqual(placeholders(value), placeholders(translation), "Format mismatch \(language): \(key)")
+            }
+        }
+    }
+
+    @MainActor
+    func testJapaneseSelectionPersistsAndLocalizesRuntimeStrings() throws {
+        let suiteName = "LocalizationTests.Japanese.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPresentationPreferences(defaults: defaults)
+        preferences.language = .japanese
+        XCTAssertEqual(AppPresentationPreferences(defaults: defaults).language, .japanese)
+        XCTAssertEqual(preferences.language.languageCode, "ja")
+        XCTAssertEqual(preferences.language.locale.language.languageCode?.identifier, "ja")
+        XCTAssertEqual(preferences.language.title, "日本語")
+        XCTAssertEqual(L10n.text("菜单：文件", languageCode: "ja"), "ファイル")
+        XCTAssertFalse(L10n.format("正在下载 %@", languageCode: "ja", "Whisper").contains("%@"))
     }
 
     private func localizationBundle(language: String) -> Bundle? {

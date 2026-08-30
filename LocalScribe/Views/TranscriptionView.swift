@@ -12,6 +12,7 @@ struct TranscriptionView: View {
     let restart: () -> Void
 
     @State private var isShowingExport = false
+    @State private var isShowingPreflightInfo = false
     @State private var exportFormat: TranscriptExportFormat = .txt
     @State private var exportDocument = TranscriptFileDocument(data: Data())
     @State private var isShowingFileExporter = false
@@ -302,6 +303,7 @@ struct TranscriptionView: View {
                     preflightModelControl
                     Spacer(minLength: 8)
                     preflightReadiness
+                    preflightInfoButton
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -310,7 +312,11 @@ struct TranscriptionView: View {
                         preflightEnginePicker
                         preflightModelControl
                     }
-                    preflightReadiness
+                    HStack {
+                        preflightReadiness
+                        Spacer()
+                        preflightInfoButton
+                    }
                 }
             }
 
@@ -335,23 +341,6 @@ struct TranscriptionView: View {
                 }
             }
 
-            Label(computePreferenceHint, systemImage: "arrow.triangle.2.circlepath")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if case .microphone = session.source,
-               session.selectedRealtimeAudioSource == .systemAudio {
-                VStack(alignment: .leading, spacing: 5) {
-                    Label(
-                        "仅在采集 Mac 正在播放的声音时使用。声迹不会录制屏幕画面。",
-                        systemImage: "rectangle.slash"
-                    )
-                    Label("识别在本机完成", systemImage: "lock.shield")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
             if let notice = session.realtimeAudioSourceNotice {
                 Label(notice, systemImage: "info.circle")
                     .font(.caption)
@@ -367,6 +356,35 @@ struct TranscriptionView: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 14)
         .background(.regularMaterial)
+    }
+
+    private var preflightInfoButton: some View {
+        Button("识别与隐私说明", systemImage: "info.circle") {
+            isShowingPreflightInfo.toggle()
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("识别与隐私说明")
+        .popover(isPresented: $isShowingPreflightInfo) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("识别与隐私说明")
+                    .font(.headline)
+                Text(computePreferenceHint)
+                if case .microphone = session.source,
+                   session.selectedRealtimeAudioSource == .systemAudio {
+                    Label(
+                        "仅在采集 Mac 正在播放的声音时使用。声迹不会录制屏幕画面。",
+                        systemImage: "rectangle.slash"
+                    )
+                }
+                Label("识别在本机完成", systemImage: "lock.shield")
+            }
+            .font(.callout)
+            .padding(18)
+            .frame(width: 320, alignment: .leading)
+            .environment(\.locale, interfaceLocale)
+        }
     }
 
     private var preflightLanguagePicker: some View {

@@ -1,6 +1,6 @@
 # LocalScribe
 
-**English** | [Chinese (Simplified)](README.zh-CN.md)
+**English** | [Chinese (Simplified)](README.zh-CN.md) | [Japanese](README.ja.md)
 
 [![macOS 15.5+](https://img.shields.io/badge/macOS-15.5%2B-000000?logo=apple)](https://support.apple.com/macos)
 [![Apple silicon](https://img.shields.io/badge/Apple%20silicon-arm64-555555)](https://support.apple.com/guide/mac-help/about-this-mac-mchl3a2c2cb0/mac)
@@ -12,16 +12,19 @@
 
 LocalScribe is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Audio, imported transcripts, and AI processing content are not uploaded by the app.
 
-Current version: **1.6.5 (36)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current version: **1.6.6 (37)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **New in 1.6.5 — choose one realtime transcription source:** Ordinary realtime transcription can use Mac System Audio, the system-default microphone, or a specific input device. File recognition releases its run-specific resources before editing and export, and long results catch up without a prolonged character-by-character tail. The existing live-caption source modes are unchanged.
+> **New in 1.6.6 — Japanese and clearer controls:** The interface now supports Japanese, with a Japanese README. Home-screen model spacing and live-caption control alignment are improved, and recognition and privacy details are available on demand to keep the preparation screen concise.
 
 ## See it in action
 
-![LocalScribe home and editable transcript views in English](Documentation/MediaKit/localscribe-demo-en.gif)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Documentation/MediaKit/localscribe-demo-en-dark.gif">
+  <img alt="LocalScribe home and editable transcript views in English" src="Documentation/MediaKit/localscribe-demo-en.gif">
+</picture>
 
-Open LocalScribe → choose an input → get editable local text. The demo uses deterministic, non-private preview content.
+An eight-second loop of the home screen and editable transcript view, captured from the real 1.6.6 app with a non-private English sample. Images and GIFs include light and dark versions that follow your viewing theme.
 
 > [!IMPORTANT]
 > **Apple SpeechAnalyzer recognition and floating live captions require macOS 26.** The app itself supports macOS 15.5 or later. On macOS 15.5–25, manually select Whisper, SenseVoice, or Parakeet on the home screen. SenseVoice and Parakeet currently support file transcription only.
@@ -37,7 +40,10 @@ For illustrated steps, troubleshooting, and SHA-256 verification, see the [Downl
 > [!WARNING]
 > This build has an ad-hoc integrity signature only. It is neither Developer ID signed nor notarized by Apple. Override the warning only if you trust this repository and its Release. SHA-256 files are included with every Release.
 
-![LocalScribe home screen in English with model selection, import, translation and live-caption controls](Documentation/Screenshots/home-en.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/home-en-dark.png">
+  <img alt="LocalScribe home screen in English with model selection, import, translation and live-caption controls" src="Documentation/Screenshots/home-en.png">
+</picture>
 
 ## On-device Gemma 4 transcript enhancement (new in 1.6.4)
 
@@ -61,17 +67,20 @@ The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of ab
 - **Long-task workflow.** Progressive results, append-only recovery journals, bounded transcript rendering, pause/resume, and resumable sessions are designed for long recordings.
 - **Editable deliverables.** Import, search, replace, trim, translate, and export TXT, Markdown, JSON, PDF, SRT, or WebVTT.
 - **On-device AI transcript enhancement.** Use Gemma 4 to proofread, refine, or summarize a transcript, with custom instructions for terminology, style, focus, and format.
-- **System-aware interface.** English and Simplified Chinese switch automatically with the Mac language preference, using an extensible localization structure.
+- **System-aware interface.** English, Simplified Chinese, and Japanese switch automatically with the Mac language preference, using an extensible localization structure.
 
 ## Transcript editing and translation
 
-![LocalScribe transcript editor in English with local translation, search, range editing, export and privacy details](Documentation/Screenshots/transcript-editor-en.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/transcript-editor-en-dark.png">
+  <img alt="LocalScribe transcript editor in English with local translation, search, range editing, export and privacy details" src="Documentation/Screenshots/transcript-editor-en.png">
+</picture>
 
-The screenshots are from version 1.6.0 of the real macOS app and use an isolated profile with non-private test transcript content. LocalScribe includes complete English and Simplified Chinese interfaces.
+The screenshots are from version 1.6.6 (37) of the real macOS app and use non-private English sample text. Both appearances are captured from the app, without the Computer Use pointer. LocalScribe includes complete English, Simplified Chinese, and Japanese interfaces.
 
 ## Languages
 
-LocalScribe follows the preferred language order in macOS by default. You can also switch the app immediately between English and Simplified Chinese in Settings without changing the system language; the menu bar and live-caption source controls update at the same time. Recognition-language menus place English and the Mac's language in a deduplicated Recommended Languages section. Settings also provide System, Light, and Dark appearance choices, plus current microphone, speech-recognition, and system-audio permission status.
+LocalScribe follows the preferred language order in macOS by default. You can also switch the app immediately among English, Simplified Chinese, and Japanese in Settings without changing the system language; the menu bar and live-caption source controls update at the same time. Recognition-language menus place English and the Mac's language in a deduplicated Recommended Languages section. Settings also provide System, Light, and Dark appearance choices, plus current microphone, speech-recognition, and system-audio permission status.
 
 ## Recognition and translation engines
 

@@ -1,6 +1,6 @@
 # 声迹
 
-[English](README.md) | **简体中文**
+[English](README.md) | **简体中文** | [日本語](README.ja.md)
 
 [![macOS 15.5+](https://img.shields.io/badge/macOS-15.5%2B-000000?logo=apple)](https://support.apple.com/macos)
 [![Apple silicon](https://img.shields.io/badge/Apple%20silicon-arm64-555555)](https://support.apple.com/guide/mac-help/about-this-mac-mchl3a2c2cb0/mac)
@@ -12,35 +12,47 @@
 
 声迹是一款面向 Apple silicon Mac 的免费、开源原生语音转文字与音视频转录应用，无需注册账号。它把本地识别、悬浮实时字幕、字幕编辑与导出、离线翻译、长任务恢复，以及 Gemma 4 文稿优化整合在一个 SwiftUI 界面中。识别音频、导入稿件和 AI 处理内容不会由应用上传。
 
-当前版本：**1.6.5（36）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+当前版本：**1.6.6（37）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **1.6.5 新增单一实时转录来源：** 普通实时转录现在可选择 Mac 系统音频、系统默认麦克风或某个指定输入设备。文件识别会在进入编辑与导出前释放本次任务资源，长文本也不会留下漫长的逐字动画尾部。现有实时字幕来源模式保持不变。
+> **1.6.6 新增日语与界面优化：** 新增日语界面和日语 README，调整首页识别模型区的间距与实时字幕控件的对齐；准备页的识别和隐私说明改为按需查看，减少常驻文字。
 
 ## 实际演示
 
-![声迹打开音频文件、选择本地转录设置并生成可编辑文字](Documentation/MediaKit/shengji-demo.gif)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Documentation/MediaKit/shengji-demo-dark.gif">
+  <img alt="声迹中文首页与可编辑稿件的循环预览" src="Documentation/MediaKit/shengji-demo.gif">
+</picture>
 
-打开 App → 选择音频 → 设置语言与模型 → 得到可编辑的本地转录文字。演示仅使用非私人测试内容。
+8 秒循环预览，展示真实 1.6.6 App 的首页与稿件编辑器，使用非私人中文示例稿件。图片与 GIF 均提供浅色、暗色版本，并随阅读主题显示对应素材。
 
 > [!IMPORTANT]
 > **Apple SpeechAnalyzer 本地识别和悬浮实时字幕需要 macOS 26。** App 本身支持 macOS 15.5+；在 macOS 15.5–25 上，请在首页手动选择 Whisper、SenseVoice 或 Parakeet。SenseVoice 和 Parakeet 当前仅支持文件转录。
 
 ## 界面预览
 
-![声迹中文首页，包含识别模型、稿件导入、转录后翻译和悬浮实时字幕](Documentation/Screenshots/home-zh-CN.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/home-zh-CN-dark.png">
+  <img alt="声迹中文首页，包含识别模型、稿件导入、转录后翻译和悬浮实时字幕" src="Documentation/Screenshots/home-zh-CN.png">
+</picture>
 
-![声迹中文稿件编辑器，包含本地翻译、查找替换、范围编辑、导出与隐私说明](Documentation/Screenshots/transcript-editor-zh-CN.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/transcript-editor-zh-CN-dark.png">
+  <img alt="声迹中文稿件编辑器，包含本地翻译、查找替换、范围编辑、导出与隐私说明" src="Documentation/Screenshots/transcript-editor-zh-CN.png">
+</picture>
 
-上方首页与稿件编辑器截图来自真实的 1.4.0 macOS App，使用隔离配置和非私人示例稿件制作。
+上方首页与稿件编辑器截图来自真实的 1.6.6（37）macOS App，使用非私人中文示例稿件制作。浅色与暗色均为 App 实拍，画面不含 Computer Use 鼠标。
 
 ## 用 Gemma 4 把转录稿变成可交付文稿（1.6.4 新增）
 
-**转录不是终点。** 完成转录或导入稿件后，打开右侧检查器的“AI 优化”，即可让 Gemma 4 在 Mac 本机继续整理文字。无需复制到其他 AI 服务，也无需上传稿件。以下画面截取自真实的 1.6.4 App 录屏，使用非私人示例稿件制作。
+**转录不是终点。** 完成转录或导入稿件后，打开右侧检查器的“AI 优化”，即可让 Gemma 4 在 Mac 本机继续整理文字。无需复制到其他 AI 服务，也无需上传稿件。以下画面实拍于 1.6.6（37）App，使用非私人示例稿件，实际运行本机 Gemma 4 生成结果。
 
 ### 纠错与润色：边生成，边对照
 
-![声迹使用本机 Gemma 4 对转录稿进行纠错与润色，红色显示原文，绿色实时显示优化结果](Documentation/Screenshots/gemma-proofread-zh-CN.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/gemma-proofread-zh-CN-dark.png">
+  <img alt="声迹使用本机 Gemma 4 对转录稿进行纠错与润色，红色显示原文，绿色实时显示优化结果" src="Documentation/Screenshots/gemma-proofread-zh-CN.png">
+</picture>
 
 原文与建议修改以红绿对照实时显示，处理进度、所用模型和本机隐私状态始终可见。Gemma 会清理口头填充词、重复和明显错误，同时尽量保留原意；未通过校验的片段不会覆盖原文。
 
@@ -48,11 +60,17 @@
 
 **总结前：完整的 12 段、501 字转录稿**
 
-![使用 Gemma 4 总结前的声迹界面，显示完整中文转录稿、总结任务、所选模型和中文总结提示词](Documentation/Screenshots/gemma-summary-before-zh-CN.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/gemma-summary-before-zh-CN-dark.png">
+  <img alt="使用 Gemma 4 总结前的声迹界面，显示完整中文转录稿、总结任务、所选模型和中文总结提示词" src="Documentation/Screenshots/gemma-summary-before-zh-CN.png">
+</picture>
 
-**总结后：重点明确的单段发布计划**
+**总结后：112 字的单段发布计划示例**
 
-![声迹使用本机 Gemma 4 将同一篇长转录总结为简洁发布计划](Documentation/Screenshots/gemma-summary-after-zh-CN.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/gemma-summary-after-zh-CN-dark.png">
+  <img alt="声迹使用本机 Gemma 4 将同一篇长转录总结为简洁发布计划" src="Documentation/Screenshots/gemma-summary-after-zh-CN.png">
+</picture>
 
 上方两张图来自同一次总结操作。结果会直接替换文字预览，并保留可撤销的原稿快照。你可以临时指定正确人名、专业术语、表达风格、总结长度、关注重点或输出格式，也可以在设置中保存常用指令。AI 输出仍应由用户复核。
 
@@ -96,7 +114,7 @@
 
 Apple Speech 和 Apple Translation 首次使用某些语言时，可能由 macOS 下载对应语言资源。第三方模型只在用户主动选择后下载和启用。
 
-声迹默认跟随 macOS 的语言和外观，也可在设置中即时切换 English / 简体中文，以及系统 / 浅色 / 深色外观；顶部菜单和实时字幕声音来源会同步热切换。识别语言菜单在顶部提供去重后的“推荐语言”，优先列出英语和设备语言；设备语言为英语时只列一次。权限页会显示麦克风、语音识别与系统音频录制状态，并只在你主动点击时请求权限。
+声迹默认跟随 macOS 的语言和外观，也可在设置中即时切换 English / 简体中文 / 日本語，以及系统 / 浅色 / 深色外观；顶部菜单和实时字幕声音来源会同步热切换。识别语言菜单在顶部提供去重后的“推荐语言”，优先列出英语和设备语言；设备语言为英语时只列一次。权限页会显示麦克风、语音识别与系统音频录制状态，并只在你主动点击时请求权限。
 
 ## 识别与翻译引擎
 
