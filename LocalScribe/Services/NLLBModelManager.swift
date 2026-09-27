@@ -71,6 +71,7 @@ enum NLLBModelStore {
     static func install(
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws {
+        guard NLLBHardwareSupport.isSupported else { throw NLLBTranslationError.insufficientMemory }
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: downloadsDirectory, withIntermediateDirectories: true)
         try fileManager.createDirectory(

@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct RootView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Bindable var updateController: AppUpdateController
     @State private var catalog = LanguageCatalog()
     @State private var preferences = RecognitionPreferences()
@@ -48,6 +49,11 @@ struct RootView: View {
                 }
             }
         }
+        .toolbarBackground(
+            colorScheme == .dark ? Color(white: 0.18) : Color(white: 0.93),
+            for: .windowToolbar
+        )
+        .toolbarBackground(.visible, for: .windowToolbar)
         .task {
             recoverySnapshot = RecoveryStore.load()
             await catalog.load()

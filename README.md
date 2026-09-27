@@ -12,10 +12,10 @@
 
 LocalScribe is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Audio, imported transcripts, and AI processing content are not uploaded by the app.
 
-Current version: **1.6.6 (37)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [Non-developer download guide](Documentation/DOWNLOAD.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current version: **1.6.7 (38)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **New in 1.6.6 — Japanese and clearer controls:** The interface now supports Japanese, with a Japanese README. Home-screen model spacing and live-caption control alignment are improved, and recognition and privacy details are available on demand to keep the preparation screen concise.
+> **New in 1.6.7 — memory-aware model controls:** Gemma AI Enhancement is off by default on Macs with 8 GB of memory or less; you can enable it in Settings after confirming the memory warning. Gemma loads only after you select an AI feature. Local NLLB translation is unavailable below 4 GB of memory, while Apple Translation remains available. A dedicated first-launch installation guide covers macOS 26 and 27.
 
 ## See it in action
 
@@ -33,7 +33,9 @@ An eight-second loop of the home screen and editable transcript view, captured f
 
 1. [Download the latest DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg).
 2. Open it and drag LocalScribe to Applications.
-3. The first launch will be blocked. After trying once, open System Settings → Privacy & Security, click Open Anyway, then confirm Open.
+3. Try opening the installed app once. If macOS blocks it, close the alert, then open System Settings → Privacy & Security → Security. Find this app’s warning and choose Open / Open Anyway, then authenticate or confirm as requested.
+
+**Installing for the first time on macOS 26 or 27?** Follow the [step-by-step first-launch guide](INSTALL.md), including what to do if Open Anyway is missing.
 
 For illustrated steps, troubleshooting, and SHA-256 verification, see the [Download and Installation Guide](Documentation/DOWNLOAD.md).
 
@@ -57,7 +59,7 @@ Gemma removes filler, repetition, and obvious transcription errors while preserv
 
 Summaries replace the text preview while keeping an undo snapshot of the original. Add one-time instructions for names, terminology, writing style, summary length, priorities, or format, and optionally save reusable instructions in Settings. AI output should still be reviewed.
 
-The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of about 4.6 GB can be enabled in Settings. Models are downloaded on demand, verified, and run on the Mac through llama.cpp and Metal. AI Enhancement is disabled on Macs with 6 GB of physical memory or less. Before loading Gemma, LocalScribe releases its active recognition and NLLB translation runtimes; the Gemma helper exits when the task finishes.
+The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of about 4.6 GB can be enabled in Settings. Models are downloaded on demand, verified, and run on the Mac through llama.cpp and Metal. On Macs with 8 GB of physical memory or less, AI Enhancement is off by default and can be enabled manually in Settings after confirming the memory warning. Gemma starts loading only after you select Proofread or Summarize. Completing a transcription or opening its result never preloads Gemma. Before loading Gemma, LocalScribe releases its active recognition and NLLB translation runtimes; the Gemma helper exits when the task finishes.
 
 ## Why LocalScribe?
 
@@ -122,7 +124,8 @@ Numeric options support both direct keyboard entry and sliders or steppers, with
 - Apple SpeechAnalyzer recognition and live captions require macOS 26.
 - On macOS 15.5–25, select Whisper, SenseVoice, or Parakeet manually. SenseVoice and Parakeet currently support file transcription only.
 - Live-caption translation is currently disabled; post-transcription translation remains available.
-- Gemma 4 AI Enhancement requires more than 6 GB of physical memory; models are downloaded on demand and run locally.
+- Gemma 4 AI Enhancement is off by default on Macs with 8 GB of physical memory or less; Settings allows manual activation after confirmation. Models are downloaded on demand and loaded only after you select an AI feature.
+- Local NLLB translation is unavailable below 4 GB of physical memory. The check allows a 128 MiB tolerance around the threshold for system-reported memory. Apple Translation remains available.
 - Public Developer ID signing and Apple notarization are still pending.
 
 Microphone input requires microphone permission. Capturing Mac audio requires Screen & System Audio Recording permission. Apple Speech and Apple Translation may download language assets managed by macOS.

@@ -46,6 +46,7 @@ struct TranscriptionView: View {
     @State private var gemmaOriginalText = ""
     @State private var permissionCenter = PermissionCenter()
     @FocusState private var gemmaPromptFocused: Bool
+    @AppStorage("EnableGemma") private var enableGemma = !GemmaHardwareSupport.requiresOptIn
     @AppStorage("EnableGemmaE4B") private var enableGemmaE4B = false
 
     var body: some View {
@@ -121,7 +122,6 @@ struct TranscriptionView: View {
             session.refreshRealtimeAudioSources()
             session.updateReduceMotion(reduceMotion)
             syncPendingConfiguration()
-            autoPrepareGemmaIfNeeded()
         }
         .onChange(of: reduceMotion) { _, enabled in
             session.updateReduceMotion(enabled)
@@ -154,19 +154,22 @@ struct TranscriptionView: View {
 
     private var observedContent: some View {
         primaryObservedContent
-        .onChange(of: session.phase) { _, phase in
-            if phase == .finished { autoPrepareGemmaIfNeeded() }
-        }
         .onChange(of: gemmaModelManager.installedModels) { _, installed in
             guard installed.contains(gemmaModel), gemmaKind != nil else { return }
             prepareGemma()
         }
         .onChange(of: gemmaModel) { _, _ in
-            guard session.phase == .finished else { return }
+            guard session.phase == .finished, gemmaKind != nil else { return }
             gemmaTask?.cancel()
             gemmaReady = false
             gemmaIsPreparing = false
             prepareGemma()
+        }
+        .onChange(of: enableGemma) { _, enabled in
+            if !enabled {
+                cancelGemma()
+                gemmaKind = nil
+            }
         }
         .onDisappear(perform: handleDisappear)
     }
@@ -523,6 +526,7 @@ struct TranscriptionView: View {
         Picker("翻译服务", selection: $translationPreferences.provider) {
             ForEach(TranslationProvider.allCases) { provider in
                 Text(provider.title).tag(provider)
+                    .disabled(provider == .nllb && !NLLBHardwareSupport.isSupported)
             }
         }
         .frame(width: 150)
@@ -748,6 +752,7 @@ struct TranscriptionView: View {
         Picker("服务", selection: $translationPreferences.provider) {
             ForEach(TranslationProvider.allCases) { provider in
                 Text(provider.title).tag(provider)
+                    .disabled(provider == .nllb && !NLLBHardwareSupport.isSupported)
             }
         }
         .frame(width: 150)
@@ -833,12 +838,16 @@ struct TranscriptionView: View {
     }
 
     private var isNLLBTranslationReady: Bool {
-        NLLBTranslationRuntime.isRuntimeBundled && nllbModelManager.isInstalled
+        NLLBHardwareSupport.isSupported && NLLBTranslationRuntime.isRuntimeBundled && nllbModelManager.isInstalled
     }
 
     @ViewBuilder
     private var nllbModelStatus: some View {
-        if !NLLBTranslationRuntime.isRuntimeBundled {
+        if !NLLBHardwareSupport.isSupported {
+            Label(NLLBHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+        } else if !NLLBTranslationRuntime.isRuntimeBundled {
             Label("此版本无法使用离线翻译", systemImage: "exclamationmark.octagon.fill")
                 .font(.caption)
                 .foregroundStyle(.red)
@@ -873,7 +882,7 @@ struct TranscriptionView: View {
 
     @ViewBuilder
     private var nllbModelDownloadAction: some View {
-        if NLLBTranslationRuntime.isRuntimeBundled {
+        if NLLBHardwareSupport.isSupported && NLLBTranslationRuntime.isRuntimeBundled {
             switch nllbModelManager.state {
             case .idle:
                 if !nllbModelManager.isInstalled {
@@ -1239,7 +1248,7 @@ struct TranscriptionView: View {
                         Label("模型已加载，可开始", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("AI 将在后台自动准备")
+                        Text("选择 AI 功能后才会加载模型")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -1297,7 +1306,7 @@ struct TranscriptionView: View {
     }
 
     private func prepareGemma() {
-        guard !gemmaReady, !gemmaIsPreparing else { return }
+        guard GemmaHardwareSupport.isSupported, gemmaKind != nil, !gemmaReady, !gemmaIsPreparing else { return }
         gemmaTask?.cancel()
         gemmaReady = false
         gemmaError = nil
@@ -1318,7 +1327,7 @@ struct TranscriptionView: View {
     }
 
     private func startGemma() {
-        guard let gemmaKind else { return }
+        guard GemmaHardwareSupport.isSupported, let gemmaKind else { return }
         gemmaTask?.cancel()
         gemmaIsRunning = true
         gemmaError = nil
@@ -1370,7 +1379,7 @@ struct TranscriptionView: View {
     }
 
     private func autoPrepareGemmaIfNeeded() {
-        guard session.phase == .finished,
+        guard gemmaKind != nil, session.phase == .finished,
               GemmaHardwareSupport.isSupported,
               GemmaRuntime.isBundled,
               GemmaModelStore.isInstalled(gemmaModel),

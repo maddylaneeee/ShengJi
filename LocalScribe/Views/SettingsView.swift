@@ -15,6 +15,8 @@ struct SettingsView: View {
     @State private var launchesAtLogin = SMAppService.mainApp.status == .enabled
     @State private var gemmaModelManager = GemmaModelManager()
     @State private var isShowingPromptEditor = false
+    @State private var isConfirmingGemma = false
+    @AppStorage("EnableGemma") private var enableGemma = !GemmaHardwareSupport.requiresOptIn
     @AppStorage("EnableGemmaE4B") private var enableGemmaE4B = false
 
     var body: some View {
@@ -49,6 +51,12 @@ struct SettingsView: View {
             NavigationStack {
                 AIPromptEditorView(preferences: aiPromptPreferences)
             }
+        }
+        .alert("在低内存设备上启用 Gemma？", isPresented: $isConfirmingGemma) {
+            Button("取消", role: .cancel) {}
+            Button("仍然启用") { enableGemma = true }
+        } message: {
+            Text("Gemma 会占用大量内存，可能导致系统卡顿或内存压力过高。关闭其他大型应用后再使用；可随时在此关闭。")
         }
         .alert("安装更新？", isPresented: $isConfirmingInstall) {
             Button("稍后", role: .cancel) {}
@@ -180,6 +188,19 @@ struct SettingsView: View {
     private var modelsTab: some View {
         Form {
             Section("Gemma 4") {
+                Toggle("启用 Gemma AI 功能", isOn: Binding(
+                    get: { enableGemma },
+                    set: { enabled in
+                        if enabled && GemmaHardwareSupport.requiresOptIn {
+                            isConfirmingGemma = true
+                        } else {
+                            enableGemma = enabled
+                        }
+                    }
+                ))
+                Text("8 GB 及以下默认关闭，需手动确认启用。模型仅在点击 AI 功能后加载，任务结束后释放内存。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 if !GemmaHardwareSupport.isSupported {
                     Label(GemmaHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
                         .foregroundStyle(.red)
@@ -192,6 +213,15 @@ struct SettingsView: View {
 
                 gemmaModelRow(.e2b)
                 if enableGemmaE4B { gemmaModelRow(.e4b) }
+            }
+
+            Section("离线翻译") {
+                if !NLLBHardwareSupport.isSupported {
+                    Label(NLLBHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
+                }
+                Text("NLLB 本机翻译模型需要至少 4 GB 内存；容量判断允许小幅误差。Apple 翻译仍可使用。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("用途与隐私") {

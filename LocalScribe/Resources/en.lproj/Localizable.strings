@@ -603,3 +603,23 @@
 "“录屏与系统录音”权限已授予。请退出并重新打开声迹后重试。" = "Screen and System Audio Recording permission was granted. Quit and reopen ShengJi, then try again.";
 
 "识别与隐私说明" = "Recognition & Privacy";
+
+"Gemma 已关闭。可在设置的模型页面手动开启；低内存设备可能出现卡顿。" = "Gemma is disabled. Enable it in Settings > Models; low-memory Macs may slow down.";
+
+"这台 Mac 的内存不足 4 GB，无法使用 NLLB 本机翻译模型。请使用 Apple 翻译。" = "This Mac has less than 4 GB of memory and cannot use the local NLLB model. Use Apple Translation.";
+
+"在低内存设备上启用 Gemma？" = "Enable Gemma on a low-memory Mac?";
+
+"仍然启用" = "Enable Anyway";
+
+"Gemma 会占用大量内存，可能导致系统卡顿或内存压力过高。关闭其他大型应用后再使用；可随时在此关闭。" = "Gemma uses substantial memory and may cause slowdowns or high memory pressure. Close other large apps before use. You can turn it off here at any time.";
+
+"启用 Gemma AI 功能" = "Enable Gemma AI";
+
+"8 GB 及以下默认关闭，需手动确认启用。模型仅在点击 AI 功能后加载，任务结束后释放内存。" = "Disabled by default on Macs with 8 GB or less; enabling requires confirmation. The model loads only after you select an AI feature and unloads after the task.";
+
+"离线翻译" = "Offline Translation";
+
+"NLLB 本机翻译模型需要至少 4 GB 内存；容量判断允许小幅误差。Apple 翻译仍可使用。" = "The local NLLB model requires at least 4 GB of memory, allowing a small capacity tolerance. Apple Translation remains available.";
+
+"选择 AI 功能后才会加载模型" = "The model loads only after you select an AI feature.";

@@ -4,8 +4,8 @@ import XCTest
 
 final class GemmaSafetyTests: XCTestCase {
     func testInstalledGemmaRunsLocallyAndUnloadsAfterCompletion() async throws {
-        guard GemmaModelStore.isInstalled(.e2b) else {
-            throw XCTSkip("Gemma E2B is not installed on this Mac.")
+        guard GemmaHardwareSupport.isSupported, GemmaModelStore.isInstalled(.e2b) else {
+            throw XCTSkip("Gemma E2B is not installed or is disabled on this Mac.")
         }
         let first = TranscriptSegment(
             startTime: 0,
@@ -45,8 +45,8 @@ final class GemmaSafetyTests: XCTestCase {
     }
 
     func testInstalledGemmaSummaryUsesEvidenceAndUnloads() async throws {
-        guard GemmaModelStore.isInstalled(.e2b) else {
-            throw XCTSkip("Gemma E2B is not installed on this Mac.")
+        guard GemmaHardwareSupport.isSupported, GemmaModelStore.isInstalled(.e2b) else {
+            throw XCTSkip("Gemma E2B is not installed or is disabled on this Mac.")
         }
         let segments = [
             TranscriptSegment(startTime: 0, endTime: 2, text: "Project Atlas reviewed 45 samples near Stonehenge."),
@@ -68,12 +68,25 @@ final class GemmaSafetyTests: XCTestCase {
         XCTAssertEqual(GemmaProcessRegistry.activeProcessCount, 0)
     }
 
-    func testSixGBAndBelowCannotUseAI() {
-        let gibibyte: UInt64 = 1_024 * 1_024 * 1_024
-        XCTAssertFalse(GemmaHardwareSupport.isSupported(physicalMemory: 6 * gibibyte))
-        XCTAssertFalse(GemmaHardwareSupport.isSupported(physicalMemory: 4 * gibibyte))
-        XCTAssertTrue(GemmaHardwareSupport.isSupported(physicalMemory: 6 * gibibyte + 1))
-        XCTAssertTrue(GemmaHardwareSupport.isSupported(physicalMemory: 8 * gibibyte))
+    func testLowMemoryGemmaRequiresExplicitOptIn() {
+        let gib = GemmaHardwareSupport.gibibyte
+        for capacity in [3 * gib, 4 * gib, 6 * gib, 8 * gib] {
+            XCTAssertFalse(GemmaHardwareSupport.isSupported(physicalMemory: capacity))
+            XCTAssertTrue(GemmaHardwareSupport.isSupported(physicalMemory: capacity, enabled: true))
+            XCTAssertFalse(GemmaHardwareSupport.isSupported(physicalMemory: capacity, enabled: false))
+        }
+        XCTAssertFalse(GemmaHardwareSupport.isSupported(physicalMemory: 8 * gib + 64 * 1_024 * 1_024))
+        XCTAssertTrue(GemmaHardwareSupport.isSupported(physicalMemory: 16 * gib))
+        XCTAssertFalse(GemmaHardwareSupport.isSupported(physicalMemory: 16 * gib, enabled: false))
+    }
+
+    func testNLLBNominalFourGBAllowsCapacityTolerance() {
+        let gib = GemmaHardwareSupport.gibibyte
+        XCTAssertFalse(NLLBHardwareSupport.isSupported(physicalMemory: 3 * gib))
+        XCTAssertFalse(NLLBHardwareSupport.isSupported(physicalMemory: 4 * gib - GemmaHardwareSupport.capacityTolerance - 1))
+        XCTAssertTrue(NLLBHardwareSupport.isSupported(physicalMemory: 4 * gib - GemmaHardwareSupport.capacityTolerance))
+        XCTAssertTrue(NLLBHardwareSupport.isSupported(physicalMemory: 4 * gib))
+        XCTAssertTrue(NLLBHardwareSupport.isSupported(physicalMemory: 8 * gib))
     }
 
     func testTranscriptDataNeverEntersSystemPrompt() {

@@ -3,20 +3,36 @@ import Foundation
 import Observation
 
 enum GemmaHardwareSupport {
-    static let minimumExclusiveBytes: UInt64 = 6 * 1_024 * 1_024 * 1_024
+    static let gibibyte: UInt64 = 1_024 * 1_024 * 1_024
+    // Accommodate small differences in reported capacity around nominal tiers.
+    static let capacityTolerance: UInt64 = 128 * 1_024 * 1_024
     static var physicalMemory: UInt64 { ProcessInfo.processInfo.physicalMemory }
-    static var isSupported: Bool { isSupported(physicalMemory: physicalMemory) }
-
-    static func isSupported(physicalMemory: UInt64) -> Bool {
-        physicalMemory > minimumExclusiveBytes
+    static var requiresOptIn: Bool { requiresOptIn(physicalMemory: physicalMemory) }
+    static var isSupported: Bool {
+        isSupported(physicalMemory: physicalMemory,
+                    enabled: UserDefaults.standard.object(forKey: "EnableGemma") as? Bool)
     }
-
+    static func requiresOptIn(physicalMemory: UInt64) -> Bool {
+        physicalMemory <= 8 * gibibyte + capacityTolerance
+    }
+    static func isSupported(physicalMemory: UInt64, enabled: Bool? = nil) -> Bool {
+        enabled ?? !requiresOptIn(physicalMemory: physicalMemory)
+    }
     static var memoryLabel: String {
         ByteCountFormatter.string(fromByteCount: Int64(physicalMemory), countStyle: .memory)
     }
-
     static var unsupportedReason: String {
-        L10n.format("这台 Mac 有 %@ 内存；6 GB 及以下不能安全运行 Gemma E2B，因此 AI 功能已停用。", memoryLabel)
+        L10n.text("Gemma 已关闭。可在设置的模型页面手动开启；低内存设备可能出现卡顿。")
+    }
+}
+
+enum NLLBHardwareSupport {
+    static var isSupported: Bool { isSupported(physicalMemory: GemmaHardwareSupport.physicalMemory) }
+    static func isSupported(physicalMemory: UInt64) -> Bool {
+        physicalMemory >= 4 * GemmaHardwareSupport.gibibyte - GemmaHardwareSupport.capacityTolerance
+    }
+    static var unsupportedReason: String {
+        L10n.text("这台 Mac 的内存不足 4 GB，无法使用 NLLB 本机翻译模型。请使用 Apple 翻译。")
     }
 }
 

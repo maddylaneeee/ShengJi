@@ -12,10 +12,10 @@
 
 声迹是一款面向 Apple silicon Mac 的免费、开源原生语音转文字与音视频转录应用，无需注册账号。它把本地识别、悬浮实时字幕、字幕编辑与导出、离线翻译、长任务恢复，以及 Gemma 4 文稿优化整合在一个 SwiftUI 界面中。识别音频、导入稿件和 AI 处理内容不会由应用上传。
 
-当前版本：**1.6.6（37）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [非开发者下载指南](Documentation/DOWNLOAD.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+当前版本：**1.6.7（38）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [首次启动安装指南](INSTALL.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **1.6.6 新增日语与界面优化：** 新增日语界面和日语 README，调整首页识别模型区的间距与实时字幕控件的对齐；准备页的识别和隐私说明改为按需查看，减少常驻文字。
+> **1.6.7 新增内存适配控制：** 8 GB 及以下内存的 Mac 默认关闭 Gemma AI 优化，可在设置中确认内存提示后手动开启。Gemma 仅在点击选择 AI 功能后加载；少于 4 GB 内存时禁用本地 NLLB 翻译，保留 Apple Translation。新增适用于 macOS 26 与 27 的首次启动安装指南。
 
 ## 实际演示
 
@@ -74,7 +74,7 @@
 
 上方两张图来自同一次总结操作。结果会直接替换文字预览，并保留可撤销的原稿快照。你可以临时指定正确人名、专业术语、表达风格、总结长度、关注重点或输出格式，也可以在设置中保存常用指令。AI 输出仍应由用户复核。
 
-默认的 Gemma 4 E2B IT Q4 模型约 2.8 GB；可在设置中开启约 4.6 GB 的 E4B 选项。模型按需下载并校验，随后通过 llama.cpp 和 Metal 在 Mac 上运行。为避免内存压力，物理内存为 6 GB 或更低的设备会停用该功能；加载 Gemma 前，声迹会释放当前持有的识别和 NLLB 翻译运行环境，任务结束后退出 Gemma helper。
+默认的 Gemma 4 E2B IT Q4 模型约 2.8 GB；可在设置中开启约 4.6 GB 的 E4B 选项。模型按需下载并校验，随后通过 llama.cpp 和 Metal 在 Mac 上运行。物理内存为 8 GB 或更低的设备默认关闭 AI 优化，可在设置中确认内存提示后手动开启。Gemma 仅在点击选择 AI 功能后加载，完成转录或打开结果时不会预加载。加载 Gemma 前，声迹会释放当前持有的识别和 NLLB 翻译运行环境，任务结束后退出 Gemma helper。
 
 ## 适合做什么
 
@@ -90,7 +90,9 @@
 
 1. [下载最新版 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg)。
 2. 打开 DMG，把 `LocalScribe.app`（中文系统中显示为“声迹”）拖到“应用程序”。
-3. 第一次尝试打开时，macOS 会阻止启动。进入“系统设置 → 隐私与安全性”，找到声迹提示并点击“仍要打开”，然后确认“打开”。
+3. 先尝试打开“应用程序”中的声迹一次。若 macOS 阻止启动，关闭提示，再进入“系统设置 → 隐私与安全性 → 安全性”，找到此 App 的提示，选择“打开／仍要打开”，按系统要求认证或确认。
+
+**首次在 macOS 26 或 27 上安装？** 请阅读[逐步首次启动指南](INSTALL.zh-CN.md)，其中也说明了找不到“仍要打开”时如何处理。
 
 完整图文步骤、常见问题和 SHA-256 校验方法见：[下载与安装指南](Documentation/DOWNLOAD.zh-CN.md)。
 
@@ -108,7 +110,8 @@
 | macOS 15.5–25 | 手动选择 Whisper、SenseVoice 或 Parakeet |
 | SenseVoice / Parakeet | 当前仅支持文件转录 |
 | 实时字幕翻译 | 当前关闭；转录完成后的翻译仍可使用 |
-| Gemma 4 AI 优化 | 需要超过 6 GB 内存；模型按需下载并在本机运行 |
+| Gemma 4 AI 优化 | 8 GB 及以下内存默认关闭，可在设置中确认后手动开启；仅点击选择 AI 功能后加载 |
+| 本地 NLLB 翻译 | 少于 4 GB 内存时禁用；系统上报内存按 128 MiB 容差判断，保留 Apple Translation |
 | 麦克风 | 需要麦克风权限 |
 | Mac 声音 | 需要“屏幕与系统音频录制”权限 |
 

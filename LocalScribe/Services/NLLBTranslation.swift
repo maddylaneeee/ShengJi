@@ -482,6 +482,7 @@ actor NLLBTranslationProcess {
     }
 
     private func ensureRunning() throws {
+        guard NLLBHardwareSupport.isSupported else { throw NLLBTranslationError.insufficientMemory }
         if let process, process.isRunning { return }
         guard let executableURL = NLLBTranslationRuntime.runtimeExecutableURL else {
             throw NLLBTranslationError.runtimeNotBundled
@@ -697,6 +698,7 @@ private struct NLLBUnitResult: Decodable {
 }
 
 enum NLLBTranslationError: LocalizedError {
+    case insufficientMemory
     case runtimeNotBundled
     case modelNotInstalled(String)
     case unsupportedLanguage(String)
@@ -704,6 +706,8 @@ enum NLLBTranslationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .insufficientMemory:
+            NLLBHardwareSupport.unsupportedReason
         case .runtimeNotBundled:
             L10n.text("NLLB 运行时未包含在当前应用中。")
         case .modelNotInstalled(let path):
