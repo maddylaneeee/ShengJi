@@ -85,7 +85,7 @@ enum TranscriptExporter {
                 text: text
             )
         case .srt:
-            let output = subtitleSegments(text: text, duration: duration, segments: segments, manuallyEdited: hasManualEdits)
+            let output = formattedSubtitleCues(text: text, duration: duration, segments: segments, manuallyEdited: hasManualEdits)
                 .enumerated()
                 .map { index, segment in
                     "\(index + 1)\n\(srtTime(segment.startTime)) --> \(srtTime(segment.endTime))\n\(segment.text)"
@@ -93,7 +93,7 @@ enum TranscriptExporter {
                 .joined(separator: "\n\n")
             return Data((output + "\n").utf8)
         case .webVTT:
-            let body = subtitleSegments(text: text, duration: duration, segments: segments, manuallyEdited: hasManualEdits)
+            let body = formattedSubtitleCues(text: text, duration: duration, segments: segments, manuallyEdited: hasManualEdits)
                 .map { segment in
                     "\(vttTime(segment.startTime)) --> \(vttTime(segment.endTime))\n\(segment.text)"
                 }
@@ -108,15 +108,20 @@ enum TranscriptExporter {
         segments: [TranscriptSegment],
         manuallyEdited: Bool
     ) -> [TranscriptSegment] {
-        if manuallyEdited {
-            return TranscriptSegment.sentenceSegments(from: text, duration: duration)
-        }
-        if segments.isEmpty {
-            return TranscriptSegment.sentenceSegments(from: text, duration: duration)
-        }
-        return segments
-            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .sorted { $0.startTime < $1.startTime }
+        let source = (manuallyEdited || segments.isEmpty)
+            ? TranscriptSegment.sentenceSegments(from: text, duration: duration)
+            : segments.sorted { $0.startTime < $1.startTime }
+        return source.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    private static func formattedSubtitleCues(
+        text: String,
+        duration: TimeInterval,
+        segments: [TranscriptSegment],
+        manuallyEdited: Bool
+    ) -> [TranscriptSegment] {
+        subtitleSegments(text: text, duration: duration, segments: segments, manuallyEdited: manuallyEdited)
+            .flatMap(SubtitleTextLayout.cues)
     }
 
     private static func srtTime(_ seconds: TimeInterval) -> String {
@@ -134,6 +139,86 @@ enum TranscriptExporter {
         let secs = (milliseconds / 1_000) % 60
         let millis = milliseconds % 1_000
         return String(format: "%02d:%02d:%02d%@%03d", hours, minutes, secs, separator, millis)
+    }
+}
+
+/// Keeps exported cues readable even when the source has no spaces or punctuation.
+/// Widths are approximate display columns; playback applications choose the final font.
+enum SubtitleTextLayout {
+    static let columnsPerLine = 36
+    static let linesPerCue = 2
+
+    static func cues(for segment: TranscriptSegment) -> [TranscriptSegment] {
+        guard !segment.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        let lines = wrappedLines(segment.text)
+        let chunks = stride(from: 0, to: lines.count, by: linesPerCue).map { index in
+            lines[index..<min(index + linesPerCue, lines.count)].joined(separator: "\n")
+        }
+        guard chunks.count > 1, segment.endTime > segment.startTime else {
+            return [TranscriptSegment(id: segment.id, startTime: segment.startTime,
+                                      endTime: segment.endTime, text: lines.joined(separator: "\n"))]
+        }
+
+        let weights = chunks.map { max($0.filter { !$0.isWhitespace }.count, 1) }
+        let totalWeight = weights.reduce(0, +)
+        var consumed = 0
+        return chunks.enumerated().map { index, chunk in
+            let start = segment.startTime + (segment.endTime - segment.startTime)
+                * Double(consumed) / Double(totalWeight)
+            consumed += weights[index]
+            let end = index == chunks.count - 1 ? segment.endTime : segment.startTime
+                + (segment.endTime - segment.startTime) * Double(consumed) / Double(totalWeight)
+            return TranscriptSegment(id: index == 0 ? segment.id : UUID(),
+                                     startTime: start, endTime: end, text: chunk)
+        }
+    }
+
+    private static func wrappedLines(_ text: String) -> [String] {
+        var lines: [String] = []
+        var line = ""
+        var width = 0
+        for character in text.replacingOccurrences(of: "\r\n", with: "\n") {
+            if character == "\n" {
+                if !line.isEmpty { lines.append(line) }
+                line = ""
+                width = 0
+                continue
+            }
+            let characterWidth = displayWidth(character)
+            let isClosingPunctuation = "，。！？；：、,.!?;:)]}”’".contains(character)
+            if width + characterWidth > columnsPerLine && !line.isEmpty
+                && !(isClosingPunctuation && width <= columnsPerLine) {
+                let characters = Array(line)
+                let preferredBreak = characters.indices.last { index in
+                    let prefixWidth = characters[...index].reduce(0) { $0 + displayWidth($1) }
+                    return prefixWidth >= columnsPerLine / 2
+                        && (characters[index].isWhitespace
+                            || "，。！？；：、,.!?;:".contains(characters[index]))
+                }
+                if let preferredBreak {
+                    lines.append(String(characters[...preferredBreak]))
+                    line = String(characters.dropFirst(preferredBreak + 1))
+                    width = line.reduce(0) { $0 + displayWidth($1) }
+                } else {
+                    lines.append(line)
+                    line = ""
+                    width = 0
+                }
+            }
+            line.append(character)
+            width += characterWidth
+        }
+        if !line.isEmpty { lines.append(line) }
+        return lines
+    }
+
+    private static func displayWidth(_ character: Character) -> Int {
+        guard let scalar = character.unicodeScalars.first else { return 1 }
+        let value = scalar.value
+        let wideScript = (0x1100...0x11FF).contains(value) || (0x3040...0x30FF).contains(value)
+            || (0x3000...0x303F).contains(value) || (0xAC00...0xD7AF).contains(value)
+            || (0xFF01...0xFF60).contains(value)
+        return scalar.properties.isIdeographic || scalar.properties.isEmojiPresentation || wideScript ? 2 : 1
     }
 }
 

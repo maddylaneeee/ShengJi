@@ -12,7 +12,7 @@
 
 LocalScribe is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Audio, imported transcripts, and AI processing content are not uploaded by the app.
 
-Current version: **1.6.7 (38)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current version: **1.6.7 (39)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
 > **New in 1.6.7 — memory-aware model controls:** Gemma AI Enhancement is off by default on Macs with 8 GB of memory or less; you can enable it in Settings after confirming the memory warning. Gemma loads only after you select an AI feature. Local NLLB translation is unavailable below 4 GB of memory, while Apple Translation remains available. A dedicated first-launch installation guide covers macOS 26 and 27.
@@ -162,7 +162,7 @@ The local packaging script creates ZIP and DMG artifacts and validates nested si
 ./tools/package_local_release.sh
 ```
 
-By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` to make the same ad-hoc package produced by GitHub Actions. Pushing a tag that matches the version in `Info.plist` (for example, `v1.6.1`) runs `release-unsigned.yml`, verifies the package, and creates the GitHub Release without storing a certificate or password in GitHub Secrets. Developer ID signing, timestamping, notarization, and stapling remain the preferred public distribution path.
+By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` to make the same ad-hoc package produced by GitHub Actions. Pushing a tag that matches the version in `Info.plist` (for example, `v1.6.7`) or includes the build number (for example, `v1.6.7-build39`) runs `release-unsigned.yml`, verifies the package, and creates the GitHub Release without storing a certificate or password in GitHub Secrets. Developer ID signing, timestamping, notarization, and stapling remain the preferred public distribution path.
 
 ## CLI
 

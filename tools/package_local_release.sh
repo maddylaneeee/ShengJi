@@ -275,7 +275,7 @@ cat > "$UPDATE_MANIFEST" <<EOF
   "bundle_id": "ca.lixinchen.localscribe",
   "download_url": "$DOWNLOAD_URL",
   "sha256": "$SHA256",
-  "release_notes": "ShengJi 1.6.7 loads Gemma only after an AI feature is selected. Macs with 8 GB or less default to Gemma disabled, with explicit activation and a memory warning in Settings. Local NLLB translation requires approximately 4 GB of memory. This release also adds a contrasting window title bar and a step-by-step installation guide for macOS 26 and 27.",
+  "release_notes": "LocalScribe 1.6.7 build 39 improves long CJK subtitle export by wrapping and dividing long cues while preserving text and cue boundaries. Blank input no longer creates an empty timed cue. This build also includes the on-demand AI and memory controls from build 38.",
   "minimum_system_version": "15.5",
   "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "size_bytes": $(stat -f %z "$ZIP")

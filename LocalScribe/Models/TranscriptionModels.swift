@@ -805,7 +805,7 @@ struct TranscriptSegment: Codable, Identifiable, Hashable, Sendable {
     static func sentenceSegments(from text: String, duration: TimeInterval) -> [TranscriptSegment] {
         let sentences = splitSentences(text)
         guard !sentences.isEmpty else {
-            return [TranscriptSegment(startTime: 0, endTime: max(duration, 1), text: text)]
+            return []
         }
 
         let totalWeight = max(sentences.reduce(0) { $0 + $1.count }, 1)

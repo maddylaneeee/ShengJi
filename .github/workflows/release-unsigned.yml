@@ -27,7 +27,8 @@ jobs:
         if: github.event_name == 'push'
         run: |
           version="$(plutil -extract CFBundleShortVersionString raw LocalScribe/Resources/Info.plist)"
-          test "$GITHUB_REF_NAME" = "v$version"
+          build="$(plutil -extract CFBundleVersion raw LocalScribe/Resources/Info.plist)"
+          test "$GITHUB_REF_NAME" = "v$version" || test "$GITHUB_REF_NAME" = "v$version-build$build"
 
       - name: Build ad-hoc signed release
         env:
@@ -59,7 +60,7 @@ jobs:
           release_notes="$(plutil -extract release_notes raw "$output/update.json")"
           notes="$RUNNER_TEMP/release-notes.md"
           {
-            echo "## About ShengJi"
+            echo "## About LocalScribe"
             echo
             echo "$release_notes"
             echo
@@ -86,11 +87,13 @@ jobs:
             done
             gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "ShengJi $GITHUB_REF_NAME" \
-              --notes-file "$notes"
+              --title "LocalScribe $GITHUB_REF_NAME" \
+              --notes-file "$notes" \
+              --latest
           else
             gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
-              --title "ShengJi $GITHUB_REF_NAME" \
+              --title "LocalScribe $GITHUB_REF_NAME" \
               --notes-file "$notes" \
+              --latest \
               --verify-tag
           fi
