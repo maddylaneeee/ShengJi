@@ -22,7 +22,7 @@ struct LocalScribeApp: App {
                 .preferredColorScheme(presentationPreferences.appearance.colorScheme)
                 .onAppear {
                     ApplicationMenuLocalizer.apply(presentationPreferences.language)
-                    if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+                    if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil && ProcessInfo.processInfo.environment["LOCALSCRIBE_TEST_DATA_ROOT"] == nil {
                         updateController.startAutomaticUpdates()
                     }
                 }
@@ -53,16 +53,34 @@ struct LocalScribeApp: App {
 
 private final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     private var terminationTask: Task<Void, Never>?
+    private var terminationDeadline: Task<Void, Never>?
+    private var repliedToTermination = false
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard terminationTask == nil else { return .terminateLater }
+        // Closed recording checkpoints and the latest text snapshot remain recoverable
+        // if a system speech/encoding service never completes its cancellation.
+        terminationDeadline = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(45))
+            guard !Task.isCancelled else { return }
+            terminationTask?.cancel()
+            finishTermination(sender)
+        }
         terminationTask = Task { @MainActor in
+            await SpeechAudioRegistry.shared.cancelAll()
             await TranscriptionSessionRegistry.shared.cancelAll()
-            GemmaProcessRegistry.terminateAll()
-            NLLBProcessRegistry.terminateAll()
-            sender.reply(toApplicationShouldTerminate: true)
+            finishTermination(sender)
         }
         return .terminateLater
+    }
+
+    @MainActor private func finishTermination(_ sender: NSApplication) {
+        guard !repliedToTermination else { return }
+        repliedToTermination = true
+        terminationDeadline?.cancel()
+        GemmaProcessRegistry.terminateAll()
+        NLLBProcessRegistry.terminateAll()
+        sender.reply(toApplicationShouldTerminate: true)
     }
 
     func applicationWillTerminate(_ notification: Notification) {

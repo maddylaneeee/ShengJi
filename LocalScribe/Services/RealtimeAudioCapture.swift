@@ -125,6 +125,11 @@ protocol RealtimeAudioCapturing: AnyObject {
     ) async throws -> UUID
 
     func stop() async
+    func setOriginalBufferConsumer(_ consumer: (@Sendable (AVAudioPCMBuffer) -> Void)?)
+}
+
+extension RealtimeAudioCapturing {
+    func setOriginalBufferConsumer(_ consumer: (@Sendable (AVAudioPCMBuffer) -> Void)?) {}
 }
 
 @MainActor
@@ -157,6 +162,8 @@ final class InputDeviceAudioCapture: RealtimeAudioCapturing {
     private var engine: AVAudioEngine?
     private var converter: AVAudioConverter?
     private var hasTap = false
+    private var originalBufferConsumer: (@Sendable (AVAudioPCMBuffer) -> Void)?
+    func setOriginalBufferConsumer(_ consumer: (@Sendable (AVAudioPCMBuffer) -> Void)?) { originalBufferConsumer = consumer }
 
     private(set) var sessionID: UUID?
     var isRunning: Bool { engine?.isRunning == true }
@@ -205,11 +212,12 @@ final class InputDeviceAudioCapture: RealtimeAudioCapturing {
             self.converter = converter
             self.sessionID = sessionID
             inputNode.installTap(onBus: 0, bufferSize: 4_096, format: sourceFormat) {
-                [callbackGate, converter, targetFormat] input, _ in
+                [callbackGate, converter, targetFormat, originalBufferConsumer] input, _ in
                 do {
                     guard Self.isValid(buffer: input) else {
                         throw RealtimeAudioCaptureError.invalidAudioBuffer
                     }
+                    callbackGate.forwardOriginal(input, sessionID: sessionID, consumer: originalBufferConsumer)
                     let output = if let converter {
                         try Self.convert(input, using: converter, to: targetFormat)
                     } else {
@@ -278,7 +286,7 @@ final class InputDeviceAudioCapture: RealtimeAudioCapturing {
             && buffer.frameLength <= 1_000_000
     }
 
-    nonisolated fileprivate static func convert(
+    nonisolated static func convert(
         _ input: AVAudioPCMBuffer,
         using converter: AVAudioConverter,
         to targetFormat: AVAudioFormat
@@ -502,6 +510,13 @@ final class RealtimeAudioCaptureCallbackGate: @unchecked Sendable {
             self.onError = onError
             self.firstBufferContinuation = firstBufferContinuation
             hasReportedError = false
+        }
+    }
+
+    func forwardOriginal(_ buffer: AVAudioPCMBuffer, sessionID: UUID, consumer: (@Sendable (AVAudioPCMBuffer) -> Void)?) {
+        lock.withLock {
+            guard activeSessionID == sessionID, !hasReportedError else { return }
+            consumer?(buffer)
         }
     }
 

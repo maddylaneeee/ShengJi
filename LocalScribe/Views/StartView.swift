@@ -54,7 +54,9 @@ struct StartView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("可以恢复上次转录")
                     .font(.headline)
-                Text("\(snapshot.sourceTitle) · \(snapshot.configuration.displayName) · \(snapshot.updatedAt.formatted(date: .abbreviated, time: .shortened))")
+                Text(snapshot.isTextToSpeech == true
+                     ? "\(snapshot.sourceTitle) · \(snapshot.updatedAt.formatted(date: .abbreviated, time: .shortened))"
+                     : "\(snapshot.sourceTitle) · \(snapshot.configuration.displayName) · \(snapshot.updatedAt.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

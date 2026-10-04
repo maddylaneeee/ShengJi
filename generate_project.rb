@@ -21,6 +21,16 @@ source_files = %w[
   LocalScribeApp.swift
   Models/TranscriptionModels.swift
   Models/RealtimeAudioSource.swift
+  Models/SessionAudioModels.swift
+  Services/SessionAudioStore.swift
+  Services/OriginalAudioRecorder.swift
+  Services/SpeechVoiceCatalog.swift
+  Services/SpeechSynthesisService.swift
+  Services/SpeechAudioModel.swift
+  Services/TextToSpeechSessionModel.swift
+  Services/CompanionExportCoordinator.swift
+  Views/SessionAudioViews.swift
+  Views/TextToSpeechView.swift
   Services/LanguageCatalog.swift
   Services/Localization.swift
   Services/AppPresentationPreferences.swift
@@ -79,6 +89,8 @@ test_target.add_dependency(target)
   RealtimeAudioSourceTests.swift
   StreamingTextAnimatorTests.swift
   TranscriptionLifecycleTests.swift
+  SessionAudioTests.swift
+  SessionAudioIntegrationTests.swift
 ].each do |relative_path|
   reference = tests_group.new_file(relative_path)
   test_target.source_build_phase.add_file_reference(reference)

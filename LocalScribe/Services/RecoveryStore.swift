@@ -12,6 +12,10 @@ struct RecoverySnapshot: Codable, Identifiable, Sendable {
     var journalRelativePath: String? = nil
     var journalRecordCount: Int? = nil
     var journalGeneration: Int? = nil
+    var isTextToSpeech: Bool? = nil
+    var originalAudioEnabled: Bool? = nil
+    var audioAsset: SessionAudioAsset? = nil
+    var timelineProvenance: TimelineProvenance? = nil
     var sourceTitle: String
     var sourceKind: SourceKind
     var localeIdentifier: String
@@ -28,6 +32,20 @@ struct RecoverySnapshot: Codable, Identifiable, Sendable {
     var createdAt: Date
     var updatedAt: Date
 
+    var availableFeaturesSnapshot: RecoverySnapshot {
+        guard !SessionAudioFeatures.speechSynthesisEnabled else { return self }
+        var result = self
+        if let asset = result.audioAsset, !SessionAudioFeatures.permits(asset) { result.audioAsset = nil }
+        if result.isTextToSpeech == true {
+            result.isTextToSpeech = false
+            result.sourceTitle = L10n.text("导入稿件")
+            result.sourceKind = .recovered
+            result.originalAudioEnabled = false
+            result.audioAsset = nil
+        }
+        return result
+    }
+
     var shortPreview: String {
         let text = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return L10n.text("还没有已识别文字") }
@@ -36,17 +54,21 @@ struct RecoverySnapshot: Codable, Identifiable, Sendable {
 }
 
 enum RecoveryStore {
+    private static let writeLock = NSRecursiveLock()
+    private static var clearedSessions: Set<UUID> = []
     static func load() -> RecoverySnapshot? {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
         do {
             let data = try Data(contentsOf: fileURL)
-            return try JSONDecoder().decode(RecoverySnapshot.self, from: data)
+            return try JSONDecoder().decode(RecoverySnapshot.self, from: data).availableFeaturesSnapshot
         } catch {
             return nil
         }
     }
 
     static func save(_ snapshot: RecoverySnapshot) throws {
+        writeLock.lock(); defer { writeLock.unlock() }
+        guard !clearedSessions.contains(snapshot.id), load().map({ $0.updatedAt <= snapshot.updatedAt }) ?? true else { return }
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         // Recovery is rewritten repeatedly during long tasks. Compact JSON keeps the
@@ -57,7 +79,11 @@ enum RecoveryStore {
     }
 
     static func clear() throws {
-        try? FileManager.default.removeItem(at: fileURL)
+        writeLock.lock(); defer { writeLock.unlock() }
+        let previous = load()?.id
+        if let previous { clearedSessions.insert(previous) }
+        if FileManager.default.fileExists(atPath: fileURL.path) { try FileManager.default.removeItem(at: fileURL) }
+        if let previous { SessionAudioStore.retire(previous) }
     }
 
     private static var directoryURL: URL {
@@ -72,6 +98,10 @@ enum RecoveryStore {
 
 actor RecoverySnapshotWriter {
     func save(_ snapshot: RecoverySnapshot) {
-        try? RecoveryStore.save(snapshot)
+        let previous = RecoveryStore.load()?.id
+        do {
+            try RecoveryStore.save(snapshot)
+            if let previous, previous != snapshot.id { SessionAudioStore.retire(previous) }
+        } catch { }
     }
 }

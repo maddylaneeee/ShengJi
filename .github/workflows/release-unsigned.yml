@@ -56,20 +56,14 @@ jobs:
         run: |
           output="$(dirname "$(find dist -name LocalScribe-macOS-arm64.dmg -type f -print -quit)")"
           test -n "$output"
-          build="$(plutil -extract build raw "$output/update.json")"
-          release_notes="$(plutil -extract release_notes raw "$output/update.json")"
           notes="$RUNNER_TEMP/release-notes.md"
-          {
-            echo "## About LocalScribe"
-            echo
-            echo "$release_notes"
-            echo
-            echo '## Installation'
-            echo
-            echo 'Download `LocalScribe-macOS-arm64.dmg`, open it, and drag the app to Applications.'
-            echo
-            echo '> This build is not Developer ID signed or notarized by Apple. After the first blocked launch, open System Settings → Privacy & Security, click Open Anyway, and then confirm Open. Continue only if you trust this repository.'
-          } > "$notes"
+          python3 - "$output/update.json" "$notes" <<'PYNOTES'
+          import json
+          import sys
+          from pathlib import Path
+          metadata, notes = sys.argv[1:]
+          Path(notes).write_text(json.loads(Path(metadata).read_text())["release_notes"] + "\n")
+          PYNOTES
           assets=(
             "$output/LocalScribe-macOS-arm64.dmg"
             "$output/LocalScribe-macOS-arm64.dmg.sha256"

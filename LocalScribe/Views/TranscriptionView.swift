@@ -13,17 +13,12 @@ struct TranscriptionView: View {
 
     @State private var isShowingExport = false
     @State private var isShowingPreflightInfo = false
-    @State private var exportFormat: TranscriptExportFormat = .txt
-    @State private var exportDocument = TranscriptFileDocument(data: Data())
-    @State private var isShowingFileExporter = false
     @State private var exportError: String?
     @State private var isShowingTranslation = false
     @State private var preflightTranslationEnabled = false
-    @State private var exportUsesTranslation = false
     @State private var nllbModelManager = NLLBModelManager()
     @State private var isConfirmingRestart = false
     @State private var restartAfterExport = false
-    @State private var copyStatus: String?
     @State private var editorSelection = NSRange(location: 0, length: 0)
     @State private var searchText = ""
     @State private var replacementText = ""
@@ -64,14 +59,19 @@ struct TranscriptionView: View {
                 preflightPanel
                 Divider()
             } else if session.phase == .finished {
-                translationBar
+                translationBar.disabled(session.speechAudio.isGenerating)
                 Divider()
             }
             if session.canEdit, !isShowingTranslation {
-                editingToolsBar
+                editingToolsBar.disabled(session.speechAudio.isGenerating)
                 Divider()
             }
-            transcriptEditor
+            transcriptEditor.disabled(session.speechAudio.isGenerating)
+            if session.isSavingOriginalAudio { ProgressView("正在保存音频…").padding(10) }
+            if let error = session.originalAudioError { Label(L10n.text("原始音频保存失败/不完整") + ": " + error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).padding(10) }
+            if !session.phase.isActive && session.phase != .paused && !session.isSavingOriginalAudio {
+                SessionAudioPlayerView(audio: session.speechAudio, stale: session.speechAudio.isStale(speechInput))
+            }
         }
         .navigationTitle(session.source.title)
         .navigationSubtitle(session.phase.label)
@@ -79,20 +79,8 @@ struct TranscriptionView: View {
         .toolbar { toolbarContent }
         .safeAreaInset(edge: .bottom) { transportControls }
         .inspector(isPresented: $session.isShowingInspector) { inspector }
-        .sheet(isPresented: $isShowingExport) { exportSheet }
-        .fileExporter(
-            isPresented: $isShowingFileExporter,
-            document: exportDocument,
-            contentType: exportFormat.contentType,
-            defaultFilename: defaultFilename
-        ) { result in
-            switch result {
-            case .success:
-                if restartAfterExport { restart() }
-            case .failure(let error):
-                exportError = error.localizedDescription
-            }
-            restartAfterExport = false
+        .sheet(isPresented: $isShowingExport) {
+            exportSheet.environment(\.locale, interfaceLocale)
         }
         .alert("重新开始？", isPresented: $isConfirmingRestart) {
             Button("取消", role: .cancel) {}
@@ -122,6 +110,7 @@ struct TranscriptionView: View {
             session.refreshRealtimeAudioSources()
             session.updateReduceMotion(reduceMotion)
             syncPendingConfiguration()
+            session.speechAudio.refresh()
         }
         .onChange(of: reduceMotion) { _, enabled in
             session.updateReduceMotion(enabled)
@@ -211,6 +200,7 @@ struct TranscriptionView: View {
                 .pickerStyle(.segmented)
                 .frame(width: 130)
                 .labelsHidden()
+                .disabled(session.speechAudio.isGenerating)
             }
             if case .file = session.source, session.phase != .finished {
                 if session.progressIsIndeterminate {
@@ -265,7 +255,7 @@ struct TranscriptionView: View {
             } else if session.canEdit {
                 HStack(spacing: 0) {
                     Spacer(minLength: 20)
-                    TranscriptEditingTextView(text: $session.transcriptText, selection: $editorSelection)
+                    TranscriptEditingTextView(text: $session.transcriptText, selection: $editorSelection, isEditable: !session.speechAudio.isGenerating)
                         .onChange(of: session.transcriptText) { _, _ in session.noteDirectEdit() }
                         .frame(maxWidth: 900)
                     Spacer(minLength: 20)
@@ -938,6 +928,7 @@ struct TranscriptionView: View {
                     isConfirmingRestart = true
                 }
                 Button("导出转录", systemImage: "square.and.arrow.up") { isShowingExport = true }
+                    .disabled(session.speechAudio.isGenerating || session.isSavingOriginalAudio)
                     .primaryActionStyle()
             }
         }
@@ -1043,8 +1034,20 @@ struct TranscriptionView: View {
                 }
             }
 
+            if case .microphone = session.source, !session.isImportedTranscript {
+                Section("原始音频") {
+                    Toggle("保存原始音频", isOn: $session.saveOriginalAudio)
+                        .disabled(!session.canStart || !session.canSaveOriginalAudio)
+                    if session.saveOriginalAudio {
+                        Picker("音质", selection: $session.originalAudioQuality) {
+                            ForEach(AudioQualityProfile.allCases) { Text($0.title).tag($0) }
+                        }.disabled(!session.canStart)
+                    }
+                    if !session.canSaveOriginalAudio { Text("仅全新麦克风任务支持保存原始音频。").font(.caption).foregroundStyle(.secondary) }
+                }
+            }
             if session.phase == .finished {
-                gemmaInspector
+                gemmaInspector.disabled(session.speechAudio.isGenerating)
             }
 
             if !session.isImportedTranscript, advancedEngine != .apple {
@@ -1402,6 +1405,8 @@ struct TranscriptionView: View {
     }
 
     private func handleDisappear() {
+        session.speechAudio.player.stop()
+        session.speechAudio.cancel()
         gemmaTask?.cancel()
         Task { await GemmaOptimizationService.shared.cancel() }
     }
@@ -1795,104 +1800,33 @@ struct TranscriptionView: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
+    private var speechText: String { isShowingTranslation ? session.translatedText : session.transcriptText }
+    private var speechInput: SynthesisInputSnapshot {
+        session.speechAudio.input(text: speechText, translation: isShowingTranslation, segments: session.reliableSpeechSegments(translation: isShowingTranslation))
+    }
     private var exportSheet: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("导出转录")
-                        .font(.title2.weight(.semibold))
-                    Text("选择格式，然后指定保存位置。")
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("取消") { isShowingExport = false }
-                    .keyboardShortcut(.cancelAction)
-            }
-
-            List(TranscriptExportFormat.allCases, selection: $exportFormat) { format in
-                HStack(spacing: 12) {
-                    Image(systemName: format.symbol)
-                        .font(.title3)
-                        .frame(width: 28)
-                        .foregroundStyle(.tint)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(format.title)
-                        Text(format.detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 5)
-                .tag(format)
-            }
-            .listStyle(.inset)
-            .frame(height: 290)
-
-            HStack {
-                if !session.translatedText.isEmpty {
-                    Toggle("导出译文", isOn: $exportUsesTranslation)
-                        .toggleStyle(.switch)
-                }
-                if session.hasManualEdits && (exportFormat == .srt || exportFormat == .webVTT) {
-                    Label("编辑后的文字会按句子重新生成近似时间戳", systemImage: "info.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("复制到剪贴板", systemImage: "doc.on.doc") { copyToPasteboard() }
-                if let copyStatus {
-                    Text(copyStatus)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Button("选择保存位置…") { prepareExport() }
-                    .keyboardShortcut(.defaultAction)
-                    .primaryActionStyle()
-            }
-        }
-        .padding(24)
-        .frame(width: 540)
+        CompanionExportSheet(asset: session.audioAsset, defaultName: defaultTitle,
+                             hasTranslation: !session.translatedText.isEmpty,
+                             approximateTimeline: session.hasManualEdits || !session.timelineProvenance.isReliable,
+                             warning: { format, translated in
+            let text = translated ? session.translatedText : session.transcriptText
+            let input = session.speechAudio.input(text: text, translation: translated, segments: session.reliableSpeechSegments(translation: translated))
+            return session.speechAudio.exportWarning(input: input, format: format)
+        }, makeData: { format, name, translated in
+            let approximate = translated ? session.reliableSpeechSegments(translation: true).isEmpty : session.hasManualEdits || !session.timelineProvenance.isReliable
+            return try TranscriptExporter.makeData(format: format, title: name, source: session.source.title,
+                                                  language: translated ? (session.translationConfiguration?.targetLanguage.title ?? session.languageName) : session.languageName, duration: session.elapsed,
+                                                  text: translated ? session.translatedText : session.transcriptText,
+                                                  segments: translated ? session.translatedSegments : session.segments,
+                                                  hasManualEdits: approximate,
+                                                  translations: translated ? session.segmentTranslations : [])
+        }, onSuccess: {
+            if restartAfterExport { restartAfterExport = false; restart() }
+        }, close: { isShowingExport = false; restartAfterExport = false })
     }
-
-    private func prepareExport() {
-        do {
-            let useTranslation = exportUsesTranslation && !session.translatedText.isEmpty
-            let data = try TranscriptExporter.makeData(
-                format: exportFormat,
-                title: defaultTitle,
-                source: session.source.title,
-                language: useTranslation ? (session.translationConfiguration?.targetLanguage.title ?? session.languageName) : session.languageName,
-                duration: session.elapsed,
-                text: useTranslation ? session.translatedText : session.transcriptText,
-                segments: useTranslation ? session.translatedSegments : session.segments,
-                hasManualEdits: useTranslation ? false : session.hasManualEdits,
-                translations: useTranslation ? session.segmentTranslations : []
-            )
-            exportDocument = TranscriptFileDocument(data: data)
-            isShowingExport = false
-            isShowingFileExporter = true
-        } catch {
-            exportError = error.localizedDescription
-        }
-    }
-
     private func prepareRestartExport() {
-        exportFormat = .txt
-        exportUsesTranslation = !session.translatedText.isEmpty
         restartAfterExport = true
-        prepareExport()
-    }
-
-    private func copyToPasteboard() {
-        let usesTranslation = exportUsesTranslation && !session.translatedText.isEmpty
-        let text = usesTranslation ? session.translatedText : session.transcriptText
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        copyStatus = L10n.text("已复制")
-        Task {
-            try? await Task.sleep(for: .seconds(2))
-            if copyStatus == L10n.text("已复制") { copyStatus = nil }
-        }
+        isShowingExport = true
     }
 
     private var defaultTitle: String {
@@ -1903,7 +1837,6 @@ struct TranscriptionView: View {
         }
     }
 
-    private var defaultFilename: String { "\(defaultTitle).\(exportFormat.fileExtension)" }
 
     private var placeholderTitle: String {
         return switch session.phase {

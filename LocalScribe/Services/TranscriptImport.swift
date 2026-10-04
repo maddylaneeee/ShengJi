@@ -7,14 +7,17 @@ struct ImportedTranscript: Sendable, Equatable {
     let segments: [TranscriptSegment]
     let duration: TimeInterval
     let detectedLocaleIdentifier: String?
+    let timelineProvenance: TimelineProvenance
 
     init(
         title: String,
         text: String,
         segments: [TranscriptSegment],
         duration: TimeInterval,
-        detectedLocaleIdentifier: String? = nil
+        detectedLocaleIdentifier: String? = nil,
+        timelineProvenance: TimelineProvenance = .estimated
     ) {
+        self.timelineProvenance = timelineProvenance
         self.title = title
         self.text = text
         self.segments = segments
@@ -115,7 +118,7 @@ enum TranscriptImporter {
             let timing = lines[timingIndex].components(separatedBy: "-->")
             guard timing.count == 2,
                   let start = parseTimestamp(timing[0]),
-                  let end = parseTimestamp(timing[1]) else { continue }
+                  let end = parseTimestamp(timing[1]), start.isFinite, end.isFinite, start >= 0, end > start else { continue }
             let text = lines.dropFirst(timingIndex + 1)
                 .map(stripSubtitleMarkup)
                 .joined(separator: "\n")
@@ -125,7 +128,7 @@ enum TranscriptImporter {
         }
         guard !segments.isEmpty else { throw TranscriptImportError.empty }
         let text = segments.map(\.text).joined(separator: "\n")
-        return ImportedTranscript(title: title, text: text, segments: segments, duration: segments.map(\.endTime).max() ?? 1)
+        return ImportedTranscript(title: title, text: text, segments: segments, duration: segments.map(\.endTime).max() ?? 1, timelineProvenance: .subtitles)
     }
 
     private static func json(data: Data, fallbackTitle: String) throws -> ImportedTranscript {
@@ -134,6 +137,7 @@ enum TranscriptImporter {
             let duration: TimeInterval?
             let text: String
             let segments: [TranscriptSegment]?
+            let timelineProvenance: TimelineProvenance?
         }
         guard let payload = try? JSONDecoder().decode(Payload.self, from: data) else {
             throw TranscriptImportError.unreadable
@@ -143,7 +147,7 @@ enum TranscriptImporter {
         let duration = max(payload.duration ?? payload.segments?.last?.endTime ?? Double(text.count) / 5, 1)
         let segments = payload.segments?.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             ?? TranscriptSegment.sentenceSegments(from: text, duration: duration)
-        return ImportedTranscript(title: payload.title ?? fallbackTitle, text: text, segments: segments, duration: duration)
+        return ImportedTranscript(title: payload.title ?? fallbackTitle, text: text, segments: segments, duration: duration, timelineProvenance: payload.timelineProvenance ?? (payload.segments == nil ? .estimated : .json))
     }
 
     private static func decodedText(_ data: Data) -> String? {

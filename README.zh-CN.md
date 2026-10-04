@@ -12,10 +12,10 @@
 
 声迹是一款面向 Apple silicon Mac 的免费、开源原生语音转文字与音视频转录应用，无需注册账号。它把本地识别、悬浮实时字幕、字幕编辑与导出、离线翻译、长任务恢复，以及 Gemma 4 文稿优化整合在一个 SwiftUI 界面中。识别音频、导入稿件和 AI 处理内容不会由应用上传。
 
-当前版本：**1.6.7（39）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [首次启动安装指南](INSTALL.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+当前版本：**1.7.0（40）** · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [首次启动安装指南](INSTALL.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **1.6.7 新增内存适配控制：** 8 GB 及以下内存的 Mac 默认关闭 Gemma AI 优化，可在设置中确认内存提示后手动开启。Gemma 仅在点击选择 AI 功能后加载；少于 4 GB 内存时禁用本地 NLLB 翻译，保留 Apple Translation。新增适用于 macOS 26 与 27 的首次启动安装指南。
+> **1.7.0 新增原音保存：** 全新麦克风转录可选择保存原始录音，完成后播放，并与文字稿一同导出 M4A。提供三档音质；修复切换语言后菜单标题、AI 提示词编辑弹窗及导出弹窗不立即更新的问题。本版完全禁用语音朗读。
 
 ## 实际演示
 

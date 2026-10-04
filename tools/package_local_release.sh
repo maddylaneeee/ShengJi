@@ -268,19 +268,26 @@ else
   DOWNLOAD_URL="file://$ZIP"
 fi
 
-cat > "$UPDATE_MANIFEST" <<EOF
-{
-  "version": "$VERSION",
-  "build": "$BUILD",
-  "bundle_id": "ca.lixinchen.localscribe",
-  "download_url": "$DOWNLOAD_URL",
-  "sha256": "$SHA256",
-  "release_notes": "LocalScribe 1.6.7 build 39 improves long CJK subtitle export by wrapping and dividing long cues while preserving text and cue boundaries. Blank input no longer creates an empty timed cue. This build also includes the on-demand AI and memory controls from build 38.",
-  "minimum_system_version": "15.5",
-  "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "size_bytes": $(stat -f %z "$ZIP")
-}
-EOF
+# One reviewed English document supplies both the update notice and GitHub Release.
+python3 - "$UPDATE_MANIFEST" "$ROOT/RELEASE_NOTES_${VERSION}.md" "$VERSION" "$BUILD" "$DOWNLOAD_URL" "$SHA256" "$ZIP" <<'PYMETA'
+import datetime
+import json
+import os
+import sys
+from pathlib import Path
+output, notes, version, build, download, checksum, archive = sys.argv[1:]
+Path(output).write_text(json.dumps({
+    "version": version,
+    "build": build,
+    "bundle_id": "ca.lixinchen.localscribe",
+    "download_url": download,
+    "sha256": checksum,
+    "release_notes": Path(notes).read_text().strip(),
+    "minimum_system_version": "15.5",
+    "published_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "size_bytes": os.path.getsize(archive),
+}, indent=2) + "\n")
+PYMETA
 
 [[ "$(plutil -extract version raw "$UPDATE_MANIFEST")" == "$VERSION" ]]
 [[ "$(plutil -extract build raw "$UPDATE_MANIFEST")" == "$BUILD" ]]
@@ -312,7 +319,7 @@ cat > "$REPORT" <<EOF
 - Local delivery: creates candidate ZIP and DMG assets by default; set INSTALL_LOCAL_COPY=1 only after a separate installation approval
 - Gatekeeper: rejection by spctl is expected for a local non-Developer-ID certificate and is not treated as package corruption
 - Runtime verification: this packaging command performs static package checks and bounded CLI/helper startup checks only; GUI, permissions, physical-device, and real-audio acceptance remain separate
-- Change summary: see RELEASE_NOTES_1.6.7.md in the source checkout
+- Change summary: see RELEASE_NOTES_${VERSION}.md in the source checkout
 - macOS 15.5: architecture and deployment-target compatibility are audited statically; no macOS 15.5 virtual-machine acceptance is claimed
 EOF
 

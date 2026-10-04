@@ -51,6 +51,8 @@ struct SettingsView: View {
             NavigationStack {
                 AIPromptEditorView(preferences: aiPromptPreferences)
             }
+            // A presented macOS sheet has its own hosting environment.
+            .environment(\.locale, presentationPreferences.language.locale)
         }
         .alert("在低内存设备上启用 Gemma？", isPresented: $isConfirmingGemma) {
             Button("取消", role: .cancel) {}
@@ -175,7 +177,7 @@ struct SettingsView: View {
 
             Section("文件") {
                 Label("打开或导出时由你选择文件和保存位置", systemImage: "folder.badge.questionmark")
-                Text("声迹不会请求访问整个文件夹；macOS 只授予你所选项目所需的访问权限。")
+                Text("伴随导出时选择保存文件夹，文字稿和音频保存到该文件夹。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

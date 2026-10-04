@@ -12,10 +12,10 @@
 
 LocalScribeは、Appleシリコン搭載Mac向けの無料・オープンソースのネイティブ文字起こしアプリです。アカウント登録は不要です。ローカル音声認識、フローティング字幕、字幕の編集と書き出し、オフライン翻訳、長時間タスクの復元、Gemma 4による文章の校正・推敲・要約を、ひとつのSwiftUIアプリにまとめています。音声、読み込んだ原稿、AIで処理する内容をアプリがアップロードすることはありません。
 
-現在のバージョン：**1.6.7（39）** · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [初回起動ガイド（英語）](INSTALL.md) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
+現在のバージョン：**1.7.0（40）** · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [初回起動ガイド（英語）](INSTALL.md) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **1.6.7の変更点：メモリに応じたモデル制御。** 8 GB 以下では Gemma をデフォルトで無効にし、設定で警告を確認して有効にできます。AI 機能を選択したときだけモデルを読み込みます。4 GB 未満では NLLB を無効にします。初回起動ガイドとタイトルバーの背景を追加しました。
+> **1.7.0の変更点：マイクの元音声を保存。** 新しいマイク文字起こしで元の録音を任意に保存し、再生して文字と一緒にM4Aを書き出せます。音質は3段階です。言語変更後のメニュー、AIプロンプト編集画面、文字起こしの書き出し画面もすぐに更新されます。このバージョンでは音声合成を無効にしています。
 
 ## 動作の紹介
 
@@ -151,7 +151,7 @@ CIではGitHubのmacOS 26 AppleシリコンランナーでテストとRelease構
 ./tools/package_local_release.sh
 ```
 
-標準では設定済みのローカル証明書を使用します。`CODESIGN_IDENTITY=-`を指定すると、GitHub Actionsと同じアドホック署名のパッケージを作成します。`Info.plist`のバージョンと一致するタグ（例：`v1.6.7`）、またはビルド番号を含むタグ（例：`v1.6.7-build39`）をpushすると、`release-unsigned.yml`がパッケージを検証してGitHubリリースを作成します。このフローでは証明書やパスワードをGitHub Secretsに保存しません。公開配布にはDeveloper ID署名、タイムスタンプ、公証、ステープル処理が望ましい方法です。
+標準では設定済みのローカル証明書を使用します。`CODESIGN_IDENTITY=-`を指定すると、GitHub Actionsと同じアドホック署名のパッケージを作成します。`Info.plist`のバージョンと一致するタグ（例：`v1.7.0`）、またはビルド番号を含むタグ（例：`v1.7.0-build40`）をpushすると、`release-unsigned.yml`がパッケージを検証してGitHubリリースを作成します。このフローでは証明書やパスワードをGitHub Secretsに保存しません。公開配布にはDeveloper ID署名、タイムスタンプ、公証、ステープル処理が望ましい方法です。
 
 ## コマンドライン
 

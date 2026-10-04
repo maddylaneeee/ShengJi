@@ -48,6 +48,7 @@ struct RootView: View {
                     )
                 }
             }
+
         }
         .toolbarBackground(
             colorScheme == .dark ? Color(white: 0.18) : Color(white: 0.93),
@@ -195,7 +196,9 @@ struct RootView: View {
 
     private func restoreRecovery() {
         guard let recoverySnapshot else { return }
-        session = TranscriptionSessionModel(snapshot: recoverySnapshot)
+        let model = TranscriptionSessionModel(snapshot: recoverySnapshot)
+        session = model
+        Task { await model.restoreOriginalAudioIfNeeded() }
     }
 
     private func clearRecovery() {
@@ -207,6 +210,7 @@ struct RootView: View {
         guard let current = session else { return }
         Task {
             await current.cancel()
+            current.releaseAudioSession()
             await MainActor.run {
                 recoverySnapshot = RecoveryStore.load()
                 session = nil
@@ -219,6 +223,7 @@ struct RootView: View {
         let source = current.source
         Task {
             await current.cancel()
+            current.releaseAudioSession()
             await MainActor.run {
                 let model = TranscriptionSessionModel(
                     source: source,

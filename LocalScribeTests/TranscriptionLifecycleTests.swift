@@ -65,12 +65,16 @@ final class TranscriptionLifecycleTests: XCTestCase {
     func testCancelledSherpaConversionCreatesNoWAV() async {
         let temporaryDirectory = FileManager.default.temporaryDirectory
         let before = sherpaTemporaryWAVs(in: temporaryDirectory)
+        let start = AsyncStream<Void>.makeStream()
         let task = Task {
-            try await SherpaAudioPreparer.makeMonoPCM16Wav(
+            for await _ in start.stream { break }
+            try Task.checkCancellation()
+            return try await SherpaAudioPreparer.makeMonoPCM16Wav(
                 from: URL(fileURLWithPath: "/dev/null")
             )
         }
         task.cancel()
+        start.continuation.finish()
 
         do {
             _ = try await task.value

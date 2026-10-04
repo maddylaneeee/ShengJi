@@ -20,6 +20,7 @@ private struct AITranscriptUndoSnapshot {
     let segmentTranslations: [SegmentTranslation]
     let translationError: String?
     let hasManualEdits: Bool
+    let timelineProvenance: TimelineProvenance
 }
 
 struct TranscriptionTaskJoinSet {
@@ -92,6 +93,49 @@ final class TranscriptionSessionModel {
     var hasManualEdits = false
     private(set) var isImportedTranscript = false
     private var aiUndoSnapshot: AITranscriptUndoSnapshot?
+    var saveOriginalAudio = false
+    var originalAudioQuality: AudioQualityProfile = .quality
+    private(set) var originalAudioEnabled = false
+    private(set) var isSavingOriginalAudio = false
+    private(set) var originalAudioError: String?
+    private var originalRecorder: OriginalAudioRecorder?
+    private var isAppendSession = false
+    var timelineProvenance: TimelineProvenance = .recognition
+    @ObservationIgnored private(set) lazy var speechAudio = SpeechAudioModel(sessionID: recoveryID) { [weak self] in self?.saveRecoveryNow() }
+    var canSaveOriginalAudio: Bool {
+        guard case .microphone = source else { return false }
+        return !isAppendSession && selectedRealtimeAudioSource != .systemAudio
+    }
+    var audioSessionID: UUID { recoveryID }
+    @ObservationIgnored private var audioLease: SessionAudioLease?
+    func releaseAudioSession() { audioLease?.release() }
+    var audioAsset: SessionAudioAsset? { speechAudio.asset }
+    func reliableSpeechSegments(translation: Bool) -> [TranscriptSegment] {
+        let text = translation ? translatedText : transcriptText
+        let values = translation ? translatedSegments : segments
+        let provenance = hasManualEdits ? TimelineProvenance.edited : timelineProvenance
+        return AudioTimeline.isReliable(text: text, segments: values, provenance: provenance) ? values : []
+    }
+    func restoreOriginalAudioIfNeeded() async {
+        guard originalAudioEnabled, speechAudio.asset == nil else { return }
+        let id = recoveryID
+        do {
+            let asset = try await Task.detached(priority: .utility) { try SessionAudioEncoder.recoverOriginal(sessionID: id) }.value
+            speechAudio.restore(asset)
+            if asset == nil { originalAudioError = L10n.text("没有可恢复的原始音频检查点。") }
+            saveRecoveryNow()
+        } catch { originalAudioError = error.localizedDescription }
+    }
+    private func finalizeOriginalAudio() async {
+        guard let recorder = originalRecorder else { return }
+        isSavingOriginalAudio = true
+        let asset = await recorder.finish()
+        speechAudio.restore(asset)
+        originalRecorder = nil
+        isSavingOriginalAudio = false
+        saveRecoveryNow()
+        await recoverySaveTask?.value
+    }
 
     private(set) var segments: [TranscriptSegment] = []
     private var pendingFinalSegments: [TranscriptSegment] = []
@@ -222,10 +266,12 @@ final class TranscriptionSessionModel {
         self.locale = locale
         self.configuration = configuration
         self.translationConfiguration = translationConfiguration
+        audioLease = SessionAudioLease(recoveryID)
         prepareRealtimeAudioSourcesIfNeeded()
     }
 
     init(snapshot: RecoverySnapshot) {
+        let snapshot = snapshot.availableFeaturesSnapshot
         self.source = .recovered(snapshot.sourceTitle)
         self.locale = Locale(identifier: snapshot.localeIdentifier)
         self.configuration = snapshot.configuration
@@ -244,8 +290,14 @@ final class TranscriptionSessionModel {
         self.lastGeneratedText = self.committedText
         self.segmentFingerprints = Set(snapshot.segments.map(Self.segmentFingerprint))
         self.animatedTranscriptText = snapshot.transcriptText
+        self.originalAudioEnabled = snapshot.originalAudioEnabled ?? false
+        self.saveOriginalAudio = self.originalAudioEnabled
+        self.originalAudioQuality = snapshot.audioAsset?.quality ?? .quality
+        self.timelineProvenance = snapshot.timelineProvenance ?? .estimated
         self.recoveryID = snapshot.id
         self.recoveryCreatedAt = snapshot.createdAt
+        audioLease = SessionAudioLease(recoveryID)
+        speechAudio.restore(snapshot.audioAsset ?? SessionAudioStore.load(sessionID: recoveryID))
         prepareRealtimeAudioSourcesIfNeeded()
     }
 
@@ -255,6 +307,8 @@ final class TranscriptionSessionModel {
         locale: Locale,
         configuration: RecognitionConfiguration
     ) {
+        self.isAppendSession = continueWithMicrophone
+        self.timelineProvenance = imported.timelineProvenance
         self.source = continueWithMicrophone ? .microphone : .recovered(imported.title)
         self.locale = locale
         self.configuration = configuration
@@ -271,6 +325,7 @@ final class TranscriptionSessionModel {
         self.segmentFingerprints = Set(imported.segments.map(Self.segmentFingerprint))
         self.hasManualEdits = false
         self.isImportedTranscript = !continueWithMicrophone
+        audioLease = SessionAudioLease(recoveryID)
         prepareRealtimeAudioSourcesIfNeeded()
     }
 
@@ -329,6 +384,7 @@ final class TranscriptionSessionModel {
         guard (phase == .preparing || phase.failedMessage != nil),
               realtimeAudioSourceOptions.contains(source) else { return }
         selectedRealtimeAudioSource = source
+        if source == .systemAudio { saveOriginalAudio = false }
         realtimeAudioSourceError = nil
         realtimeAudioSourceNotice = nil
     }
@@ -448,6 +504,16 @@ final class TranscriptionSessionModel {
 
     func start() async {
         guard phase == .preparing else { return }
+        speechAudio.player.stop()
+        originalAudioEnabled = saveOriginalAudio && canSaveOriginalAudio
+        if originalAudioEnabled {
+            do {
+                originalRecorder = try OriginalAudioRecorder(sessionID: recoveryID, quality: originalAudioQuality) { [weak self] message in
+                    Task { @MainActor [weak self] in self?.originalAudioError = message }
+                }
+            } catch { originalAudioError = error.localizedDescription }
+            saveRecoveryNow()
+        }
         // Lock the run before the first suspension point so concurrent Start
         // requests cannot create more than one analyzer/capture pipeline.
         phase = configuration.engine == .whisper ? .loadingModel : .preparingAudio
@@ -530,6 +596,7 @@ final class TranscriptionSessionModel {
         case .microphone:
             realtimePauseTask = Task { [weak self] in
                 await self?.stopRealtimeAudioCapture(retainCapture: true)
+                await self?.originalRecorder?.pauseBoundary()
             }
         case .file:
             Task { await pauseGate.pause() }
@@ -557,10 +624,8 @@ final class TranscriptionSessionModel {
             }
             return
         }
-        guard #available(macOS 26.0, *) else {
-            fail(SessionError.requiresMacOS26)
-            return
-        }
+        // Apple Speech is gated when starting its run. Capture/file resume itself
+        // also serves Whisper on macOS 15.5 and must not inherit that API gate.
         do {
             switch source {
             case .microphone:
@@ -621,6 +686,7 @@ final class TranscriptionSessionModel {
     }
 
     func cancel() async {
+        await speechAudio.cancelAndWait()
         saveRecoveryNow()
         stopCurrentTranslation()
         translationRunID = nil
@@ -642,6 +708,7 @@ final class TranscriptionSessionModel {
     func noteDirectEdit() {
         guard canEdit else { return }
         if transcriptText != lastGeneratedText {
+            timelineProvenance = .edited
             hasManualEdits = true
             aiUndoSnapshot = nil
             translatedText = ""
@@ -678,7 +745,8 @@ final class TranscriptionSessionModel {
             translatedSegments: translatedSegments,
             segmentTranslations: segmentTranslations,
             translationError: translationError,
-            hasManualEdits: hasManualEdits
+            hasManualEdits: hasManualEdits,
+            timelineProvenance: timelineProvenance
         )
         let replacementSegments: [TranscriptSegment]
         if result.summary != nil {
@@ -687,6 +755,7 @@ final class TranscriptionSessionModel {
         } else {
             replacementSegments = result.segments
         }
+        timelineProvenance = .edited
         segments = replacementSegments
         transcriptText = replacementText
         animatedTranscriptText = replacementText
@@ -715,6 +784,7 @@ final class TranscriptionSessionModel {
         segmentTranslations = snapshot.segmentTranslations
         translationError = snapshot.translationError
         hasManualEdits = snapshot.hasManualEdits
+        timelineProvenance = snapshot.timelineProvenance
         committedText = snapshot.transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
         stableGeneratedText = committedText
         lastGeneratedText = committedText
@@ -1051,6 +1121,7 @@ final class TranscriptionSessionModel {
         source: RealtimeAudioSourceID
     ) async throws {
         let generation = UUID()
+        if let recorder = originalRecorder { capture.setOriginalBufferConsumer { recorder.accept($0) } }
         realtimeCaptureGeneration = generation
         do {
             let sessionID = try await capture.start(
@@ -1740,7 +1811,11 @@ final class TranscriptionSessionModel {
             await resourceCleanupTask.value
             return
         }
-        guard !resourcesAreClean else { return }
+        guard !resourcesAreClean else {
+            saveRecoveryNow()
+            await recoverySaveTask?.value
+            return
+        }
 
         let cleanupTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -1763,6 +1838,7 @@ final class TranscriptionSessionModel {
             ])
 
             await self.stopRealtimeAudioCapture(retainCapture: false)
+            await self.finalizeOriginalAudio()
             self.audioDeviceObservation?.cancel()
             self.audioDeviceObservation = nil
             self.stopMicrophoneCapture()
@@ -1872,7 +1948,7 @@ final class TranscriptionSessionModel {
     }
 
     private var hasRecoverableContent: Bool {
-        !transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !segments.isEmpty
+        originalAudioEnabled || !transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !segments.isEmpty
     }
 
     private func makeRecoverySnapshot() -> RecoverySnapshot {
@@ -1887,6 +1963,9 @@ final class TranscriptionSessionModel {
             journalRelativePath: "Sessions/\(recoveryID.uuidString)/transcript.jsonl",
             journalRecordCount: segments.count,
             journalGeneration: recoverySaveGeneration,
+            originalAudioEnabled: originalAudioEnabled,
+            audioAsset: speechAudio.asset,
+            timelineProvenance: hasManualEdits ? .edited : timelineProvenance,
             sourceTitle: source.title,
             sourceKind: sourceKind,
             localeIdentifier: locale.identifier,

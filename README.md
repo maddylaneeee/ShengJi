@@ -12,10 +12,10 @@
 
 LocalScribe is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Audio, imported transcripts, and AI processing content are not uploaded by the app.
 
-Current version: **1.6.7 (39)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current version: **1.7.0 (40)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **New in 1.6.7 — memory-aware model controls:** Gemma AI Enhancement is off by default on Macs with 8 GB of memory or less; you can enable it in Settings after confirming the memory warning. Gemma loads only after you select an AI feature. Local NLLB translation is unavailable below 4 GB of memory, while Apple Translation remains available. A dedicated first-launch installation guide covers macOS 26 and 27.
+> **New in 1.7.0 — original microphone audio:** Optionally save the original recording for a new microphone transcription, play it back, and export an M4A alongside the transcript. Choose one of three quality profiles. Language changes now update menu titles, the AI prompt editor, and transcript export dialogs without restarting. Speech synthesis is disabled in this release.
 
 ## See it in action
 
@@ -79,6 +79,14 @@ The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of ab
 </picture>
 
 The screenshots are from version 1.6.6 (37) of the real macOS app and use non-private English sample text. Both appearances are captured from the app, without the Computer Use pointer. LocalScribe includes complete English, Simplified Chinese, and Japanese interfaces.
+
+## Save original microphone audio
+
+For a new microphone transcription, enable **Save Original Audio** in the settings sidebar before starting. This option is off for each new task and becomes locked once recording starts. Storage Priority, Quality Priority, and Highest Quality produce M4A files using AAC or ALAC. The app adapts to the microphone format automatically.
+
+The recording keeps silence and other captured sounds independently of recognition. Pause gaps are omitted. Once saving finishes, use play/pause, seeking, and 0.5×, 1×, or 2× playback. Export the original recording alongside TXT, Markdown, JSON, PDF, SRT, or WebVTT with the same base filename. Editing or translating the transcript does not change the original audio.
+
+Original-audio saving is unavailable for media-file transcription, Mac system audio, floating captions, and microphone transcription appended to an imported transcript. If audio saving fails, recognition can continue; any recoverable partial audio is labeled. The latest recoverable task retains its audio locally. Speech synthesis and its settings are disabled in this release.
 
 ## Languages
 
@@ -162,7 +170,7 @@ The local packaging script creates ZIP and DMG artifacts and validates nested si
 ./tools/package_local_release.sh
 ```
 
-By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` to make the same ad-hoc package produced by GitHub Actions. Pushing a tag that matches the version in `Info.plist` (for example, `v1.6.7`) or includes the build number (for example, `v1.6.7-build39`) runs `release-unsigned.yml`, verifies the package, and creates the GitHub Release without storing a certificate or password in GitHub Secrets. Developer ID signing, timestamping, notarization, and stapling remain the preferred public distribution path.
+By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` to make the same ad-hoc package produced by GitHub Actions. Pushing a tag that matches the version in `Info.plist` (for example, `v1.7.0`) or includes the build number (for example, `v1.7.0-build40`) runs `release-unsigned.yml`, verifies the package, and creates the GitHub Release without storing a certificate or password in GitHub Secrets. Developer ID signing, timestamping, notarization, and stapling remain the preferred public distribution path.
 
 ## CLI
 

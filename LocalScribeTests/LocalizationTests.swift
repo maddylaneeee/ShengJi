@@ -58,6 +58,39 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(chinese.localizedString(forKey: "菜单：显示", value: nil, table: nil), "显示")
     }
 
+    @MainActor
+    func testMenuLocalizationSurvivesLaterSystemTitleChangesAndLastSelectionWins() async {
+        let menu = NSMenu(title: "Main")
+        for title in ["LocalScribe", "File", "Edit", "View", "Window", "Help"] {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.submenu = NSMenu(title: title)
+            menu.addItem(item)
+        }
+        let controller = ApplicationMenuLocalizationController { menu }
+        func waitForMenuUpdate() async {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+        }
+        controller.apply(.simplifiedChinese)
+        await waitForMenuUpdate()
+        XCTAssertEqual(menu.items.map(\.title), ["声迹", "文件", "编辑", "显示", "窗口", "帮助"])
+        // Simulate SwiftUI rebuilding titles after the initial localization pass.
+        menu.items[1].title = "File"
+        menu.items[1].submenu?.title = "File"
+        await waitForMenuUpdate()
+        XCTAssertEqual(menu.items[1].title, "文件")
+        XCTAssertEqual(menu.items[1].submenu?.title, "文件")
+        controller.apply(.english)
+        controller.apply(.japanese)
+        controller.apply(.simplifiedChinese)
+        await waitForMenuUpdate()
+        XCTAssertEqual(menu.items.map(\.title), ["声迹", "文件", "编辑", "显示", "窗口", "帮助"])
+        controller.apply(.english)
+        await waitForMenuUpdate()
+        XCTAssertEqual(menu.items.map(\.title), ["LocalScribe", "File", "Edit", "View", "Window", "Help"])
+    }
+
     func testLiveCaptionInputTitlesFollowAppLanguageWithoutRestart() {
         let defaults = UserDefaults.standard
         let previous = defaults.object(forKey: AppLanguage.defaultsKey)

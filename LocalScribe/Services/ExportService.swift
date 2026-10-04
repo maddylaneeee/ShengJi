@@ -35,6 +35,7 @@ private struct JSONTranscript: Codable {
     let text: String
     let segments: [TranscriptSegment]
     let translations: [SegmentTranslation]?
+    let timelineProvenance: TimelineProvenance
 }
 
 enum TranscriptExporter {
@@ -72,7 +73,8 @@ enum TranscriptExporter {
                 duration: duration,
                 text: text,
                 segments: subtitleSegments(text: text, duration: duration, segments: segments, manuallyEdited: hasManualEdits),
-                translations: translations.isEmpty ? nil : translations
+                translations: translations.isEmpty ? nil : translations,
+                timelineProvenance: hasManualEdits || segments.isEmpty ? .estimated : .json
             )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
