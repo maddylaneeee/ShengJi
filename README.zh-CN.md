@@ -121,6 +121,8 @@ Apple Speech 和 Apple Translation 首次使用某些语言时，可能由 macOS
 
 ## 识别与翻译引擎
 
+**在可能的情况下，优先使用 Apple 原生引擎。** 当 macOS 版本和所需语言受支持时，建议使用 Apple Speech 转录、Apple Translation 翻译。它们的原生优化与输出效果明显优于声迹提供的第三方转录与翻译模型。
+
 | 引擎 | 用途 | 运行方式 |
 | --- | --- | --- |
 | Apple Speech | 麦克风、文件、实时字幕 | SpeechAnalyzer / SpeechTranscriber |

@@ -94,6 +94,8 @@ LocalScribe follows the preferred language order in macOS by default. You can al
 
 ## Recognition and translation engines
 
+**Prefer Apple's built-in engines whenever possible.** If your macOS version and languages are supported, use Apple Speech for transcription and Apple Translation for translation. Their native optimization and output quality are noticeably better than those of the third-party transcription and translation models available in LocalScribe.
+
 | Engine | Use | Runtime |
 | --- | --- | --- |
 | Apple Speech | Microphone, files, live captions | SpeechAnalyzer / SpeechTranscriber |
