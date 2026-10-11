@@ -13,7 +13,9 @@ struct SettingsView: View {
     @State private var settingsError: String?
     @State private var isConfirmingUninstall = false
     @State private var launchesAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var gemmaModelManager = GemmaModelManager()
+    @State private var gemmaModelManager = GemmaModelManager.shared
+    @State private var aiServices = AIServicePreferences.shared
+    @State private var isShowingAIConfiguration = false
     @State private var isShowingPromptEditor = false
     @State private var isConfirmingGemma = false
     @AppStorage("EnableGemma") private var enableGemma = !GemmaHardwareSupport.requiresOptIn
@@ -47,6 +49,10 @@ struct SettingsView: View {
                 }
         }
         .frame(minWidth: 620, idealWidth: 680, minHeight: 500, idealHeight: 560)
+        .sheet(isPresented: $isShowingAIConfiguration) {
+            AIServiceConfigurationView(preferences: aiServices)
+                .environment(\.locale, presentationPreferences.language.locale)
+        }
         .sheet(isPresented: $isShowingPromptEditor) {
             NavigationStack {
                 AIPromptEditorView(preferences: aiPromptPreferences)
@@ -137,7 +143,7 @@ struct SettingsView: View {
 
             Section("隐私") {
                 Label("语音识别、翻译和导出均在本机完成", systemImage: "lock.shield")
-                Text("检查更新时访问官方 GitHub Release；下载模型时访问对应模型仓库。音频和转录文本不会由声迹上传。")
+                Text("识别音频不会上传。选择云端 AI 后，任务文字稿会发送给所选服务；更新和模型下载访问对应官方来源。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -189,6 +195,25 @@ struct SettingsView: View {
 
     private var modelsTab: some View {
         Form {
+            Section("AI 服务源") {
+                Toggle("使用自定义ai服务源", isOn: Binding(
+                    get: { aiServices.isEnabled },
+                    set: { enabled in
+                        aiServices.setEnabled(enabled)
+                        if enabled { isShowingAIConfiguration = true }
+                    }
+                ))
+                if aiServices.isEnabled {
+                    LabeledContent("当前服务", value: aiServices.provider.title)
+                    LabeledContent("模型 ID", value: aiServices.configuration.modelID)
+                    Text(aiServices.readinessError ?? L10n.text("已配置；可在配置菜单测试连接。"))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("配置…") { isShowingAIConfiguration = true }
+                    Text("正在使用自定义服务源，不会下载或加载 Gemma。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Text(aiServices.privacyDescription).font(.caption).foregroundStyle(.secondary)
+            }
             Section("Gemma 4") {
                 Toggle("启用 Gemma AI 功能", isOn: Binding(
                     get: { enableGemma },
@@ -200,15 +225,16 @@ struct SettingsView: View {
                         }
                     }
                 ))
+                .disabled(aiServices.isEnabled)
                 Text("8 GB 及以下默认关闭，需手动确认启用。模型仅在点击 AI 功能后加载，任务结束后释放内存。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if !GemmaHardwareSupport.isSupported {
+                if !aiServices.isEnabled && !GemmaHardwareSupport.isSupported {
                     Label(GemmaHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
                         .foregroundStyle(.red)
                 }
                 Toggle("启用 Gemma 4 E4B 选项", isOn: $enableGemmaE4B)
-                    .disabled(!GemmaHardwareSupport.isSupported)
+                    .disabled(aiServices.isEnabled || !GemmaHardwareSupport.isSupported)
                 Text("E2B 是默认模型。E4B 占用更多统一内存，仅在开启后出现在 AI 优化的模型列表中。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -228,9 +254,9 @@ struct SettingsView: View {
 
             Section("用途与隐私") {
                 Label("用于已完成转录的纠错、润色或总结", systemImage: "sparkles")
-                Text("模型由 llama.cpp 通过 Metal 在本机运行。稿件不会上传；开始加载前会释放声迹持有的识别和 NLLB 翻译运行环境，任务结束后也会退出 Gemma helper。")
+                if !aiServices.isEnabled { Text("模型由 llama.cpp 通过 Metal 在本机运行。稿件不会上传；开始加载前会释放声迹持有的识别和 NLLB 翻译运行环境，任务结束后也会退出 Gemma helper。")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.secondary) }
                 Text("AI 输出可能出错。纠错结果会按片段 ID、数量、非空、长度、数字、链接、邮箱和时间表达进行校验；未通过的片段保留原文。重要内容仍需人工复核。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -275,7 +301,7 @@ struct SettingsView: View {
                     .font(.caption.monospacedDigit())
                 Button("取消") { gemmaModelManager.cancelDownload() }
             case .failed(let active, _) where active == model:
-                Button("重试") { gemmaModelManager.download(model) }
+                Button("重试") { gemmaModelManager.download(model) }.disabled(aiServices.isEnabled)
             default:
                 if gemmaModelManager.installedModels.contains(model) {
                     Label("已下载", systemImage: "checkmark.circle.fill")
@@ -288,7 +314,7 @@ struct SettingsView: View {
                     Button("下载", systemImage: "arrow.down.circle") {
                         gemmaModelManager.download(model)
                     }
-                    .disabled(gemmaModelManager.state.isDownloading || !GemmaHardwareSupport.isSupported)
+                    .disabled(aiServices.isEnabled || gemmaModelManager.state.isDownloading || !GemmaHardwareSupport.isSupported)
                 }
             }
         }

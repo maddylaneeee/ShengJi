@@ -733,7 +733,7 @@ final class TranscriptionSessionModel {
     }
 
     @discardableResult
-    func applyAIOptimization(_ result: GemmaOptimizationResult) -> Bool {
+    func applyAIOptimization(_ result: AIOptimizationResult) -> Bool {
         guard phase == .finished else { return false }
         let replacementText = (result.summary ?? result.text)
             .trimmingCharacters(in: .whitespacesAndNewlines)

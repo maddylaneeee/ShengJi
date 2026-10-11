@@ -124,6 +124,8 @@ enum GemmaModelStore {
         _ model: GemmaModel,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws {
+        guard !AIServiceMode.usesCustomService else { throw AIServiceError.customMode }
+        try Task.checkCancellation()
         guard GemmaHardwareSupport.isSupported else { throw GemmaModelError.insufficientMemory }
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
@@ -142,20 +144,24 @@ enum GemmaModelStore {
             try await operation.start()
             try Task.checkCancellation()
             try validate(model, at: partial)
-            let destination = url(for: model)
-            let backup = destination.appendingPathExtension("previous")
-            try? fileManager.removeItem(at: backup)
-            if fileManager.fileExists(atPath: destination.path) {
-                try fileManager.moveItem(at: destination, to: backup)
-            }
-            do {
-                try fileManager.moveItem(at: partial, to: destination)
+            try Task.checkCancellation()
+            try AIServiceMode.withBuiltInAllowed {
+                try Task.checkCancellation()
+                let destination = url(for: model)
+                let backup = destination.appendingPathExtension("previous")
                 try? fileManager.removeItem(at: backup)
-            } catch {
-                if fileManager.fileExists(atPath: backup.path) {
-                    try? fileManager.moveItem(at: backup, to: destination)
+                if fileManager.fileExists(atPath: destination.path) {
+                    try fileManager.moveItem(at: destination, to: backup)
                 }
-                throw error
+                do {
+                    try fileManager.moveItem(at: partial, to: destination)
+                    try? fileManager.removeItem(at: backup)
+                } catch {
+                    if fileManager.fileExists(atPath: backup.path) {
+                        try? fileManager.moveItem(at: backup, to: destination)
+                    }
+                    throw error
+                }
             }
             progress(1)
         } catch {
@@ -179,7 +185,8 @@ enum GemmaModelStore {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         var hasher = SHA256()
-        while autoreleasepool(invoking: {
+        while try autoreleasepool(invoking: {
+            try Task.checkCancellation()
             let data = handle.readData(ofLength: 4 * 1_024 * 1_024)
             guard !data.isEmpty else { return false }
             hasher.update(data: data)
@@ -210,18 +217,29 @@ enum GemmaModelError: LocalizedError {
 @MainActor
 @Observable
 final class GemmaModelManager {
+    static let shared = GemmaModelManager()
+    typealias Installer = @Sendable (GemmaModel, @escaping @Sendable (Double) -> Void) async throws -> Void
+    private let installer: Installer
     private(set) var state: GemmaModelDownloadState = .idle
     private(set) var installedModels: Set<GemmaModel> = []
     private var task: Task<Void, Never>?
     private var operationID: UUID?
 
-    init() { refresh() }
+    init(installer: @escaping Installer = { model, progress in try await GemmaModelStore.install(model, progress: progress) }) {
+        self.installer = installer
+        refresh()
+    }
 
     func refresh() {
         installedModels = Set(GemmaModel.allCases.filter(GemmaModelStore.isInstalled))
     }
 
     func download(_ model: GemmaModel) {
+        guard !AIServiceMode.usesCustomService else {
+            cancelDownload()
+            state = .failed(model: model, message: AIServiceError.customMode.localizedDescription)
+            return
+        }
         guard !state.isDownloading else { return }
         guard GemmaHardwareSupport.isSupported else {
             state = .failed(model: model, message: GemmaHardwareSupport.unsupportedReason)
@@ -231,12 +249,13 @@ final class GemmaModelManager {
         operationID = id
         state = .downloading(model: model, progress: 0)
         let observer = GemmaDownloadProgressObserver(manager: self, model: model, operationID: id)
+        let install = installer
         task = Task { [weak self, observer] in
             do {
-                try await GemmaModelStore.install(model) { progress in
+                try await install(model) { progress in
                     Task { @MainActor in observer.update(progress: progress) }
                 }
-                guard !Task.isCancelled, self?.operationID == id else { return }
+                guard !Task.isCancelled, !AIServiceMode.usesCustomService, self?.operationID == id else { return }
                 self?.refresh()
                 self?.state = .idle
                 self?.operationID = nil

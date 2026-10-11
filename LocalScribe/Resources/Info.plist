@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.7.0</string>
+	<string>1.7.1</string>
 	<key>CFBundleVersion</key>
-	<string>40</string>
+	<string>41</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
@@ -42,5 +42,10 @@
 	<string>使用 Apple 本地语音识别在这台 Mac 上生成转录和实时字幕。</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

@@ -57,6 +57,9 @@ source_files = %w[
   Services/NLLBTranslation.swift
   Services/NLLBModelManager.swift
   Services/GemmaModelManager.swift
+  Services/AIServiceUIFixture.swift
+  Services/AIServiceConfiguration.swift
+  Services/AITextGenerationClient.swift
   Services/GemmaOptimization.swift
   Services/AIPromptPreferences.swift
   Services/LiveCaptionController.swift
@@ -67,6 +70,7 @@ source_files = %w[
   Views/TranscriptEditingView.swift
   Views/LiveCaptionPanelView.swift
   Views/SettingsView.swift
+  Views/AIServiceConfigurationView.swift
   Views/AIPromptEditorView.swift
 ]
 
@@ -85,6 +89,7 @@ test_target.add_dependency(target)
   TranscriptImportAndEditingTests.swift
   LocalizationTests.swift
   AppUpdateControllerTests.swift
+  AIServiceTests.swift
   GemmaSafetyTests.swift
   RealtimeAudioSourceTests.swift
   StreamingTextAnimatorTests.swift

@@ -10,12 +10,14 @@
 
 **Turn microphones, media files, and the sound playing on your Mac into editable text and subtitles—locally.**
 
-LocalScribe is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Audio, imported transcripts, and AI processing content are not uploaded by the app.
+LocalScribe is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Recognition audio stays on the Mac. AI runs locally by default; optional cloud AI sends the text needed for an enhancement task to the selected service.
 
-Current version: **1.7.0 (40)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current development version: **1.7.1 (41)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **New in 1.7.0 — original microphone audio:** Optionally save the original recording for a new microphone transcription, play it back, and export an M4A alongside the transcript. Choose one of three quality profiles. Language changes now update menu titles, the AI prompt editor, and transcript export dialogs without restarting. Speech synthesis is disabled in this release.
+> **New in 1.7.1 — custom AI services:** Settings → Models → Use a custom AI service connects to LM Studio, OpenAI, or DeepSeek. Enabling it cancels Gemma downloads and prevents Gemma loading, with no automatic fallback. Cloud connectors are a preview pending production-key validation.
+>
+> **Added in 1.7.0 — original microphone audio:** Optionally save the original recording for a new microphone transcription, play it back, and export an M4A alongside the transcript. Choose one of three quality profiles. Language changes now update menu titles, the AI prompt editor, and transcript export dialogs without restarting. Speech synthesis is disabled in this release.
 
 ## See it in action
 
@@ -63,7 +65,7 @@ The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of ab
 
 ## Why LocalScribe?
 
-- **Local by default.** Recognition and optional translation run on the Mac; input audio and imported transcripts are not uploaded by the app.
+- **Local by default.** Recognition and optional translation run on the Mac; recognition audio is not uploaded. Optional cloud AI sends task text only after you select and confirm that service.
 - **More than dictation.** Use microphone input, media files, Mac audio, floating live captions, transcript editing, recovery, and subtitle export in one workflow.
 - **Multiple offline engines.** Choose Apple Speech, whisper.cpp with Metal, SenseVoice, or NVIDIA Parakeet instead of being locked to one model family.
 - **Long-task workflow.** Progressive results, append-only recovery journals, bounded transcript rendering, pause/resume, and resumable sessions are designed for long recordings.
@@ -113,6 +115,14 @@ Whisper file transcription uses the model's internal sliding windows rather than
 For supported third-party engines, the right inspector includes an Advanced section that is collapsed when a task opens. Whisper exposes a model prompt, temperature and fallback controls, beam or greedy search settings, context length, silence and confidence filters, VAD, and a guarded automatic thread policy. SenseVoice and Parakeet expose the options their local runtimes actually support. File-only and microphone-only settings appear only for the matching source.
 
 Numeric options support both direct keyboard entry and sliders or steppers, with range validation and short hover explanations. The app remembers the last engine, model, and advanced configuration for the next task; Restore Model Defaults resets only the selected engine.
+
+## Custom AI services (1.7.1)
+
+Open **Settings → Models → Use a custom AI service**, then configure LM Studio, OpenAI, or DeepSeek. LM Studio accepts only this Mac’s loopback address (default `http://127.0.0.1:1234/v1`); start its server and prepare a text model yourself. Cloud API addresses are fixed to their official services. Fetch a model list or enter a model ID, and optionally run a synthetic connection test. Requests are constructed by the app; no JSON template is needed. See the [setup and validation guide](Documentation/AI-SERVICES.md).
+
+The switch defaults off. Enabling it immediately cancels existing Gemma downloads and blocks further downloads and loading, including when configuration is incomplete, keys are missing, or the API fails. Existing models are kept and can be removed manually. Switching back does not resume a cancelled download. Custom services remain available when built-in Gemma is disabled on low-memory Macs.
+
+OpenAI and DeepSeek connectors are **preview features**: local request/response fixtures and failure tests are available, but production-key validation is pending. You can save an incomplete configuration without a key; generation requires a model ID, credentials, and cloud-processing consent. Streamed and non-streamed text use the same safety checks, preview, and undo workflow as Gemma.
 
 ## Highlights
 
@@ -185,7 +195,7 @@ LocalScribe.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
 
 ## Privacy and updates
 
-LocalScribe does not upload recognition audio, imported transcripts, or content processed by Gemma. Recognition, translation, and AI transcript enhancement run on the Mac. Network access is used for on-demand recognition, translation, and Gemma model downloads, automatic or manual update checks and downloads, and opening external documentation. Automatic updates can be disabled in Settings.
+LocalScribe does not upload recognition audio or content processed by built-in Gemma. Recognition and translation run on the Mac. Optional LM Studio sends text to a loopback server on the same Mac. Optional OpenAI or DeepSeek sends task transcript text, context, and additional instructions to the selected official API after consent, and may incur charges. API keys are stored in this Mac’s non-synchronizing Keychain; they are not included in settings or recovery files. Network access is used for on-demand recognition, translation, and Gemma model downloads, automatic or manual update checks and downloads, and opening external documentation. Automatic updates can be disabled in Settings.
 
 The built-in updater checks at launch and every six hours by default, reads `update.json` from the latest GitHub Release, downloads its ZIP, verifies SHA-256, checks the bundle identifier and version, and asks before replacing and relaunching the app. This update path is not a substitute for a notarized public release.
 

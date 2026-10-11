@@ -26,7 +26,11 @@ struct TranscriptionView: View {
     @State private var secondEditNode: NSRange?
     @State private var editStatus: String?
     @State private var isAdvancedExpanded = false
-    @State private var gemmaModelManager = GemmaModelManager()
+    @State private var gemmaModelManager = GemmaModelManager.shared
+    @State private var aiServices = AIServicePreferences.shared
+    @State private var isShowingAIConfiguration = false
+    @State private var aiOwnerID = UUID()
+    @State private var aiTaskID = UUID()
     @State private var gemmaKind: GemmaOptimizationKind?
     @State private var gemmaModel: GemmaModel = .e2b
     @State private var gemmaPrompt = ""
@@ -79,6 +83,9 @@ struct TranscriptionView: View {
         .toolbar { toolbarContent }
         .safeAreaInset(edge: .bottom) { transportControls }
         .inspector(isPresented: $session.isShowingInspector) { inspector }
+        .sheet(isPresented: $isShowingAIConfiguration) {
+            AIServiceConfigurationView(preferences: aiServices).environment(\.locale, interfaceLocale)
+        }
         .sheet(isPresented: $isShowingExport) {
             exportSheet.environment(\.locale, interfaceLocale)
         }
@@ -149,13 +156,16 @@ struct TranscriptionView: View {
         }
         .onChange(of: gemmaModel) { _, _ in
             guard session.phase == .finished, gemmaKind != nil else { return }
-            gemmaTask?.cancel()
-            gemmaReady = false
-            gemmaIsPreparing = false
-            prepareGemma()
+            let cancelledOwner = aiOwnerID
+            cancelGemma()
+            Task {
+                await AIOptimizationService.shared.cancel(ownerID: cancelledOwner)
+                autoPrepareGemmaIfNeeded()
+            }
         }
+        .onChange(of: aiServices.revision) { _, _ in cancelGemma() }
         .onChange(of: enableGemma) { _, enabled in
-            if !enabled {
+            if !enabled && !aiServices.isEnabled {
                 cancelGemma()
                 gemmaKind = nil
             }
@@ -754,8 +764,8 @@ struct TranscriptionView: View {
                 Button("纠错与润色", systemImage: "wand.and.stars") { chooseGemma(.proofread) }
                 Button("总结", systemImage: "text.alignleft") { chooseGemma(.summarize) }
             }
-            .disabled(session.isTranslating || gemmaIsRunning || !GemmaHardwareSupport.isSupported)
-            .help(GemmaHardwareSupport.isSupported ? "" : GemmaHardwareSupport.unsupportedReason)
+            .disabled(session.isTranslating || gemmaIsRunning || !aiEntryAvailable)
+            .help(aiEntryAvailable ? "" : GemmaHardwareSupport.unsupportedReason)
             if !session.isTranslating, translationPreferences.provider == .nllb, !isNLLBTranslationReady {
                 nllbModelDownloadAction
             }
@@ -1097,7 +1107,8 @@ struct TranscriptionView: View {
             }
 
             Section("隐私") {
-                Label(session.isImportedTranscript ? "稿件在本机处理" : "识别在本机完成", systemImage: "checkmark.shield")
+                Label(session.isImportedTranscript ? L10n.text("稿件由你导入") : L10n.text("识别在本机完成"), systemImage: "checkmark.shield")
+                Text(aiServices.privacyDescription).font(.caption).foregroundStyle(.secondary)
                 Text(session.isImportedTranscript ? "导入内容不会由本应用上传。" : "音频不会由本应用上传。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1142,7 +1153,7 @@ struct TranscriptionView: View {
     @ViewBuilder
     private var gemmaInspector: some View {
         Section("AI 优化") {
-            if !GemmaHardwareSupport.isSupported {
+            if !aiEntryAvailable {
                 Label(GemmaHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -1157,9 +1168,16 @@ struct TranscriptionView: View {
                     }
                 }
 
-                Picker("模型", selection: $gemmaModel) {
-                    Text(GemmaModel.e2b.title).tag(GemmaModel.e2b)
-                    if enableGemmaE4B { Text(GemmaModel.e4b.title).tag(GemmaModel.e4b) }
+                if aiServices.isEnabled {
+                    LabeledContent("当前服务", value: aiServices.provider.title)
+                    LabeledContent("模型 ID", value: aiServices.configuration.modelID)
+                    Text(aiServices.privacyDescription).font(.caption).foregroundStyle(.secondary)
+                    Button("配置…") { isShowingAIConfiguration = true }
+                } else {
+                    Picker("模型", selection: $gemmaModel) {
+                        Text(GemmaModel.e2b.title).tag(GemmaModel.e2b)
+                        if enableGemmaE4B { Text(GemmaModel.e4b.title).tag(GemmaModel.e4b) }
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 5) {
@@ -1213,7 +1231,7 @@ struct TranscriptionView: View {
                     } else {
                         Button("开始执行", systemImage: "sparkles") { startGemma() }
                             .primaryActionStyle()
-                            .disabled(!gemmaReady || !gemmaModelManager.installedModels.contains(gemmaModel))
+                            .disabled(aiServices.isEnabled ? aiServices.readinessError != nil : (!gemmaReady || !gemmaModelManager.installedModels.contains(gemmaModel)))
                     }
                     Spacer()
                     Button("不使用 AI") {
@@ -1223,14 +1241,14 @@ struct TranscriptionView: View {
                     .buttonStyle(.borderless)
                 }
             } else {
-                Text("转录完成后，可选择本机 Gemma 进行纠错、润色或总结。")
+                Text("转录完成后，可使用所选 AI 服务进行纠错、润色或总结。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack {
                     Button("纠错与润色") { chooseGemma(.proofread) }
-                        .disabled(!GemmaHardwareSupport.isSupported)
+                        .disabled(!aiEntryAvailable)
                     Button("总结") { chooseGemma(.summarize) }
-                        .disabled(!GemmaHardwareSupport.isSupported)
+                        .disabled(!aiEntryAvailable)
                 }
             }
         }
@@ -1238,7 +1256,14 @@ struct TranscriptionView: View {
 
     @ViewBuilder
     private var gemmaModelStatus: some View {
-        if !GemmaRuntime.isBundled {
+        if aiServices.isEnabled {
+            if let error = aiServices.readinessError {
+                Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+            } else {
+                Label("已配置；可开始 AI 优化", systemImage: "checkmark.circle").font(.caption)
+            }
+            Text("正在使用自定义服务源，不会下载或加载 Gemma。").font(.caption).foregroundStyle(.secondary)
+        } else if !GemmaRuntime.isBundled {
             Label("当前版本没有 Gemma runtime", systemImage: "exclamationmark.octagon.fill")
                 .foregroundStyle(.red)
         } else {
@@ -1264,7 +1289,7 @@ struct TranscriptionView: View {
                         Button("下载", systemImage: "arrow.down.circle") {
                             gemmaModelManager.download(gemmaModel)
                         }
-                        .disabled(!GemmaHardwareSupport.isSupported)
+                        .disabled(!aiEntryAvailable)
                     }
                 }
             case .downloading(let model, let progress):
@@ -1295,8 +1320,10 @@ struct TranscriptionView: View {
         }
     }
 
+    private var aiEntryAvailable: Bool { aiServices.isEnabled || GemmaHardwareSupport.isSupported }
+
     private func chooseGemma(_ kind: GemmaOptimizationKind) {
-        guard GemmaHardwareSupport.isSupported else {
+        guard aiEntryAvailable else {
             gemmaError = GemmaHardwareSupport.unsupportedReason
             session.isShowingInspector = true
             return
@@ -1309,28 +1336,37 @@ struct TranscriptionView: View {
     }
 
     private func prepareGemma() {
-        guard GemmaHardwareSupport.isSupported, gemmaKind != nil, !gemmaReady, !gemmaIsPreparing else { return }
+        guard !aiServices.isEnabled, GemmaHardwareSupport.isSupported, gemmaKind != nil, !gemmaReady, !gemmaIsPreparing else { return }
         gemmaTask?.cancel()
         gemmaReady = false
         gemmaError = nil
         guard GemmaModelStore.isInstalled(gemmaModel), GemmaRuntime.isBundled else { return }
         gemmaIsPreparing = true
         let model = gemmaModel
+        aiTaskID = UUID()
+        let taskID = aiTaskID
+        let revision = aiServices.revision
+        let owner = aiOwnerID
         gemmaTask = Task {
             do {
-                try await GemmaOptimizationService.shared.prepare(model: model)
-                guard !Task.isCancelled, gemmaModel == model else { return }
+                guard !Task.isCancelled, aiTaskID == taskID, aiServices.revision == revision else { return }
+                try await AIOptimizationService.shared.prepare(model: model, ownerID: owner, configurationRevision: revision)
+                guard !Task.isCancelled, gemmaModel == model, aiTaskID == taskID, aiServices.revision == revision else { return }
                 gemmaReady = true
             } catch is CancellationError {
             } catch {
+                guard !Task.isCancelled, aiTaskID == taskID else { return }
                 gemmaError = error.localizedDescription
             }
-            gemmaIsPreparing = false
+            if aiTaskID == taskID { gemmaIsPreparing = false }
         }
     }
 
     private func startGemma() {
-        guard GemmaHardwareSupport.isSupported, let gemmaKind else { return }
+        guard aiEntryAvailable, let gemmaKind else { return }
+        let client: (any AITextGenerationClient)?
+        do { client = aiServices.isEnabled ? try aiServices.makeClient() : nil }
+        catch { gemmaError = error.localizedDescription; return }
         gemmaTask?.cancel()
         gemmaIsRunning = true
         gemmaError = nil
@@ -1342,25 +1378,39 @@ struct TranscriptionView: View {
         let prompt = aiPromptPreferences.instructions(for: gemmaKind, oneTimeInstructions: gemmaPrompt)
         let segments = session.aiOptimizationInputSegments
         let fallback = session.transcriptText
+        aiTaskID = UUID()
+        let taskID = aiTaskID
+        let revision = aiServices.revision
+        let owner = aiOwnerID
         gemmaTask = Task {
             do {
-                let result = try await GemmaOptimizationService.shared.optimize(
+                guard !Task.isCancelled, aiTaskID == taskID, aiServices.revision == revision else { return }
+                let result = try await AIOptimizationService.shared.optimize(
                     segments: segments,
                     fallbackText: fallback,
                     kind: gemmaKind,
                     prompt: prompt,
-                    model: model
+                    model: model,
+                    client: client,
+                    ownerID: owner,
+                    configurationRevision: revision
                 ) { completed, total in
-                    Task { @MainActor in gemmaProgress = (completed, total) }
+                    Task { @MainActor in
+                        guard gemmaIsRunning, aiTaskID == taskID, aiServices.revision == revision else { return }
+                        gemmaProgress = (completed, total)
+                    }
                 } preview: { text in
                     Task { @MainActor in
-                        guard gemmaIsRunning else { return }
+                        guard gemmaIsRunning, aiTaskID == taskID, aiServices.revision == revision else { return }
                         gemmaPreviewText = text
                     }
                 }
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, aiTaskID == taskID, aiServices.revision == revision else { return }
+                guard session.transcriptText == fallback else { throw AIServiceError.invalidOutput }
                 gemmaFailures = result.failures
-                if session.applyAIOptimization(result) {
+                if result.summary == nil, result.text == fallback, !result.failures.isEmpty {
+                    gemmaError = result.failures.first?.message
+                } else if session.applyAIOptimization(result) {
                     editStatus = gemmaKind == .summarize
                         ? L10n.text("AI 总结已替换文字预览，可一键撤销")
                         : L10n.text("AI 优化已更新文字预览，可一键撤销")
@@ -1370,8 +1420,10 @@ struct TranscriptionView: View {
                 }
             } catch is CancellationError {
             } catch {
+                guard !Task.isCancelled, aiTaskID == taskID else { return }
                 gemmaError = error.localizedDescription
             }
+            guard aiTaskID == taskID else { return }
             gemmaIsRunning = false
             gemmaIsPreparing = false
             gemmaReady = false
@@ -1382,7 +1434,7 @@ struct TranscriptionView: View {
     }
 
     private func autoPrepareGemmaIfNeeded() {
-        guard gemmaKind != nil, session.phase == .finished,
+        guard !aiServices.isEnabled, gemmaKind != nil, session.phase == .finished,
               GemmaHardwareSupport.isSupported,
               GemmaRuntime.isBundled,
               GemmaModelStore.isInstalled(gemmaModel),
@@ -1393,6 +1445,9 @@ struct TranscriptionView: View {
     }
 
     private func cancelGemma() {
+        let owner = aiOwnerID
+        aiOwnerID = UUID()
+        aiTaskID = UUID()
         gemmaTask?.cancel()
         gemmaTask = nil
         gemmaIsRunning = false
@@ -1401,14 +1456,13 @@ struct TranscriptionView: View {
         gemmaProgress = nil
         gemmaPreviewText = ""
         gemmaOriginalText = ""
-        Task { await GemmaOptimizationService.shared.cancel() }
+        Task { await AIOptimizationService.shared.cancel(ownerID: owner) }
     }
 
     private func handleDisappear() {
         session.speechAudio.player.stop()
         session.speechAudio.cancel()
-        gemmaTask?.cancel()
-        Task { await GemmaOptimizationService.shared.cancel() }
+        cancelGemma()
     }
 
     private var advancedEngine: RecognitionEngine {

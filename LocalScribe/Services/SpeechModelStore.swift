@@ -220,6 +220,8 @@ private struct ModelInstallMarker: Codable {
 }
 
 final class ModelDownloadOperation: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let stateLock = NSLock()
+    private var cancelled = false
     private let source: URL
     private let destination: URL
     private let progressHandler: @Sendable (Double) -> Void
@@ -236,7 +238,14 @@ final class ModelDownloadOperation: NSObject, URLSessionDownloadDelegate, @unche
 
     func start() async throws {
         try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
+            try Task.checkCancellation()
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                stateLock.lock()
+                if cancelled {
+                    stateLock.unlock()
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
                 self.continuation = continuation
                 let configuration = URLSessionConfiguration.ephemeral
                 configuration.timeoutIntervalForRequest = 90
@@ -246,6 +255,7 @@ final class ModelDownloadOperation: NSObject, URLSessionDownloadDelegate, @unche
                 let task = session.downloadTask(with: source)
                 self.task = task
                 task.resume()
+                stateLock.unlock()
             }
         } onCancel: {
             self.cancel()
@@ -253,7 +263,11 @@ final class ModelDownloadOperation: NSObject, URLSessionDownloadDelegate, @unche
     }
 
     func cancel() {
-        task?.cancel()
+        stateLock.lock()
+        cancelled = true
+        let runningTask = task
+        stateLock.unlock()
+        runningTask?.cancel()
         finish(.failure(CancellationError()))
     }
 
@@ -269,27 +283,33 @@ final class ModelDownloadOperation: NSObject, URLSessionDownloadDelegate, @unche
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        do {
-            try? FileManager.default.removeItem(at: destination)
-            try FileManager.default.moveItem(at: location, to: destination)
-            downloadedFile = true
-        } catch {
-            finish(.failure(error))
+        let failure: Error? = stateLock.withLock {
+            guard !cancelled else { return nil }
+            do {
+                try? FileManager.default.removeItem(at: destination)
+                try FileManager.default.moveItem(at: location, to: destination)
+                downloadedFile = true
+                return nil
+            } catch { return error }
         }
+        if let failure { finish(.failure(failure)) }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error { finish(.failure(error)) }
-        else if downloadedFile { finish(.success(())) }
+        else if stateLock.withLock({ downloadedFile }) { finish(.success(())) }
         else { finish(.failure(ModelStorageError.invalidResponse)) }
     }
 
     private func finish(_ result: Result<Void, Error>) {
-        guard let continuation else { return }
+        stateLock.lock()
+        guard let continuation else { stateLock.unlock(); return }
         self.continuation = nil
         task = nil
-        session?.finishTasksAndInvalidate()
+        let finishedSession = session
         session = nil
+        stateLock.unlock()
+        finishedSession?.finishTasksAndInvalidate()
         continuation.resume(with: result)
     }
 }

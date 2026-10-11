@@ -695,3 +695,63 @@
 
 
 "当前输入无法保存为此音质，请尝试其他音质档位。" = "This input could not be saved at the selected quality. Try another quality option.";
+
+// Custom AI services
+"AI 服务源" = "AI service";
+"使用自定义ai服务源" = "Use a custom AI service";
+"当前服务" = "Current service";
+"模型 ID" = "Model ID";
+"配置…" = "Configure…";
+"已配置；可在配置菜单测试连接。" = "Configured; test the connection in Configure.";
+"正在使用自定义服务源，不会下载或加载 Gemma。" = "A custom service is enabled. Gemma will not be downloaded or loaded.";
+"AI 在本机运行，文字稿不会发送给云端 AI 服务。" = "AI runs on this Mac. Transcripts are not sent to cloud AI services.";
+"文字稿发送到本机 LM Studio；服务的其他联网行为由其设置决定。" = "Text is sent to LM Studio on this Mac; its own settings control any other network activity.";
+"AI 优化会将任务所需文字稿和附加指令发送到 OpenAI，可能产生费用。音视频不会上传。" = "AI enhancement sends the required transcript text and additional instructions to OpenAI and may incur charges. Audio and video are not uploaded.";
+"AI 优化会将任务所需文字稿和附加指令发送到 DeepSeek，可能产生费用。音视频不会上传。" = "AI enhancement sends the required transcript text and additional instructions to DeepSeek and may incur charges. Audio and video are not uploaded.";
+"LM Studio 地址必须是本机回环地址，例如 http://127.0.0.1:1234/v1。" = "LM Studio must use a loopback address, such as http://127.0.0.1:1234/v1.";
+"请配置模型 ID。" = "Configure a model ID.";
+"缺少 API key；请在设置中配置。" = "Missing API key. Configure it in Settings.";
+"请在配置中确认云端文字稿处理及费用说明。" = "Confirm cloud text processing and possible charges in Configure.";
+"另一窗口正在使用 AI；请等待或在该窗口取消。" = "Another window is using AI. Wait or cancel in that window.";
+"API 鉴权失败，请检查 key 或 LM Studio Token。" = "API authentication failed. Check the key or LM Studio token.";
+"模型不可用或请求参数不受支持，请检查模型 ID。" = "The model or request parameters are unavailable. Check the model ID.";
+"API 请求受限或额度不足，请稍后重试。" = "API rate or quota limit reached. Try again later.";
+"AI 请求超时，已保留原文。" = "The AI request timed out. The original text was preserved.";
+"无法连接 AI 服务。请检查网络或启动本机 LM Studio 服务。" = "Cannot connect to AI. Check your network or start the local LM Studio server.";
+"AI 返回不完整、被拒绝或无法验证的结果，已保留原文。" = "AI returned an incomplete, refused, or invalid result. The original text was preserved.";
+"AI 服务重定向被拒绝，请使用允许的服务地址。" = "AI redirects are blocked. Use an allowed service address.";
+"AI 服务请求失败（HTTP %d）。" = "AI request failed (HTTP %d).";
+"无法访问本机 Keychain（%d），配置未保存。" = "Cannot access the local Keychain (%d). Configuration was not saved.";
+"本机服务地址" = "Local server address";
+"API 地址" = "API address";
+"请在 LM Studio 中启动本机服务并准备文本模型。声迹不会替它下载模型或管理其进程。" = "Start the local server and prepare a text model in LM Studio. LocalScribe does not download its models or manage its process.";
+"云端连接器为预览功能：已通过本地协议模拟，尚未使用正式 key 联调。" = "Cloud connectors are a preview: tested with local protocol fixtures, not yet validated with production keys.";
+"我同意向所选服务发送任务文字稿，并承担可能产生的 API 费用" = "I agree to send task text to this service and accept possible API charges";
+"凭据" = "Credentials";
+"API key" = "API key";
+"Token（可选）" = "Token (optional)";
+"Keychain 中已有凭据；留空保留原凭据" = "Credentials are saved in Keychain; leave blank to keep them";
+"保存时删除已有凭据" = "Delete saved credentials on Save";
+"凭据仅保存在这台 Mac 的 Keychain，不写入普通设置或恢复文件。无需 key 也可保存配置。" = "Credentials stay in this Mac’s Keychain, outside settings and recovery files. You can save a configuration without a key.";
+"选择模型" = "Choose model";
+"获取模型列表" = "Fetch models";
+"可从服务返回的列表选择，也可填写模型 ID。列表不保证每个模型都支持文字生成；请测试连接。无需填写请求 JSON。" = "Choose from the service list or enter a model ID. Not every listed model supports text generation; test the connection. No request JSON is needed.";
+"使用流式响应" = "Stream responses";
+"连接测试" = "Connection test";
+"测试连接" = "Test connection";
+"已验证" = "Verified";
+"测试只发送固定的合成短句，不发送你的稿件。云端测试可能产生少量费用。" = "Tests send a fixed synthetic sentence, not your transcript. Cloud tests may incur a small charge.";
+"连接和短文本协议测试通过；实际稿件仍会进行结果校验。" = "Connection and short text test passed. Transcript results will still be validated.";
+"服务未返回模型，请准备文本模型或填写模型 ID。" = "No models returned. Prepare a text model or enter a model ID.";
+"模型列表已更新。" = "Model list updated.";
+"转录完成后，可使用所选 AI 服务进行纠错、润色或总结。" = "After transcription, use your selected AI service to proofread, refine, or summarize.";
+"已配置；可开始 AI 优化" = "Configured; ready for AI enhancement";
+"稿件由你导入" = "Transcript imported by you";
+"识别音频不会上传。选择云端 AI 后，任务文字稿会发送给所选服务；更新和模型下载访问对应官方来源。" = "Recognition audio is not uploaded. Optional cloud AI sends task text to the selected service; updates and model downloads use their official sources.";
+
+"预览功能" = "Preview";
+"OpenAI 和 DeepSeek 获取模型列表及生成文字均需要有效 API key。" = "OpenAI and DeepSeek require a valid API key for model discovery and text generation.";
+"LM Studio 默认无需 Token；仅在服务端开启认证时需要。" = "LM Studio does not require a token by default; supply one only if server authentication is enabled.";
+"获取服务当前可见的模型。OpenAI 和 DeepSeek 需要有效 API key；LM Studio 需启动本机服务。" = "Fetch models visible to this service. OpenAI and DeepSeek require an API key; LM Studio needs its local server running.";
+
+"模拟数据 · 不代表账户实际可用模型" = "Simulated data · not your account’s available models";

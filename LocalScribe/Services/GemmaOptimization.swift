@@ -19,12 +19,15 @@ struct GemmaSegmentFailure: Identifiable, Sendable {
     let message: String
 }
 
-struct GemmaOptimizationResult: Sendable {
+struct AIOptimizationResult: Sendable {
     let text: String
     let segments: [TranscriptSegment]
     let summary: String?
     let failures: [GemmaSegmentFailure]
 }
+
+// Compatibility for existing internal callers and safety regression tests.
+typealias GemmaOptimizationResult = AIOptimizationResult
 
 struct GemmaSummaryFact: Codable, Sendable, Equatable {
     let text: String
@@ -93,8 +96,8 @@ enum GemmaOptimizationError: LocalizedError {
         case .modelNotInstalled(let model): L10n.format("尚未下载 %@。", model.title)
         case .helperExited(let message): L10n.format("Gemma helper 提前退出：%@", message)
         case .helperTimedOut: L10n.text("Gemma 模型加载超时。")
-        case .requestTimedOut: L10n.text("Gemma 生成超时，已保留原文。")
-        case .invalidResponse: L10n.text("Gemma 返回了无法验证的结果，已保留原文。")
+        case .requestTimedOut: L10n.text("AI 请求超时，已保留原文。")
+        case .invalidResponse: L10n.text("AI 返回不完整、被拒绝或无法验证的结果，已保留原文。")
         case .unsafeGuidance: L10n.text("提示词要求添加原文之外的内容。为避免误导，已拒绝执行。")
         case .ungroundedSummary: L10n.text("AI 总结包含原文中不存在的信息，已保留原文。")
         case .promptMissing(let id): L10n.format("AI system prompt 文件缺失或为空：%@.md", id.rawValue)
@@ -159,6 +162,7 @@ actor GemmaServerProcess {
     private static let tailLimit = 16_384
 
     func prepare(model: GemmaModel) async throws {
+        guard !AIServiceMode.usesCustomService else { throw AIServiceError.customMode }
         guard GemmaHardwareSupport.isSupported else { throw GemmaModelError.insufficientMemory }
         if process?.isRunning == true, loadedModel == model, serverURL != nil { return }
         shutdown()
@@ -203,8 +207,11 @@ actor GemmaServerProcess {
             guard !data.isEmpty else { return }
             Task { await self?.append(data, stderr: true) }
         }
-        try process.run()
-        GemmaProcessRegistry.register(process)
+        try AIServiceMode.withBuiltInAllowed {
+            try Task.checkCancellation()
+            try process.run()
+            GemmaProcessRegistry.register(process)
+        }
         self.process = process
         loadedModel = model
         let url = URL(string: "http://127.0.0.1:\(port)")!
@@ -213,6 +220,7 @@ actor GemmaServerProcess {
         let deadline = ContinuousClock.now + .seconds(120)
         while ContinuousClock.now < deadline {
             try Task.checkCancellation()
+            guard !AIServiceMode.usesCustomService else { shutdown(); throw CancellationError() }
             if !process.isRunning {
                 let message = diagnosticTail
                 shutdown()
@@ -222,9 +230,11 @@ actor GemmaServerProcess {
                 let (data, response) = try await URLSession.shared.data(from: url.appendingPathComponent("health"))
                 if let http = response as? HTTPURLResponse, http.statusCode == 200,
                    String(data: data, encoding: .utf8)?.contains("ok") == true {
+                    try Task.checkCancellation()
+                    guard !AIServiceMode.usesCustomService else { throw CancellationError() }
                     return
                 }
-            } catch {}
+            } catch is CancellationError { shutdown(); throw CancellationError() } catch {}
             try await Task.sleep(for: .milliseconds(250))
         }
         shutdown()
@@ -260,33 +270,9 @@ actor GemmaServerProcess {
 
         return try await withThrowingTaskGroup(of: String.self) { group in
             group.addTask {
-                let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                guard let http = response as? HTTPURLResponse else {
-                    throw GemmaOptimizationError.invalidResponse
-                }
-                guard (200..<300).contains(http.statusCode) else {
-                    var body = ""
-                    for try await byte in bytes { body.append(Character(UnicodeScalar(byte))) }
-                    let message = body.isEmpty ? "HTTP \(http.statusCode)" : body
-                    throw GemmaOptimizationError.server(message)
-                }
-                var content = ""
-                for try await line in bytes.lines {
-                    try Task.checkCancellation()
-                    guard line.hasPrefix("data:") else { continue }
-                    let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-                    if payload == "[DONE]" { break }
-                    guard let eventData = payload.data(using: .utf8),
-                          let event = try? JSONDecoder().decode(GemmaChatStreamEvent.self, from: eventData),
-                          let delta = event.choices.first?.delta.content,
-                          !delta.isEmpty else { continue }
-                    content.append(delta)
-                    partial(content)
-                }
-                guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    throw GemmaOptimizationError.invalidResponse
-                }
-                return content
+                try Task.checkCancellation()
+                guard !AIServiceMode.usesCustomService else { throw CancellationError() }
+                return try await OpenAICompatibleClient.receive(request, session: OpenAICompatibleClient.productionSession, partial: partial)
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(180))
@@ -334,13 +320,39 @@ actor GemmaServerProcess {
     }
 }
 
-actor GemmaOptimizationService {
-    static let shared = GemmaOptimizationService()
+actor AIOptimizationService {
+    static let shared = AIOptimizationService()
     private let contextRadius = 2
 
-    func prepare(model: GemmaModel) async throws {
-        await NLLBTranslationRuntime.shutdown()
-        try await GemmaRuntime.shared.prepare(model: model)
+    private var activeID: UUID?
+    private var activeRevision: UUID?
+    private var activeTask: Task<AIOptimizationResult, Error>?
+    private var preparationTask: Task<Void, Error>?
+
+    func prepare(model: GemmaModel, ownerID: UUID = UUID(), configurationRevision: UUID? = nil) async throws {
+        guard activeID == nil || (activeID == ownerID && activeTask == nil && preparationTask == nil) else { throw AIServiceError.busy }
+        guard !AIServiceMode.usesCustomService else { throw AIServiceError.customMode }
+        activeID = ownerID
+        activeRevision = configurationRevision
+        let task = Task {
+            await NLLBTranslationRuntime.shutdown()
+            try Task.checkCancellation()
+            try await GemmaRuntime.shared.prepare(model: model)
+            try Task.checkCancellation()
+        }
+        preparationTask = task
+        do {
+            try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+            try Task.checkCancellation()
+            if activeID == ownerID { preparationTask = nil }
+        } catch {
+            if activeID == ownerID {
+                await GemmaRuntime.shared.shutdown()
+                activeID = nil
+                preparationTask = nil
+            }
+            throw error
+        }
     }
 
     func optimize(
@@ -349,48 +361,88 @@ actor GemmaOptimizationService {
         kind: GemmaOptimizationKind,
         prompt: String,
         model: GemmaModel,
+        client: (any AITextGenerationClient)? = nil,
+        ownerID: UUID = UUID(),
+        configurationRevision: UUID? = nil,
         progress: @escaping @Sendable (Int, Int) -> Void,
         preview: @escaping @Sendable (String) -> Void = { _ in }
-    ) async throws -> GemmaOptimizationResult {
+    ) async throws -> AIOptimizationResult {
+        guard activeID == nil || (activeID == ownerID && activeTask == nil) else { throw AIServiceError.busy }
+        if client == nil && AIServiceMode.usesCustomService { throw AIServiceError.customMode }
+        activeID = ownerID
+        activeRevision = configurationRevision
+        let preparation = preparationTask
+        let task = Task {
+            if let preparation { try await preparation.value }
+            try Task.checkCancellation()
+            if client == nil {
+                await NLLBTranslationRuntime.shutdown()
+                try Task.checkCancellation()
+                try await GemmaRuntime.shared.prepare(model: model)
+            }
+            return try await self.performOptimization(input: input, fallbackText: fallbackText,
+                kind: kind, prompt: prompt, client: client ?? BuiltInGemmaClient(), progress: progress, preview: preview)
+        }
+        activeTask = task
+        return try await withTaskCancellationHandler {
+            do {
+                let result = try await task.value
+                try Task.checkCancellation()
+                if activeID == ownerID {
+                    if client == nil { await GemmaRuntime.shared.shutdown() }
+                    activeID = nil; activeTask = nil; preparationTask = nil
+                }
+                return result
+            } catch {
+                if activeID == ownerID {
+                    if client == nil { await GemmaRuntime.shared.shutdown() }
+                    activeID = nil; activeTask = nil; preparationTask = nil
+                }
+                throw error
+            }
+        } onCancel: { task.cancel() }
+    }
+
+    func cancel(ownerID: UUID) async {
+        guard activeID == ownerID else { return }
+        activeTask?.cancel()
+        preparationTask?.cancel()
+        if let task = activeTask { _ = await task.result }
+        if let task = preparationTask { _ = await task.result }
+        guard activeID == ownerID else { return }
+        await GemmaRuntime.shared.shutdown()
+        if activeID == ownerID { activeID = nil; activeTask = nil; preparationTask = nil }
+    }
+    func cancelConfiguration(revision: UUID) async {
+        if let id = activeID, activeRevision == revision { await cancel(ownerID: id) }
+    }
+    func cancelAll() async {
+        if let id = activeID { await cancel(ownerID: id) }
+        else { await GemmaRuntime.shared.shutdown() }
+    }
+
+    private func performOptimization(input: [TranscriptSegment], fallbackText: String,
+        kind: GemmaOptimizationKind, prompt: String, client: any AITextGenerationClient,
+        progress: @escaping @Sendable (Int, Int) -> Void,
+        preview: @escaping @Sendable (String) -> Void) async throws -> AIOptimizationResult {
         let segments = input.isEmpty
             ? TranscriptSegment.sentenceSegments(from: fallbackText, duration: 0)
             : input.sorted { $0.startTime < $1.startTime }
-        guard !segments.isEmpty else {
-            return GemmaOptimizationResult(text: "", segments: [], summary: nil, failures: [])
+        guard !segments.isEmpty else { return AIOptimizationResult(text: "", segments: [], summary: nil, failures: []) }
+        if kind == .summarize, Self.isUnsafeSummaryGuidance(prompt) { throw GemmaOptimizationError.unsafeGuidance }
+        switch kind {
+        case .proofread:
+            return try await proofread(segments, prompt: prompt, client: client, progress: progress, preview: preview)
+        case .summarize:
+            let summary = try await summarize(segments, prompt: prompt, client: client, progress: progress, preview: preview)
+            return AIOptimizationResult(text: segments.map(\.text).joined(separator: "\n"), segments: segments, summary: summary, failures: [])
         }
-        if kind == .summarize, Self.isUnsafeSummaryGuidance(prompt) {
-            throw GemmaOptimizationError.unsafeGuidance
-        }
-        do {
-            try await prepare(model: model)
-            let result: GemmaOptimizationResult
-            switch kind {
-            case .proofread:
-                result = try await proofread(segments, prompt: prompt, progress: progress, preview: preview)
-            case .summarize:
-                let summary = try await summarize(segments, prompt: prompt, progress: progress, preview: preview)
-                result = GemmaOptimizationResult(
-                    text: segments.map(\.text).joined(separator: "\n"),
-                    segments: segments,
-                    summary: summary,
-                    failures: []
-                )
-            }
-            await GemmaRuntime.shared.shutdown()
-            return result
-        } catch {
-            await GemmaRuntime.shared.shutdown()
-            throw error
-        }
-    }
-
-    func cancel() async {
-        await GemmaRuntime.shared.shutdown()
     }
 
     private func proofread(
         _ segments: [TranscriptSegment],
         prompt: String,
+        client: any AITextGenerationClient,
         progress: @escaping @Sendable (Int, Int) -> Void,
         preview: @escaping @Sendable (String) -> Void
     ) async throws -> GemmaOptimizationResult {
@@ -408,7 +460,7 @@ actor GemmaOptimizationService {
             do {
                 let previewBaseline = output
                 let requestData = Self.proofreadData(editable: editable, before: before, after: after, prompt: prompt)
-                let response = try await GemmaRuntime.shared.complete(
+                let response = try await client.complete(
                     system: systemPrompt,
                     data: requestData,
                     maxTokens: Self.responseTokenBudget(
@@ -432,7 +484,7 @@ actor GemmaOptimizationService {
                     values = try await Self.decodeWithSingleRetry(
                         response,
                         retry: {
-                            try await GemmaRuntime.shared.complete(
+                            try await client.complete(
                                 system: systemPrompt,
                                 data: requestData + "\n\nThe previous response was invalid JSON. Return the required JSON array only.",
                                 maxTokens: Self.responseTokenBudget(
@@ -487,6 +539,7 @@ actor GemmaOptimizationService {
     private func summarize(
         _ segments: [TranscriptSegment],
         prompt: String,
+        client: any AITextGenerationClient,
         progress: @escaping @Sendable (Int, Int) -> Void,
         preview: @escaping @Sendable (String) -> Void
     ) async throws -> String {
@@ -503,7 +556,7 @@ actor GemmaOptimizationService {
             var notes: [String] = []
             for (index, batch) in batches.enumerated() {
                 try Task.checkCancellation()
-                notes.append(try await summarizeChunk(batch.map(\.text).joined(separator: "\n"), prompt: prompt))
+                notes.append(try await summarizeChunk(batch.map(\.text).joined(separator: "\n"), prompt: prompt, client: client))
                 progress(index + 1, batches.count + 1)
             }
             finalInput = notes.joined(separator: "\n")
@@ -515,6 +568,7 @@ actor GemmaOptimizationService {
             originalSource: source,
             prompt: prompt,
             targetCharacters: target,
+            client: client,
             preview: preview
         )
         let total = batches.count > 1 ? batches.count + 1 : 1
@@ -523,12 +577,12 @@ actor GemmaOptimizationService {
         return summary
     }
 
-    private func summarizeChunk(_ text: String, prompt: String) async throws -> String {
+    private func summarizeChunk(_ text: String, prompt: String, client: any AITextGenerationClient) async throws -> String {
         let target = min(600, max(160, text.count / 4))
         let system = try AIPromptLoader.load(.summaryExtract)
         let data = Self.summaryUserMessage(prompt: prompt, data: text, targetCharacters: target)
         let maxTokens = min(1_200, max(256, target * 2))
-        let first = try await GemmaRuntime.shared.complete(
+        let first = try await client.complete(
             system: system,
             data: data,
             maxTokens: maxTokens
@@ -536,7 +590,7 @@ actor GemmaOptimizationService {
         if let notes = Self.validatedFinalSummary(first, source: text, targetCharacters: target) {
             return notes
         }
-        let retry = try await GemmaRuntime.shared.complete(
+        let retry = try await client.complete(
             system: system,
             data: data + "\n\nRewrite the notes once more. Keep only essential information, remove attribution framing, and be substantially shorter.",
             maxTokens: maxTokens
@@ -552,12 +606,13 @@ actor GemmaOptimizationService {
         originalSource: String,
         prompt: String,
         targetCharacters: Int,
+        client: any AITextGenerationClient,
         preview: @escaping @Sendable (String) -> Void
     ) async throws -> String {
         let system = try AIPromptLoader.load(.summaryReduce)
         let data = Self.summaryUserMessage(prompt: prompt, data: input, targetCharacters: targetCharacters)
         let maxTokens = min(2_048, max(256, targetCharacters * 2))
-        let first = try await GemmaRuntime.shared.complete(
+        let first = try await client.complete(
             system: system,
             data: data,
             maxTokens: maxTokens,
@@ -571,7 +626,7 @@ actor GemmaOptimizationService {
             return summary
         }
 
-        let retry = try await GemmaRuntime.shared.complete(
+        let retry = try await client.complete(
             system: system,
             data: data + "\n\nRewrite once more. Be substantially shorter, remove all speaker-attribution framing, and return only the final summary.",
             maxTokens: maxTokens,
@@ -1017,3 +1072,6 @@ private struct GemmaChatStreamEvent: Decodable {
         let content: String?
     }
 }
+
+// Kept for existing validation helpers and callers.
+typealias GemmaOptimizationService = AIOptimizationService

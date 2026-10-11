@@ -15,7 +15,17 @@ struct LocalScribeApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView(updateController: updateController)
+            Group {
+#if DEBUG
+                if AIServiceUIFixture.isEnabled {
+                    AIServiceUIFixture.view
+                } else {
+                    RootView(updateController: updateController)
+                }
+#else
+                RootView(updateController: updateController)
+#endif
+            }
                 .frame(minWidth: 840, minHeight: 600)
                 .environment(\.locale, presentationPreferences.language.locale)
                 .environment(aiPromptPreferences)
