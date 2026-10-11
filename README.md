@@ -12,7 +12,7 @@
 
 LocalScribe is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Recognition audio stays on the Mac. AI runs locally by default; optional cloud AI sends the text needed for an enhancement task to the selected service.
 
-Current development version: **1.7.1 (41)** · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current release: **1.7.1 (41)** · [Release notes](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.7.1) · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
 > **New in 1.7.1 — custom AI services:** Settings → Models → Use a custom AI service connects to LM Studio, OpenAI, or DeepSeek. Enabling it cancels Gemma downloads and prevents Gemma loading, with no automatic fallback. Cloud connectors are a preview pending production-key validation.
@@ -61,7 +61,7 @@ Gemma removes filler, repetition, and obvious transcription errors while preserv
 
 Summaries replace the text preview while keeping an undo snapshot of the original. Add one-time instructions for names, terminology, writing style, summary length, priorities, or format, and optionally save reusable instructions in Settings. AI output should still be reviewed.
 
-The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of about 4.6 GB can be enabled in Settings. Models are downloaded on demand, verified, and run on the Mac through llama.cpp and Metal. On Macs with 8 GB of physical memory or less, AI Enhancement is off by default and can be enabled manually in Settings after confirming the memory warning. Gemma starts loading only after you select Proofread or Summarize. Completing a transcription or opening its result never preloads Gemma. Before loading Gemma, LocalScribe releases its active recognition and NLLB translation runtimes; the Gemma helper exits when the task finishes.
+The default Gemma 4 E2B IT Q4 model is about 2.8 GB; an optional E4B model of about 4.6 GB can be enabled in Settings. Models are downloaded on demand, verified, and run on the Mac through llama.cpp and Metal. On Macs with 8 GB of physical memory or less, built-in Gemma AI Enhancement is off by default and can be enabled manually in Settings after confirming the memory warning. Gemma starts loading only after you select Proofread or Summarize. Completing a transcription or opening its result never preloads Gemma. Before loading Gemma, LocalScribe releases its active recognition and NLLB translation runtimes; the Gemma helper exits when the task finishes.
 
 ## Why LocalScribe?
 
@@ -121,6 +121,8 @@ Numeric options support both direct keyboard entry and sliders or steppers, with
 Open **Settings → Models → Use a custom AI service**, then configure LM Studio, OpenAI, or DeepSeek. LM Studio accepts only this Mac’s loopback address (default `http://127.0.0.1:1234/v1`); start its server and prepare a text model yourself. Cloud API addresses are fixed to their official services. Fetch a model list or enter a model ID, and optionally run a synthetic connection test. Requests are constructed by the app; no JSON template is needed. See the [setup and validation guide](Documentation/AI-SERVICES.md).
 
 The switch defaults off. Enabling it immediately cancels existing Gemma downloads and blocks further downloads and loading, including when configuration is incomplete, keys are missing, or the API fails. Existing models are kept and can be removed manually. Switching back does not resume a cancelled download. Custom services remain available when built-in Gemma is disabled on low-memory Macs.
+
+Long configuration explanations appear in hover help. Fetching the model list from OpenAI or DeepSeek requires a valid API key; without one, the button displays the reason it is unavailable. LM Studio needs a token only when its server requires authentication.
 
 OpenAI and DeepSeek connectors are **preview features**: local request/response fixtures and failure tests are available, but production-key validation is pending. You can save an incomplete configuration without a key; generation requires a model ID, credentials, and cloud-processing consent. Streamed and non-streamed text use the same safety checks, preview, and undo workflow as Gemma.
 
@@ -182,7 +184,7 @@ The local packaging script creates ZIP and DMG artifacts and validates nested si
 ./tools/package_local_release.sh
 ```
 
-By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` to make the same ad-hoc package produced by GitHub Actions. Pushing a tag that matches the version in `Info.plist` (for example, `v1.7.0`) or includes the build number (for example, `v1.7.0-build40`) runs `release-unsigned.yml`, verifies the package, and creates the GitHub Release without storing a certificate or password in GitHub Secrets. Developer ID signing, timestamping, notarization, and stapling remain the preferred public distribution path.
+By default it uses the configured local certificate. Set `CODESIGN_IDENTITY=-` to make the same ad-hoc package produced by GitHub Actions. Pushing a tag that matches the version in `Info.plist` (for example, `v1.7.1`) or includes the build number (for example, `v1.7.1-build41`) runs `release-unsigned.yml`, verifies the package, and creates the GitHub Release without storing a certificate or password in GitHub Secrets. Developer ID signing, timestamping, notarization, and stapling remain the preferred public distribution path.
 
 ## CLI
 
@@ -195,7 +197,7 @@ LocalScribe.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
 
 ## Privacy and updates
 
-LocalScribe does not upload recognition audio or content processed by built-in Gemma. Recognition and translation run on the Mac. Optional LM Studio sends text to a loopback server on the same Mac. Optional OpenAI or DeepSeek sends task transcript text, context, and additional instructions to the selected official API after consent, and may incur charges. API keys are stored in this Mac’s non-synchronizing Keychain; they are not included in settings or recovery files. Network access is used for on-demand recognition, translation, and Gemma model downloads, automatic or manual update checks and downloads, and opening external documentation. Automatic updates can be disabled in Settings.
+LocalScribe does not upload recognition audio or content processed by built-in Gemma. Recognition and translation run on the Mac. Optional LM Studio sends text to a loopback server on the same Mac. Optional OpenAI or DeepSeek sends task transcript text, context, and additional instructions to the selected official API after consent, and may incur charges. API keys are stored in this Mac’s non-synchronizing Keychain; they are not included in settings or recovery files. Network access is also used for on-demand recognition, translation, and Gemma model downloads, automatic or manual update checks and downloads, and opening external documentation. Automatic updates can be disabled in Settings.
 
 The built-in updater checks at launch and every six hours by default, reads `update.json` from the latest GitHub Release, downloads its ZIP, verifies SHA-256, checks the bundle identifier and version, and asks before replacing and relaunching the app. This update path is not a substitute for a notarized public release.
 
