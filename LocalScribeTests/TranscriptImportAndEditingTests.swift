@@ -133,4 +133,106 @@ final class TranscriptImportAndEditingTests: XCTestCase {
             "这句话已经完成。  下一句话仍在继续"
         )
     }
+
+    // MARK: - Long transcripts
+
+    func testLineNumbersAreVerbatimAndColumnGrowsWithDigits() {
+        XCTAssertEqual(TranscriptLineNumberFormatting.label(1215), "1215")
+        XCTAssertEqual(TranscriptLineNumberFormatting.label(1_234_567), "1234567")
+        XCTAssertEqual(TranscriptLineNumberFormatting.digitCount(999), 3)
+        XCTAssertEqual(TranscriptLineNumberFormatting.digitCount(1215), 4)
+        XCTAssertEqual(TranscriptLineNumberFormatting.columnWidth(maximumLineNumber: 12, fontSize: 13), 38)
+        let fourDigits = TranscriptLineNumberFormatting.columnWidth(maximumLineNumber: 1215, fontSize: 13)
+        let fiveDigits = TranscriptLineNumberFormatting.columnWidth(maximumLineNumber: 12_150, fontSize: 13)
+        XCTAssertGreaterThanOrEqual(fourDigits, 4 * 13 * 0.62)
+        XCTAssertGreaterThan(fiveDigits, fourDigits)
+    }
+
+    func testLineStartIndexFindsLineNumbersByUTF16Offset() {
+        let text = "第一行\n\n😀 third\nlast"
+        let index = TranscriptLineStartIndex(text)
+        XCTAssertEqual(index.lineCount, 4)
+        XCTAssertEqual(index.lineNumber(atUTF16Offset: 0), 1)
+        XCTAssertEqual(index.lineNumber(atUTF16Offset: 3), 1)
+        XCTAssertEqual(index.lineNumber(atUTF16Offset: 4), 2)
+        XCTAssertEqual(index.lineNumber(atUTF16Offset: 5), 3)
+        let lastStart = (text as NSString).range(of: "last").location
+        XCTAssertEqual(index.lineNumber(atUTF16Offset: lastStart), 4)
+        XCTAssertEqual(index.lineNumber(atUTF16Offset: (text as NSString).length), 4)
+        XCTAssertEqual(TranscriptLineStartIndex("").lineCount, 1)
+        XCTAssertEqual(TranscriptLineStartIndex("a\n").lineCount, 2)
+    }
+
+    func testLineStartIndexMatchesNaiveCountForLongTranscript() {
+        let text = (1...2_000).map { "第 \($0) 行 line" }.joined(separator: "\n")
+        let index = TranscriptLineStartIndex(text)
+        XCTAssertEqual(index.lineCount, 2_000)
+        let source = text as NSString
+        for offset in stride(from: 0, through: source.length, by: 997) {
+            let naive = source.substring(to: offset).reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
+            XCTAssertEqual(index.lineNumber(atUTF16Offset: offset), naive)
+        }
+    }
+
+    func testExportNamingForMicrophoneAndFileSources() throws {
+        let timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = timeZone
+        components.year = 2026; components.month = 11; components.day = 17
+        components.hour = 1; components.minute = 49; components.second = 5
+        let date = try XCTUnwrap(components.date)
+        XCTAssertEqual(
+            TranscriptExportNaming.microphoneBaseName(startedAt: date, timeZone: timeZone),
+            "2026-11-17_01-49-05_Transcription"
+        )
+        XCTAssertEqual(TranscriptExportNaming.fileBaseName(fileName: "Interview.final.m4a"), "Interview.final_Transcription")
+        XCTAssertEqual(TranscriptExportNaming.fileBaseName(fileName: "会议录音.mp4"), "会议录音_Transcription")
+        XCTAssertEqual(TranscriptExportNaming.fileBaseName(fileName: "a:b.wav"), "a-b_Transcription")
+        XCTAssertNoThrow(try CompanionExportCoordinator.baseName(
+            TranscriptExportNaming.microphoneBaseName(startedAt: date, timeZone: timeZone), format: .srt
+        ))
+    }
+
+    @MainActor
+    func testSessionDefaultExportNameFollowsSource() throws {
+        let file = TranscriptionSessionModel(
+            source: .file(URL(fileURLWithPath: "/tmp/Lecture 3.mov")),
+            locale: Locale(identifier: "en_US"),
+            configuration: .init(engine: .apple)
+        )
+        XCTAssertEqual(file.defaultExportBaseName, "Lecture 3_Transcription")
+
+        let microphone = TranscriptionSessionModel(
+            source: .microphone,
+            locale: Locale(identifier: "en_US"),
+            configuration: .init(engine: .apple)
+        )
+        XCTAssertTrue(microphone.defaultExportBaseName.hasSuffix("_Transcription"))
+        XCTAssertNoThrow(try CompanionExportCoordinator.baseName(microphone.defaultExportBaseName, format: .srt))
+
+        let startedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let snapshot = RecoverySnapshot(
+            id: UUID(), sourceTitle: "Recorded.wav", sourceKind: .file, localeIdentifier: "en",
+            configuration: .init(engine: .apple), transcriptText: "Saved", segments: [],
+            hasManualEdits: false, elapsed: 1, progress: 1, createdAt: startedAt, updatedAt: startedAt,
+            transcriptionStartedAt: startedAt
+        )
+        XCTAssertEqual(TranscriptionSessionModel(snapshot: snapshot).defaultExportBaseName, "Recorded_Transcription")
+
+        var microphoneSnapshot = snapshot
+        microphoneSnapshot.sourceKind = .microphone
+        XCTAssertEqual(
+            TranscriptionSessionModel(snapshot: microphoneSnapshot).defaultExportBaseName,
+            TranscriptExportNaming.microphoneBaseName(startedAt: startedAt)
+        )
+    }
+
+    func testFileRecognitionProgressStaysBelowCompletion() {
+        XCTAssertEqual(FileRecognitionProgress.fraction(recognizedTime: 30, sourceDuration: 120), 0.25)
+        XCTAssertEqual(FileRecognitionProgress.fraction(recognizedTime: 120, sourceDuration: 120), 0.99)
+        XCTAssertEqual(FileRecognitionProgress.fraction(recognizedTime: 500, sourceDuration: 120), 0.99)
+        XCTAssertEqual(FileRecognitionProgress.fraction(recognizedTime: 5, sourceDuration: 0), 0)
+        XCTAssertEqual(FileRecognitionProgress.fraction(recognizedTime: .nan, sourceDuration: 10), 0)
+    }
 }

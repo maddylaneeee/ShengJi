@@ -33,6 +33,9 @@ struct TranscriptEditingTextView: NSViewRepresentable {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
+        // Long transcripts (thousands of lines) must not lay out the whole document
+        // on every scroll or edit.
+        textView.layoutManager?.allowsNonContiguousLayout = true
         textView.string = text
         scrollView.documentView = textView
         return TranscriptEditorContainerView(scrollView: scrollView, textView: textView)
@@ -75,11 +78,14 @@ final class TranscriptEditorContainerView: NSView {
     let scrollView: NSScrollView
     let textView: NSTextView
     private let gutter: TranscriptLineNumberGutterView
+    private let gutterWidth: NSLayoutConstraint
 
     init(scrollView: NSScrollView, textView: NSTextView) {
         self.scrollView = scrollView
         self.textView = textView
-        self.gutter = TranscriptLineNumberGutterView(textView: textView, scrollView: scrollView)
+        let gutter = TranscriptLineNumberGutterView(textView: textView, scrollView: scrollView)
+        self.gutter = gutter
+        self.gutterWidth = gutter.widthAnchor.constraint(equalToConstant: gutter.preferredWidth)
         super.init(frame: .zero)
         clipsToBounds = true
         gutter.translatesAutoresizingMaskIntoConstraints = false
@@ -90,21 +96,84 @@ final class TranscriptEditorContainerView: NSView {
             gutter.leadingAnchor.constraint(equalTo: leadingAnchor),
             gutter.topAnchor.constraint(equalTo: topAnchor),
             gutter.bottomAnchor.constraint(equalTo: bottomAnchor),
-            gutter.widthAnchor.constraint(equalToConstant: 50),
+            gutterWidth,
             scrollView.leadingAnchor.constraint(equalTo: gutter.trailingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+        gutter.onPreferredWidthChange = { [weak self] width in
+            guard let self, self.gutterWidth.constant != width else { return }
+            self.gutterWidth.constant = width
+        }
     }
 
     required init?(coder: NSCoder) { nil }
+}
+
+/// Shared line-number presentation for transcript views. Line numbers are
+/// rendered verbatim (never locale-grouped, so 1215 is not shown as "1,215")
+/// and their column grows with the largest number instead of wrapping.
+enum TranscriptLineNumberFormatting {
+    static func label(_ lineNumber: Int) -> String {
+        String(lineNumber)
+    }
+
+    static func digitCount(_ lineNumber: Int) -> Int {
+        String(max(lineNumber, 1)).count
+    }
+
+    /// Width for a right-aligned monospaced number column. The default minimum
+    /// keeps the existing layout for transcripts below 1,000 lines.
+    static func columnWidth(maximumLineNumber: Int, fontSize: CGFloat, minimum: CGFloat = 38, padding: CGFloat = 6) -> CGFloat {
+        max(minimum, (CGFloat(digitCount(maximumLineNumber)) * fontSize * 0.62 + padding).rounded(.up))
+    }
+}
+
+/// UTF-16 offsets of every line start in a text, so line numbers can be found by
+/// binary search instead of rescanning the whole prefix of the document.
+struct TranscriptLineStartIndex: Equatable {
+    private(set) var lineStarts: [Int]
+
+    init(_ text: String) {
+        var starts = [0]
+        var offset = 0
+        for unit in text.utf16 {
+            offset += 1
+            if unit == 0x0A { starts.append(offset) }
+        }
+        lineStarts = starts
+    }
+
+    var lineCount: Int { lineStarts.count }
+
+    /// One-based line number containing the UTF-16 offset.
+    func lineNumber(atUTF16Offset offset: Int) -> Int {
+        var low = 0
+        var high = lineStarts.count
+        while low < high {
+            let middle = (low + high) / 2
+            if lineStarts[middle] <= offset {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        return max(low, 1)
+    }
 }
 
 final class TranscriptLineNumberGutterView: NSView {
     private weak var textView: NSTextView?
     private weak var scrollView: NSScrollView?
     private var observers: [NSObjectProtocol] = []
+    private var lineIndex: TranscriptLineStartIndex?
+    private static let fontSize: CGFloat = 12
+    private static let trailingInset: CGFloat = 9
+    private static let minimumWidth: CGFloat = 50
+
+    var onPreferredWidthChange: ((CGFloat) -> Void)?
+    private(set) var preferredWidth: CGFloat = TranscriptLineNumberGutterView.minimumWidth
 
     override var isFlipped: Bool { true }
 
@@ -113,22 +182,63 @@ final class TranscriptLineNumberGutterView: NSView {
         self.scrollView = scrollView
         super.init(frame: .zero)
         scrollView.contentView.postsBoundsChangedNotifications = true
+        textView.postsFrameChangedNotifications = true
         let center = NotificationCenter.default
-        observers.append(center.addObserver(
-            forName: NSText.didChangeNotification,
-            object: textView,
-            queue: .main
-        ) { [weak self] _ in self?.needsDisplay = true })
+        if let storage = textView.textStorage {
+            // Fires for user edits and for programmatic `textView.string` writes,
+            // unlike `NSText.didChangeNotification`.
+            observers.append(center.addObserver(
+                forName: NSTextStorage.didProcessEditingNotification,
+                object: storage,
+                queue: .main
+            ) { [weak self] notification in
+                guard let storage = notification.object as? NSTextStorage,
+                      storage.editedMask.contains(.editedCharacters) else { return }
+                MainActor.assumeIsolated { self?.transcriptTextDidChange() }
+            })
+        }
         observers.append(center.addObserver(
             forName: NSView.boundsDidChangeNotification,
             object: scrollView.contentView,
             queue: .main
-        ) { [weak self] _ in self?.needsDisplay = true })
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.needsDisplay = true } })
+        // Rewrapping after a width change moves line starts vertically.
+        observers.append(center.addObserver(
+            forName: NSView.frameDidChangeNotification,
+            object: textView,
+            queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.needsDisplay = true } })
+        transcriptTextDidChange()
     }
 
     required init?(coder: NSCoder) { nil }
 
     deinit { observers.forEach(NotificationCenter.default.removeObserver) }
+
+    private func transcriptTextDidChange() {
+        lineIndex = nil
+        updatePreferredWidth(lineCount: currentLineIndex().lineCount)
+        needsDisplay = true
+    }
+
+    private func currentLineIndex() -> TranscriptLineStartIndex {
+        if let lineIndex { return lineIndex }
+        let index = TranscriptLineStartIndex(textView?.string ?? "")
+        lineIndex = index
+        return index
+    }
+
+    private func updatePreferredWidth(lineCount: Int) {
+        let width = TranscriptLineNumberFormatting.columnWidth(
+            maximumLineNumber: lineCount,
+            fontSize: Self.fontSize,
+            minimum: Self.minimumWidth,
+            padding: Self.trailingInset + 12
+        )
+        guard width != preferredWidth else { return }
+        preferredWidth = width
+        onPreferredWidthChange?(width)
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let textView, let scrollView, let layoutManager = textView.layoutManager,
@@ -143,20 +253,21 @@ final class TranscriptLineNumberGutterView: NSView {
         )
         let glyphRange = layoutManager.glyphRange(forBoundingRect: containerRect, in: textContainer)
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular),
+            .font: NSFont.monospacedDigitSystemFont(ofSize: Self.fontSize, weight: .regular),
             .foregroundColor: NSColor.secondaryLabelColor
         ]
+        let source = textView.string as NSString
+        let index = currentLineIndex()
+        let maxX = bounds.maxX
         layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { _, usedRect, _, glyphRange, _ in
             let characterIndex = layoutManager.characterIndexForGlyph(at: glyphRange.location)
-            let source = textView.string as NSString
             let safeIndex = min(characterIndex, source.length)
             guard safeIndex == 0 || source.character(at: safeIndex - 1) == 0x0A else { return }
-            let prefix = source.substring(to: safeIndex)
-            let lineNumber = prefix.reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
-            let value = "\(lineNumber)" as NSString
+            let lineNumber = index.lineNumber(atUTF16Offset: safeIndex)
+            let value = TranscriptLineNumberFormatting.label(lineNumber) as NSString
             let size = value.size(withAttributes: attributes)
             let y = usedRect.minY + textView.textContainerInset.height - visibleRect.minY
-            value.draw(at: NSPoint(x: self.bounds.maxX - size.width - 9, y: y), withAttributes: attributes)
+            value.draw(at: NSPoint(x: maxX - size.width - Self.trailingInset, y: y), withAttributes: attributes)
         }
     }
 }
@@ -165,22 +276,24 @@ struct AIChangePreviewView: View {
     let original: String
     let proposed: String
 
-    private var rows: [TranscriptLineDiff.Row] {
-        TranscriptLineDiff.rows(original: original, proposed: proposed)
-    }
-
     var body: some View {
+        let rows = TranscriptLineDiff.rows(original: original, proposed: proposed)
+        let numberWidth = TranscriptLineNumberFormatting.columnWidth(
+            maximumLineNumber: rows.map(\.number).max() ?? 1,
+            fontSize: 13
+        )
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(rows) { row in
                     HStack(alignment: .top, spacing: 14) {
                         Rectangle()
                             .fill(row.kind.color.opacity(row.kind == .unchanged ? 0 : 0.85))
                             .frame(width: 4)
-                        Text("\(row.number)")
+                        Text(verbatim: TranscriptLineNumberFormatting.label(row.number))
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundStyle(row.kind.color)
-                            .frame(width: 38, alignment: .trailing)
+                            .lineLimit(1)
+                            .frame(width: numberWidth, alignment: .trailing)
                         Text(row.text.isEmpty ? " " : row.text)
                             .font(.system(size: 19))
                             .lineSpacing(8)

@@ -933,6 +933,21 @@ struct TranscriptionView: View {
                 Button("完成", systemImage: "stop.fill") { Task { await session.stop() } }
             }
 
+            if let status = transportStatusText {
+                // Phases without actions still show what is happening instead of
+                // leaving an empty capsule behind.
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(status)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 4)
+                .accessibilityElement(children: .combine)
+            }
+
             if session.phase == .finished {
                 Button("重新开始", systemImage: "arrow.counterclockwise") {
                     isConfirmingRestart = true
@@ -948,6 +963,14 @@ struct TranscriptionView: View {
         .background(.regularMaterial, in: Capsule())
         .padding(.bottom, 14)
         .shadow(color: .black.opacity(0.08), radius: 14, y: 5)
+    }
+
+    private var transportStatusText: String? {
+        switch session.phase {
+        case .finishing: L10n.text("正在整理剩余文字…")
+        case .loadingModel, .preparingAudio: session.phase.label
+        default: nil
+        }
     }
 
     private var isShowingRealtimeAudioFailure: Bool {
@@ -1884,11 +1907,7 @@ struct TranscriptionView: View {
     }
 
     private var defaultTitle: String {
-        return switch session.source {
-        case .microphone: L10n.text("麦克风转录")
-        case .file(let url): url.deletingPathExtension().lastPathComponent
-        case .recovered(let title): title
-        }
+        session.defaultExportBaseName
     }
 
 
@@ -1998,30 +2017,32 @@ private struct TranscriptStreamView: View {
             ZStack(alignment: .bottomTrailing) {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
-                        if totalCount > segments.count {
-                            Text("为保持长任务流畅，当前显示最近 \(segments.count) 个片段；完整内容仍会保存并导出。")
+                        if hiddenSegmentCount > 0 {
+                            Text("为保持长任务流畅，当前显示最近 \(TranscriptionSessionModel.displaySegmentLimit) 个片段；完整内容仍会保存并导出。")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding(.bottom, 4)
                         }
                         if let animatedText {
-                            NumberedTranscriptText(text: animatedText)
-                                .id("animated-transcript")
+                            // Each line is a direct child of the LazyVStack so only
+                            // visible lines are built, even for 1,000+ line transcripts.
+                            let lines = animatedText.split(separator: "\n", omittingEmptySubsequences: false)
+                            let numberWidth = TranscriptLineNumberFormatting.columnWidth(maximumLineNumber: lines.count, fontSize: 13)
+                            ForEach(lines.indices, id: \.self) { index in
+                                NumberedTranscriptLine(number: index + 1, text: String(lines[index]), numberWidth: numberWidth)
+                                    .equatable()
+                            }
                         } else {
+                            let firstNumber = hiddenSegmentCount + 1
+                            let numberWidth = TranscriptLineNumberFormatting.columnWidth(
+                                maximumLineNumber: firstNumber + max(segments.count - 1, 0),
+                                fontSize: 13
+                            )
                             ForEach(Array(segments.enumerated()), id: \.element.id) { offset, segment in
-                                HStack(alignment: .firstTextBaseline, spacing: 14) {
-                                    Text("\(max(1, totalCount - segments.count + offset + 1))")
-                                        .font(.system(size: 13, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 38, alignment: .trailing)
-                                    Text(segment.text)
-                                        .font(.system(size: 19))
-                                        .lineSpacing(8)
-                                        .textSelection(.enabled)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .id(segment.id)
+                                NumberedTranscriptLine(number: firstNumber + offset, text: segment.text, numberWidth: numberWidth)
+                                    .equatable()
+                                    .id(segment.id)
                             }
                         }
                         Color.clear
@@ -2043,7 +2064,7 @@ private struct TranscriptStreamView: View {
                     guard followsLatest else { return }
                     scrollToLatest(proxy, animated: true)
                 }
-                .onChange(of: animatedText?.count) { _, _ in
+                .onChange(of: animatedText?.utf16.count) { _, _ in
                     guard followsLatest, Date().timeIntervalSince(lastAnimatedScrollAt) >= 0.12 else { return }
                     lastAnimatedScrollAt = Date()
                     scrollToLatest(proxy, animated: false)
@@ -2063,6 +2084,13 @@ private struct TranscriptStreamView: View {
         }
     }
 
+    /// Committed segments before the displayed window. `segments` may also hold
+    /// Whisper preview and volatile entries, so numbering is derived from the
+    /// committed total rather than from `segments.count`.
+    private var hiddenSegmentCount: Int {
+        max(0, totalCount - TranscriptionSessionModel.displaySegmentLimit)
+    }
+
     private func scrollToLatest(_ proxy: ScrollViewProxy, animated: Bool) {
         isProgrammaticScroll = true
         if animated {
@@ -2077,23 +2105,37 @@ private struct TranscriptStreamView: View {
     }
 }
 
+private struct NumberedTranscriptLine: View, Equatable {
+    let number: Int
+    let text: String
+    let numberWidth: CGFloat
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 14) {
+            Text(verbatim: TranscriptLineNumberFormatting.label(number))
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(width: numberWidth, alignment: .trailing)
+            Text(verbatim: text)
+                .font(.system(size: 19))
+                .lineSpacing(8)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 private struct NumberedTranscriptText: View {
     let text: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(text.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { index, line in
-                HStack(alignment: .firstTextBaseline, spacing: 14) {
-                    Text("\(index + 1)")
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 38, alignment: .trailing)
-                    Text(String(line))
-                        .font(.system(size: 19))
-                        .lineSpacing(8)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        let numberWidth = TranscriptLineNumberFormatting.columnWidth(maximumLineNumber: lines.count, fontSize: 13)
+        LazyVStack(alignment: .leading, spacing: 12) {
+            ForEach(lines.indices, id: \.self) { index in
+                NumberedTranscriptLine(number: index + 1, text: String(lines[index]), numberWidth: numberWidth)
+                    .equatable()
             }
         }
     }

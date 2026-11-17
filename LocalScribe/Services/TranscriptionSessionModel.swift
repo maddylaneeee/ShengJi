@@ -66,6 +66,14 @@ final class TranscriptionSessionRegistry {
     }
 }
 
+enum FileRecognitionProgress {
+    /// Recognized share of a file, capped at 99% until recognition completes.
+    static func fraction(recognizedTime: TimeInterval, sourceDuration: TimeInterval) -> Double {
+        guard sourceDuration > 0, recognizedTime.isFinite else { return 0 }
+        return min(max(recognizedTime / sourceDuration, 0), 0.99)
+    }
+}
+
 @MainActor
 @Observable
 final class TranscriptionSessionModel {
@@ -188,6 +196,14 @@ final class TranscriptionSessionModel {
     private var temporaryAudioURL: URL?
     private var isUsingSecurityScopedResource = false
     private var sourceDuration: TimeInterval = 0
+    /// End of the latest Apple Speech result for a file source, in source seconds.
+    private var recognizedAudioTime: TimeInterval = 0
+    /// Fraction of a file source handed to the analyzer (read progress, not recognition).
+    private var fileReadProgress: Double = 0
+    /// When the current transcription started; names microphone exports.
+    private(set) var transcriptionStartedAt: Date?
+    /// Original source kind of a recovered session, so its export name follows that source.
+    private var recoveredSourceKind: RecoverySnapshot.SourceKind?
     private var recognitionTimelineOffset: TimeInterval = 0
     private var startedAt: ContinuousClock.Instant?
     private var elapsedBeforeCurrentRun: Duration = .zero
@@ -220,13 +236,16 @@ final class TranscriptionSessionModel {
         appleSpeechStorage as? AppleSpeechSessionState
     }
 
+    /// Maximum number of committed segments rendered by the live segment list.
+    static let displaySegmentLimit = 400
+
     var displaySegments: [TranscriptSegment] {
-        var output = Array(segments.suffix(400))
-        output.append(contentsOf: whisperPreviewSegments.suffix(max(0, 400 - output.count)))
+        var output = Array(segments.suffix(Self.displaySegmentLimit))
+        output.append(contentsOf: whisperPreviewSegments.suffix(max(0, Self.displaySegmentLimit - output.count)))
         if let volatileSegment { output.append(volatileSegment) }
         return output
     }
-    var displayTranslatedSegments: [TranscriptSegment] { Array(translatedSegments.suffix(400)) }
+    var displayTranslatedSegments: [TranscriptSegment] { Array(translatedSegments.suffix(Self.displaySegmentLimit)) }
     var usesAnimatedStreamingDisplay: Bool {
         !reduceMotionEnabled
             && phase.isActive
@@ -296,6 +315,8 @@ final class TranscriptionSessionModel {
         self.timelineProvenance = snapshot.timelineProvenance ?? .estimated
         self.recoveryID = snapshot.id
         self.recoveryCreatedAt = snapshot.createdAt
+        self.recoveredSourceKind = snapshot.sourceKind
+        self.transcriptionStartedAt = snapshot.transcriptionStartedAt
         audioLease = SessionAudioLease(recoveryID)
         speechAudio.restore(snapshot.audioAsset ?? SessionAudioStore.load(sessionID: recoveryID))
         prepareRealtimeAudioSourcesIfNeeded()
@@ -504,6 +525,7 @@ final class TranscriptionSessionModel {
 
     func start() async {
         guard phase == .preparing else { return }
+        transcriptionStartedAt = Date()
         speechAudio.player.stop()
         originalAudioEnabled = saveOriginalAudio && canSaveOriginalAudio
         if originalAudioEnabled {
@@ -973,6 +995,9 @@ final class TranscriptionSessionModel {
         let start = max(CMTimeGetSeconds(result.range.start), 0) + recognitionTimelineOffset
         let duration = max(CMTimeGetSeconds(result.range.duration), 0.05)
         let segment = TranscriptSegment(startTime: start, endTime: start + duration, text: rawText)
+        if case .file = source {
+            noteRecognizedFileAudio(through: max(CMTimeGetSeconds(result.range.start), 0) + duration)
+        }
 
         if phase == .paused {
             if result.isFinal { deferredSegments.append(segment) }
@@ -1341,8 +1366,7 @@ final class TranscriptionSessionModel {
                 ) { value in
                     guard value >= 1 || progressLimiter.shouldEmit(every: .milliseconds(125)) else { return }
                     Task { @MainActor in
-                        owner.progress = value
-                        owner.elapsed = owner.sourceDuration * value
+                        owner.noteFileAudioRead(value)
                     }
                 }
                 await owner.finishAutomatically()
@@ -1758,6 +1782,8 @@ final class TranscriptionSessionModel {
         guard phase == .transcribing else { return }
         phase = .finishing
         freezeTimer()
+        fileReadProgress = 1
+        updateFileRecognitionActivityDetail()
         do {
             _ = await analysisTask?.result
             guard phase.failedMessage == nil else { return }
@@ -1955,7 +1981,7 @@ final class TranscriptionSessionModel {
         let sourceKind: RecoverySnapshot.SourceKind = switch source {
         case .microphone: .microphone
         case .file: .file
-        case .recovered: .recovered
+        case .recovered: recoveredSourceKind ?? .recovered
         }
         return RecoverySnapshot(
             id: recoveryID,
@@ -1980,8 +2006,59 @@ final class TranscriptionSessionModel {
             elapsed: elapsed,
             progress: progress,
             createdAt: recoveryCreatedAt,
-            updatedAt: Date()
+            updatedAt: Date(),
+            transcriptionStartedAt: transcriptionStartedAt
         )
+    }
+
+    /// Default export base name; see `TranscriptExportNaming`.
+    var defaultExportBaseName: String {
+        switch source {
+        case .microphone:
+            return TranscriptExportNaming.microphoneBaseName(startedAt: transcriptionStartedAt ?? recoveryCreatedAt)
+        case .file(let url):
+            return TranscriptExportNaming.fileBaseName(fileName: url.lastPathComponent)
+        case .recovered(let title):
+            switch recoveredSourceKind {
+            case .microphone:
+                return TranscriptExportNaming.microphoneBaseName(startedAt: transcriptionStartedAt ?? recoveryCreatedAt)
+            case .file:
+                return TranscriptExportNaming.fileBaseName(fileName: title)
+            case .recovered, nil:
+                return title
+            }
+        }
+    }
+
+    // MARK: - Apple Speech file progress
+
+    /// Apple Speech reads a file much faster than it recognizes it, so file progress
+    /// follows recognized audio time. It stays below 100% until recognition finishes.
+    private func noteRecognizedFileAudio(through time: TimeInterval) {
+        guard time.isFinite, sourceDuration > 0, phase != .finished, phase.failedMessage == nil else { return }
+        recognizedAudioTime = max(recognizedAudioTime, min(time, sourceDuration))
+        progress = FileRecognitionProgress.fraction(recognizedTime: recognizedAudioTime, sourceDuration: sourceDuration)
+        elapsed = recognizedAudioTime
+        updateFileRecognitionActivityDetail()
+    }
+
+    private func noteFileAudioRead(_ value: Double) {
+        fileReadProgress = min(max(value, 0), 1)
+        updateFileRecognitionActivityDetail()
+    }
+
+    private func updateFileRecognitionActivityDetail() {
+        guard case .file = source, configuration.engine == .apple else { return }
+        let percent = FloatingPointFormatStyle<Double>.Percent().precision(.fractionLength(0))
+        let recognized = progress.formatted(percent)
+        switch phase {
+        case .transcribing, .paused:
+            activityDetail = L10n.format("已读取音频 %@ · 已识别 %@", fileReadProgress.formatted(percent), recognized)
+        case .finishing:
+            activityDetail = L10n.format("音频已读取完毕，正在等待识别完成 · 已识别 %@", recognized)
+        default:
+            break
+        }
     }
 
     private func approximatelyEqual(_ lhs: TranscriptSegment, _ rhs: TranscriptSegment) -> Bool {
