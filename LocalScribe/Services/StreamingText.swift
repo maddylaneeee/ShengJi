@@ -103,6 +103,10 @@ final class AdaptiveStreamingTextAnimator {
 
     private var targetScalars: [Unicode.Scalar] = []
     private var visibleScalarCount = 0
+    /// Incrementally maintained text for `targetScalars.prefix(visibleCacheScalarCount)`.
+    /// Long transcripts would otherwise be rebuilt from scratch on every 24 ms frame.
+    private var visibleCache = ""
+    private var visibleCacheScalarCount = 0
     private var scheduledAnimation: StreamingTextScheduledAnimation?
     private var submissionSamples: [SubmissionSample] = []
     private var firstSubmissionAt: TimeInterval?
@@ -133,6 +137,8 @@ final class AdaptiveStreamingTextAnimator {
         scheduledAnimation = nil
         targetScalars = Array(text.unicodeScalars)
         visibleScalarCount = targetScalars.count
+        visibleCache = text
+        visibleCacheScalarCount = targetScalars.count
         submissionSamples.removeAll(keepingCapacity: true)
         firstSubmissionAt = nil
         lastFrameAt = nil
@@ -152,6 +158,11 @@ final class AdaptiveStreamingTextAnimator {
         submissionSamples.append(SubmissionSample(time: now, scalarCount: changedScalarCount))
         pruneSubmissionSamples(at: now)
         targetScalars = newTarget
+        // The cache stays valid only for the prefix shared with the new target.
+        if visibleCacheScalarCount > sharedWithOldTarget {
+            visibleCache.unicodeScalars.removeLast(visibleCacheScalarCount - sharedWithOldTarget)
+            visibleCacheScalarCount = sharedWithOldTarget
+        }
 
         if sharedWithVisible < visibleScalarCount {
             visibleScalarCount = sharedWithVisible
@@ -240,7 +251,13 @@ final class AdaptiveStreamingTextAnimator {
     }
 
     private func visibleText() -> String {
-        String(String.UnicodeScalarView(targetScalars.prefix(visibleScalarCount)))
+        if visibleScalarCount < visibleCacheScalarCount {
+            visibleCache.unicodeScalars.removeLast(visibleCacheScalarCount - visibleScalarCount)
+        } else if visibleScalarCount > visibleCacheScalarCount {
+            visibleCache.unicodeScalars.append(contentsOf: targetScalars[visibleCacheScalarCount..<visibleScalarCount])
+        }
+        visibleCacheScalarCount = visibleScalarCount
+        return visibleCache
     }
 
     private func commonPrefixCount(_ lhs: [Unicode.Scalar], _ rhs: [Unicode.Scalar]) -> Int {

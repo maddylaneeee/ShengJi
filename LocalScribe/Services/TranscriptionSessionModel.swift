@@ -220,13 +220,16 @@ final class TranscriptionSessionModel {
         appleSpeechStorage as? AppleSpeechSessionState
     }
 
+    /// Maximum number of committed segments rendered by the live segment list.
+    static let displaySegmentLimit = 400
+
     var displaySegments: [TranscriptSegment] {
-        var output = Array(segments.suffix(400))
-        output.append(contentsOf: whisperPreviewSegments.suffix(max(0, 400 - output.count)))
+        var output = Array(segments.suffix(Self.displaySegmentLimit))
+        output.append(contentsOf: whisperPreviewSegments.suffix(max(0, Self.displaySegmentLimit - output.count)))
         if let volatileSegment { output.append(volatileSegment) }
         return output
     }
-    var displayTranslatedSegments: [TranscriptSegment] { Array(translatedSegments.suffix(400)) }
+    var displayTranslatedSegments: [TranscriptSegment] { Array(translatedSegments.suffix(Self.displaySegmentLimit)) }
     var usesAnimatedStreamingDisplay: Bool {
         !reduceMotionEnabled
             && phase.isActive

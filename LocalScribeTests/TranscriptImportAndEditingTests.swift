@@ -133,4 +133,44 @@ final class TranscriptImportAndEditingTests: XCTestCase {
             "这句话已经完成。  下一句话仍在继续"
         )
     }
+
+    // MARK: - Long transcripts
+
+    func testLineNumbersAreVerbatimAndColumnGrowsWithDigits() {
+        XCTAssertEqual(TranscriptLineNumberFormatting.label(1215), "1215")
+        XCTAssertEqual(TranscriptLineNumberFormatting.label(1_234_567), "1234567")
+        XCTAssertEqual(TranscriptLineNumberFormatting.digitCount(999), 3)
+        XCTAssertEqual(TranscriptLineNumberFormatting.digitCount(1215), 4)
+        XCTAssertEqual(TranscriptLineNumberFormatting.columnWidth(maximumLineNumber: 12, fontSize: 13), 38)
+        let fourDigits = TranscriptLineNumberFormatting.columnWidth(maximumLineNumber: 1215, fontSize: 13)
+        let fiveDigits = TranscriptLineNumberFormatting.columnWidth(maximumLineNumber: 12_150, fontSize: 13)
+        XCTAssertGreaterThanOrEqual(fourDigits, 4 * 13 * 0.62)
+        XCTAssertGreaterThan(fiveDigits, fourDigits)
+    }
+
+    func testLineStartIndexFindsLineNumbersByUTF16Offset() {
+        let text = "第一行\n\n😀 third\nlast"
+        let index = TranscriptLineStartIndex(text)
+        XCTAssertEqual(index.lineCount, 4)
+        XCTAssertEqual(index.lineNumber(atUTF16Offset: 0), 1)
+        XCTAssertEqual(index.lineNumber(atUTF16Offset: 3), 1)
+        XCTAssertEqual(index.lineNumber(atUTF16Offset: 4), 2)
+        XCTAssertEqual(index.lineNumber(atUTF16Offset: 5), 3)
+        let lastStart = (text as NSString).range(of: "last").location
+        XCTAssertEqual(index.lineNumber(atUTF16Offset: lastStart), 4)
+        XCTAssertEqual(index.lineNumber(atUTF16Offset: (text as NSString).length), 4)
+        XCTAssertEqual(TranscriptLineStartIndex("").lineCount, 1)
+        XCTAssertEqual(TranscriptLineStartIndex("a\n").lineCount, 2)
+    }
+
+    func testLineStartIndexMatchesNaiveCountForLongTranscript() {
+        let text = (1...2_000).map { "第 \($0) 行 line" }.joined(separator: "\n")
+        let index = TranscriptLineStartIndex(text)
+        XCTAssertEqual(index.lineCount, 2_000)
+        let source = text as NSString
+        for offset in stride(from: 0, through: source.length, by: 997) {
+            let naive = source.substring(to: offset).reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
+            XCTAssertEqual(index.lineNumber(atUTF16Offset: offset), naive)
+        }
+    }
 }
