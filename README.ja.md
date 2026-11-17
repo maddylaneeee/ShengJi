@@ -12,9 +12,11 @@
 
 LocalScribeは、Appleシリコン搭載Mac向けの無料・オープンソースのネイティブ文字起こしアプリです。アカウント登録は不要です。ローカル音声認識、フローティング字幕、字幕の編集と書き出し、オフライン翻訳、長時間タスクの復元、Gemma 4による文章の校正・推敲・要約を、ひとつのSwiftUIアプリにまとめています。認識用の音声は本機に保持します。AI は標準で本機上で動作し、クラウド AI を選択した場合のみ必要な文章を送信します。
 
-現在のリリース：**1.7.1（41）** · [リリースノート（英語）](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.7.1) · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [初回起動ガイド（英語）](INSTALL.md) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
+現在のリリース：**1.7.2（42）** · [リリースノート（英語）](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.7.2) · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [初回起動ガイド（英語）](INSTALL.md) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
+> **1.7.2の修正：長い原稿。** 1,000行を超える原稿も滑らかにスクロールでき、行番号に区切り記号や折り返しが入りません。Apple音声認識のファイル進捗は認識済みの音声に基づきます。書き出しの既定名は、マイクが「開始時刻_Transcription」、ファイルが「元のファイル名_Transcription」です。
+>
 > **1.7.1の新機能：カスタム AI サービス。** 設定 → モデルで LM Studio、OpenAI、DeepSeek を設定できます。有効にすると Gemma のダウンロードと読み込みを禁止します。クラウド接続は正式キーによる検証待ちのプレビューです。
 >
 > **1.7.0で追加：マイクの元音声を保存。** 新しいマイク文字起こしで元の録音を任意に保存し、再生して文字と一緒にM4Aを書き出せます。音質は3段階です。言語変更後のメニュー、AIプロンプト編集画面、文字起こしの書き出し画面もすぐに更新されます。このバージョンでは音声合成を無効にしています。

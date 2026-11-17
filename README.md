@@ -12,10 +12,12 @@
 
 LocalScribe is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Recognition audio stays on the Mac. AI runs locally by default; optional cloud AI sends the text needed for an enhancement task to the selected service.
 
-Current release: **1.7.1 (41)** · [Release notes](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.7.1) · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current release: **1.7.2 (42)** · [Release notes](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.7.2) · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **New in 1.7.1 — custom AI services:** Settings → Models → Use a custom AI service connects to LM Studio, OpenAI, or DeepSeek. Enabling it cancels Gemma downloads and prevents Gemma loading, with no automatic fallback. Cloud connectors are a preview pending production-key validation.
+> **New in 1.7.2 — long transcript fixes:** Transcripts beyond 1,000 lines scroll smoothly with correctly formatted line numbers. Apple Speech file progress follows recognized audio, and exports default to `<start time>_Transcription` for microphone sessions or `<file name>_Transcription` for files.
+>
+> **Added in 1.7.1 — custom AI services:** Settings → Models → Use a custom AI service connects to LM Studio, OpenAI, or DeepSeek. Enabling it cancels Gemma downloads and prevents Gemma loading, with no automatic fallback. Cloud connectors are a preview pending production-key validation.
 >
 > **Added in 1.7.0 — original microphone audio:** Optionally save the original recording for a new microphone transcription, play it back, and export an M4A alongside the transcript. Choose one of three quality profiles. Language changes now update menu titles, the AI prompt editor, and transcript export dialogs without restarting. Speech synthesis is disabled in this release.
 

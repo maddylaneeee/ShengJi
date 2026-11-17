@@ -12,9 +12,11 @@
 
 声迹是一款面向 Apple silicon Mac 的免费、开源原生语音转文字与音视频转录应用，无需注册账号。它把本地识别、悬浮实时字幕、字幕编辑与导出、离线翻译、长任务恢复，以及 Gemma 4 文稿优化整合在一个 SwiftUI 界面中。识别音频留在本机。AI 默认在本机运行；主动选择云端 AI 时，会发送任务需要的文字稿。
 
-当前发布版本：**1.7.1（41）** · [发布说明](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.7.1) · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [首次启动安装指南](INSTALL.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+当前发布版本：**1.7.2（42）** · [发布说明](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.7.2) · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [首次启动安装指南](INSTALL.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
+> **1.7.2 长稿件修复：** 超过 1000 行的稿件滚动流畅，行号不再出现千位分隔符或折行；Apple 引擎处理文件时，进度按已识别的音频计算；导出默认名改为麦克风“开始时间_Transcription”、文件“原文件名_Transcription”。
+>
 > **1.7.1 新增自定义 AI 服务源：** 在设置 → 模型开启“使用自定义ai服务源”，可接入 LM Studio、OpenAI 或 DeepSeek。开启后取消并禁止 Gemma 下载和加载，不自动回退。云端连接器仍为待正式 key 验证的预览功能。
 >
 > **1.7.0 新增原音保存：** 全新麦克风转录可选择保存原始录音，完成后播放，并与文字稿一同导出 M4A。提供三档音质；修复切换语言后菜单标题、AI 提示词编辑弹窗及导出弹窗不立即更新的问题。本版完全禁用语音朗读。
