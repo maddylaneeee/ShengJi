@@ -282,6 +282,35 @@ private enum PDFTranscriptRenderer {
     }
 }
 
+/// Default export file names (without extension).
+/// - Microphone: `yyyy-MM-dd_HH-mm-ss_Transcription`, from the moment transcription started.
+/// - File: `<original file name>_Transcription`.
+enum TranscriptExportNaming {
+    static let suffix = "_Transcription"
+
+    static func microphoneBaseName(startedAt: Date, timeZone: TimeZone = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = timeZone
+        // No colons: export names reject `/`, `:`, `\` and NUL.
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        return formatter.string(from: startedAt) + suffix
+    }
+
+    static func fileBaseName(fileName: String) -> String {
+        let trimmed = fileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let withoutExtension = (trimmed as NSString).deletingPathExtension
+        let stem = sanitized(withoutExtension.isEmpty ? trimmed : withoutExtension)
+        return (stem.isEmpty ? "Transcript" : stem) + suffix
+    }
+
+    private static func sanitized(_ value: String) -> String {
+        let forbidden: Set<Character> = ["/", ":", "\\", "\0"]
+        return String(value.map { forbidden.contains($0) ? "-" : $0 })
+    }
+}
+
 extension TimeInterval {
     var formattedDuration: String {
         let total = max(Int(self.rounded()), 0)

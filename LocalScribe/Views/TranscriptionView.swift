@@ -1907,11 +1907,7 @@ struct TranscriptionView: View {
     }
 
     private var defaultTitle: String {
-        return switch session.source {
-        case .microphone: L10n.text("麦克风转录")
-        case .file(let url): url.deletingPathExtension().lastPathComponent
-        case .recovered(let title): title
-        }
+        session.defaultExportBaseName
     }
 
 

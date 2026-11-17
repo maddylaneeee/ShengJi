@@ -31,6 +31,8 @@ struct RecoverySnapshot: Codable, Identifiable, Sendable {
     var progress: Double
     var createdAt: Date
     var updatedAt: Date
+    /// When transcription started; used for the microphone export file name.
+    var transcriptionStartedAt: Date? = nil
 
     var availableFeaturesSnapshot: RecoverySnapshot {
         guard !SessionAudioFeatures.speechSynthesisEnabled else { return self }

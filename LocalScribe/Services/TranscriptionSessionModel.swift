@@ -200,6 +200,10 @@ final class TranscriptionSessionModel {
     private var recognizedAudioTime: TimeInterval = 0
     /// Fraction of a file source handed to the analyzer (read progress, not recognition).
     private var fileReadProgress: Double = 0
+    /// When the current transcription started; names microphone exports.
+    private(set) var transcriptionStartedAt: Date?
+    /// Original source kind of a recovered session, so its export name follows that source.
+    private var recoveredSourceKind: RecoverySnapshot.SourceKind?
     private var recognitionTimelineOffset: TimeInterval = 0
     private var startedAt: ContinuousClock.Instant?
     private var elapsedBeforeCurrentRun: Duration = .zero
@@ -311,6 +315,8 @@ final class TranscriptionSessionModel {
         self.timelineProvenance = snapshot.timelineProvenance ?? .estimated
         self.recoveryID = snapshot.id
         self.recoveryCreatedAt = snapshot.createdAt
+        self.recoveredSourceKind = snapshot.sourceKind
+        self.transcriptionStartedAt = snapshot.transcriptionStartedAt
         audioLease = SessionAudioLease(recoveryID)
         speechAudio.restore(snapshot.audioAsset ?? SessionAudioStore.load(sessionID: recoveryID))
         prepareRealtimeAudioSourcesIfNeeded()
@@ -519,6 +525,7 @@ final class TranscriptionSessionModel {
 
     func start() async {
         guard phase == .preparing else { return }
+        transcriptionStartedAt = Date()
         speechAudio.player.stop()
         originalAudioEnabled = saveOriginalAudio && canSaveOriginalAudio
         if originalAudioEnabled {
@@ -1974,7 +1981,7 @@ final class TranscriptionSessionModel {
         let sourceKind: RecoverySnapshot.SourceKind = switch source {
         case .microphone: .microphone
         case .file: .file
-        case .recovered: .recovered
+        case .recovered: recoveredSourceKind ?? .recovered
         }
         return RecoverySnapshot(
             id: recoveryID,
@@ -1999,8 +2006,28 @@ final class TranscriptionSessionModel {
             elapsed: elapsed,
             progress: progress,
             createdAt: recoveryCreatedAt,
-            updatedAt: Date()
+            updatedAt: Date(),
+            transcriptionStartedAt: transcriptionStartedAt
         )
+    }
+
+    /// Default export base name; see `TranscriptExportNaming`.
+    var defaultExportBaseName: String {
+        switch source {
+        case .microphone:
+            return TranscriptExportNaming.microphoneBaseName(startedAt: transcriptionStartedAt ?? recoveryCreatedAt)
+        case .file(let url):
+            return TranscriptExportNaming.fileBaseName(fileName: url.lastPathComponent)
+        case .recovered(let title):
+            switch recoveredSourceKind {
+            case .microphone:
+                return TranscriptExportNaming.microphoneBaseName(startedAt: transcriptionStartedAt ?? recoveryCreatedAt)
+            case .file:
+                return TranscriptExportNaming.fileBaseName(fileName: title)
+            case .recovered, nil:
+                return title
+            }
+        }
     }
 
     // MARK: - Apple Speech file progress

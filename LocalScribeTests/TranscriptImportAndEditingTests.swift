@@ -174,6 +174,60 @@ final class TranscriptImportAndEditingTests: XCTestCase {
         }
     }
 
+    func testExportNamingForMicrophoneAndFileSources() throws {
+        let timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = timeZone
+        components.year = 2026; components.month = 11; components.day = 17
+        components.hour = 1; components.minute = 49; components.second = 5
+        let date = try XCTUnwrap(components.date)
+        XCTAssertEqual(
+            TranscriptExportNaming.microphoneBaseName(startedAt: date, timeZone: timeZone),
+            "2026-11-17_01-49-05_Transcription"
+        )
+        XCTAssertEqual(TranscriptExportNaming.fileBaseName(fileName: "Interview.final.m4a"), "Interview.final_Transcription")
+        XCTAssertEqual(TranscriptExportNaming.fileBaseName(fileName: "会议录音.mp4"), "会议录音_Transcription")
+        XCTAssertEqual(TranscriptExportNaming.fileBaseName(fileName: "a:b.wav"), "a-b_Transcription")
+        XCTAssertNoThrow(try CompanionExportCoordinator.baseName(
+            TranscriptExportNaming.microphoneBaseName(startedAt: date, timeZone: timeZone), format: .srt
+        ))
+    }
+
+    @MainActor
+    func testSessionDefaultExportNameFollowsSource() throws {
+        let file = TranscriptionSessionModel(
+            source: .file(URL(fileURLWithPath: "/tmp/Lecture 3.mov")),
+            locale: Locale(identifier: "en_US"),
+            configuration: .init(engine: .apple)
+        )
+        XCTAssertEqual(file.defaultExportBaseName, "Lecture 3_Transcription")
+
+        let microphone = TranscriptionSessionModel(
+            source: .microphone,
+            locale: Locale(identifier: "en_US"),
+            configuration: .init(engine: .apple)
+        )
+        XCTAssertTrue(microphone.defaultExportBaseName.hasSuffix("_Transcription"))
+        XCTAssertNoThrow(try CompanionExportCoordinator.baseName(microphone.defaultExportBaseName, format: .srt))
+
+        let startedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let snapshot = RecoverySnapshot(
+            id: UUID(), sourceTitle: "Recorded.wav", sourceKind: .file, localeIdentifier: "en",
+            configuration: .init(engine: .apple), transcriptText: "Saved", segments: [],
+            hasManualEdits: false, elapsed: 1, progress: 1, createdAt: startedAt, updatedAt: startedAt,
+            transcriptionStartedAt: startedAt
+        )
+        XCTAssertEqual(TranscriptionSessionModel(snapshot: snapshot).defaultExportBaseName, "Recorded_Transcription")
+
+        var microphoneSnapshot = snapshot
+        microphoneSnapshot.sourceKind = .microphone
+        XCTAssertEqual(
+            TranscriptionSessionModel(snapshot: microphoneSnapshot).defaultExportBaseName,
+            TranscriptExportNaming.microphoneBaseName(startedAt: startedAt)
+        )
+    }
+
     func testFileRecognitionProgressStaysBelowCompletion() {
         XCTAssertEqual(FileRecognitionProgress.fraction(recognizedTime: 30, sourceDuration: 120), 0.25)
         XCTAssertEqual(FileRecognitionProgress.fraction(recognizedTime: 120, sourceDuration: 120), 0.99)
