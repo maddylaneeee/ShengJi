@@ -173,4 +173,12 @@ final class TranscriptImportAndEditingTests: XCTestCase {
             XCTAssertEqual(index.lineNumber(atUTF16Offset: offset), naive)
         }
     }
+
+    func testFileRecognitionProgressStaysBelowCompletion() {
+        XCTAssertEqual(FileRecognitionProgress.fraction(recognizedTime: 30, sourceDuration: 120), 0.25)
+        XCTAssertEqual(FileRecognitionProgress.fraction(recognizedTime: 120, sourceDuration: 120), 0.99)
+        XCTAssertEqual(FileRecognitionProgress.fraction(recognizedTime: 500, sourceDuration: 120), 0.99)
+        XCTAssertEqual(FileRecognitionProgress.fraction(recognizedTime: 5, sourceDuration: 0), 0)
+        XCTAssertEqual(FileRecognitionProgress.fraction(recognizedTime: .nan, sourceDuration: 10), 0)
+    }
 }

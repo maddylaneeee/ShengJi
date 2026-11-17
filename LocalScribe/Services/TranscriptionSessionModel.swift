@@ -66,6 +66,14 @@ final class TranscriptionSessionRegistry {
     }
 }
 
+enum FileRecognitionProgress {
+    /// Recognized share of a file, capped at 99% until recognition completes.
+    static func fraction(recognizedTime: TimeInterval, sourceDuration: TimeInterval) -> Double {
+        guard sourceDuration > 0, recognizedTime.isFinite else { return 0 }
+        return min(max(recognizedTime / sourceDuration, 0), 0.99)
+    }
+}
+
 @MainActor
 @Observable
 final class TranscriptionSessionModel {
@@ -188,6 +196,10 @@ final class TranscriptionSessionModel {
     private var temporaryAudioURL: URL?
     private var isUsingSecurityScopedResource = false
     private var sourceDuration: TimeInterval = 0
+    /// End of the latest Apple Speech result for a file source, in source seconds.
+    private var recognizedAudioTime: TimeInterval = 0
+    /// Fraction of a file source handed to the analyzer (read progress, not recognition).
+    private var fileReadProgress: Double = 0
     private var recognitionTimelineOffset: TimeInterval = 0
     private var startedAt: ContinuousClock.Instant?
     private var elapsedBeforeCurrentRun: Duration = .zero
@@ -976,6 +988,9 @@ final class TranscriptionSessionModel {
         let start = max(CMTimeGetSeconds(result.range.start), 0) + recognitionTimelineOffset
         let duration = max(CMTimeGetSeconds(result.range.duration), 0.05)
         let segment = TranscriptSegment(startTime: start, endTime: start + duration, text: rawText)
+        if case .file = source {
+            noteRecognizedFileAudio(through: max(CMTimeGetSeconds(result.range.start), 0) + duration)
+        }
 
         if phase == .paused {
             if result.isFinal { deferredSegments.append(segment) }
@@ -1344,8 +1359,7 @@ final class TranscriptionSessionModel {
                 ) { value in
                     guard value >= 1 || progressLimiter.shouldEmit(every: .milliseconds(125)) else { return }
                     Task { @MainActor in
-                        owner.progress = value
-                        owner.elapsed = owner.sourceDuration * value
+                        owner.noteFileAudioRead(value)
                     }
                 }
                 await owner.finishAutomatically()
@@ -1761,6 +1775,8 @@ final class TranscriptionSessionModel {
         guard phase == .transcribing else { return }
         phase = .finishing
         freezeTimer()
+        fileReadProgress = 1
+        updateFileRecognitionActivityDetail()
         do {
             _ = await analysisTask?.result
             guard phase.failedMessage == nil else { return }
@@ -1985,6 +2001,37 @@ final class TranscriptionSessionModel {
             createdAt: recoveryCreatedAt,
             updatedAt: Date()
         )
+    }
+
+    // MARK: - Apple Speech file progress
+
+    /// Apple Speech reads a file much faster than it recognizes it, so file progress
+    /// follows recognized audio time. It stays below 100% until recognition finishes.
+    private func noteRecognizedFileAudio(through time: TimeInterval) {
+        guard time.isFinite, sourceDuration > 0, phase != .finished, phase.failedMessage == nil else { return }
+        recognizedAudioTime = max(recognizedAudioTime, min(time, sourceDuration))
+        progress = FileRecognitionProgress.fraction(recognizedTime: recognizedAudioTime, sourceDuration: sourceDuration)
+        elapsed = recognizedAudioTime
+        updateFileRecognitionActivityDetail()
+    }
+
+    private func noteFileAudioRead(_ value: Double) {
+        fileReadProgress = min(max(value, 0), 1)
+        updateFileRecognitionActivityDetail()
+    }
+
+    private func updateFileRecognitionActivityDetail() {
+        guard case .file = source, configuration.engine == .apple else { return }
+        let percent = FloatingPointFormatStyle<Double>.Percent().precision(.fractionLength(0))
+        let recognized = progress.formatted(percent)
+        switch phase {
+        case .transcribing, .paused:
+            activityDetail = L10n.format("已读取音频 %@ · 已识别 %@", fileReadProgress.formatted(percent), recognized)
+        case .finishing:
+            activityDetail = L10n.format("音频已读取完毕，正在等待识别完成 · 已识别 %@", recognized)
+        default:
+            break
+        }
     }
 
     private func approximatelyEqual(_ lhs: TranscriptSegment, _ rhs: TranscriptSegment) -> Bool {

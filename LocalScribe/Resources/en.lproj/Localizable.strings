@@ -757,3 +757,7 @@
 "模拟数据 · 不代表账户实际可用模型" = "Simulated data · not your account’s available models";
 
 "正在整理剩余文字…" = "Finishing remaining text…";
+
+"已读取音频 %@ · 已识别 %@" = "Audio read %@ · Recognized %@";
+
+"音频已读取完毕，正在等待识别完成 · 已识别 %@" = "Audio fully read, waiting for recognition to finish · Recognized %@";
