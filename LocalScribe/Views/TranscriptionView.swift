@@ -933,6 +933,21 @@ struct TranscriptionView: View {
                 Button("完成", systemImage: "stop.fill") { Task { await session.stop() } }
             }
 
+            if let status = transportStatusText {
+                // Phases without actions still show what is happening instead of
+                // leaving an empty capsule behind.
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(status)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 4)
+                .accessibilityElement(children: .combine)
+            }
+
             if session.phase == .finished {
                 Button("重新开始", systemImage: "arrow.counterclockwise") {
                     isConfirmingRestart = true
@@ -948,6 +963,14 @@ struct TranscriptionView: View {
         .background(.regularMaterial, in: Capsule())
         .padding(.bottom, 14)
         .shadow(color: .black.opacity(0.08), radius: 14, y: 5)
+    }
+
+    private var transportStatusText: String? {
+        switch session.phase {
+        case .finishing: L10n.text("正在整理剩余文字…")
+        case .loadingModel, .preparingAudio: session.phase.label
+        default: nil
+        }
     }
 
     private var isShowingRealtimeAudioFailure: Bool {

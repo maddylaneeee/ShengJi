@@ -755,3 +755,5 @@
 "获取服务当前可见的模型。OpenAI 和 DeepSeek 需要有效 API key；LM Studio 需启动本机服务。" = "Fetch models visible to this service. OpenAI and DeepSeek require an API key; LM Studio needs its local server running.";
 
 "模拟数据 · 不代表账户实际可用模型" = "Simulated data · not your account’s available models";
+
+"正在整理剩余文字…" = "Finishing remaining text…";
