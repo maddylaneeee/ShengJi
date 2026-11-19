@@ -173,34 +173,40 @@ final class SubtitleBurnTests: XCTestCase {
         XCTAssertLessThan(try opaquePixelCount(plain), try opaquePixelCount(shadowed))
     }
 
-    func testFrameworkLanguageFollowsAppLanguage() {
-        XCTAssertEqual(FrameworkLanguage.languages(appLanguageCode: nil, system: ["zh-Hans-CA", "en-CA"]), ["zh-Hans-CA", "en-CA"])
-        XCTAssertEqual(FrameworkLanguage.languages(appLanguageCode: "ja", system: ["zh-Hans-CA", "en-CA"]), ["ja", "zh-Hans-CA", "en-CA"])
-        XCTAssertEqual(FrameworkLanguage.languages(appLanguageCode: "en", system: ["en", "ja"]), ["en", "ja"])
-    }
-
     // MARK: Long media
 
     func testParsesLongSubtitleFilesQuickly() throws {
         let count = 20_000
         var srt = ""
         var vtt = "WEBVTT\n\n"
+        var sbv = ""
+        var ass = "[Script Info]\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
         srt.reserveCapacity(count * 64)
         for index in 0..<count {
             let start = Double(index) * 0.5
             srt += "\(index + 1)\n\(srtTime(start)) --> \(srtTime(start + 0.45))\n第 \(index + 1) 条字幕 Cue \(index + 1)\n\n"
-            vtt += "\(srtTime(start).replacingOccurrences(of: ",", with: ".")) --> \(srtTime(start + 0.45).replacingOccurrences(of: ",", with: "."))\nLine \(index)\n\n"
+            let dotStart = srtTime(start).replacingOccurrences(of: ",", with: ".")
+            let dotEnd = srtTime(start + 0.45).replacingOccurrences(of: ",", with: ".")
+            vtt += "\(dotStart) --> \(dotEnd)\nLine \(index)\n\n"
+            sbv += "\(dotStart.dropFirst()),\(dotEnd.dropFirst())\nLine \(index)\n\n"
+            ass += "Dialogue: 0,\(dotStart.dropFirst().dropLast()),\(dotEnd.dropFirst().dropLast()),Default,,0,0,0,,{\\b1}Line \(index)\n"
         }
         let clock = ContinuousClock()
         var document: SubtitleDocument?
+        var others: [SubtitleDocument] = []
         let elapsed = try clock.measure {
             document = try SubtitleFileParser.parse(data: Data(srt.utf8), fileName: "long.srt")
-            _ = try SubtitleFileParser.parse(data: Data(vtt.utf8), fileName: "long.vtt")
+            others.append(try SubtitleFileParser.parse(data: Data(vtt.utf8), fileName: "long.vtt"))
+            others.append(try SubtitleFileParser.parse(data: Data(sbv.utf8), fileName: "long.sbv"))
+            others.append(try SubtitleFileParser.parse(data: Data(ass.utf8), fileName: "long.ass"))
         }
         XCTAssertEqual(document?.cues.count, count)
+        XCTAssertEqual(others.map(\.cues.count), [count, count, count])
+        XCTAssertEqual(others.map(\.format), [.webVTT, .sbv, .ass])
         XCTAssertEqual(document?.lastEnd ?? 0, Double(count - 1) * 0.5 + 0.45, accuracy: 0.001)
         XCTAssertTrue(document?.warnings(videoDuration: 3 * 3_600).isEmpty ?? false)
-        XCTAssertLessThan(elapsed, .seconds(10), "Parsing \(count) cues twice took \(elapsed)")
+        print("Parsing \(count) cues in 4 formats took \(elapsed)")
+        XCTAssertLessThan(elapsed, .seconds(10), "Parsing \(count) cues in 4 formats took \(elapsed)")
     }
 
     func testActiveCueLookupStaysFastWithManyCuesAndOneLongCue() {

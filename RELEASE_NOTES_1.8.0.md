@@ -21,5 +21,4 @@
 
 - Apple silicon (`arm64`), macOS 15.5 or later. Apple SpeechAnalyzer and floating live captions require macOS 26.
 - The public package uses an ad-hoc integrity signature. It is not Developer ID signed or notarized by Apple. Follow the installation guide only if you trust this repository and release.
-- The system Colors panel now follows the app's interface language.
 - Recognition, translation, AI enhancement, recovery, and original microphone audio workflows retain their existing behavior. Translation after transcription remains available on the result page.

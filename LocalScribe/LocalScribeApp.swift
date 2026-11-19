@@ -11,7 +11,6 @@ struct LocalScribeApp: App {
 
     init() {
         CLIController.runIfRequested()
-        FrameworkLanguage.apply()
     }
 
     var body: some Scene {
@@ -135,23 +134,4 @@ extension Notification.Name {
     static let chooseTranscriptionFile = Notification.Name("chooseTranscriptionFile")
     static let chooseTranscriptFile = Notification.Name("chooseTranscriptFile")
     static let openSubtitleBurn = Notification.Name("openSubtitleBurn")
-}
-
-/// AppKit's own panels (such as the Colors panel) resolve their language
-/// lazily and can fall back to English when only the persistent
-/// `AppleLanguages` list is available. Mirroring the effective list into the
-/// volatile argument domain makes them follow the app's interface language.
-/// Nothing is persisted.
-enum FrameworkLanguage {
-    static func apply(defaults: UserDefaults = .standard) {
-        var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
-        guard arguments["AppleLanguages"] == nil else { return }
-        arguments["AppleLanguages"] = languages(appLanguageCode: L10n.preferredLanguageCode, system: Locale.preferredLanguages)
-        defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
-    }
-
-    static func languages(appLanguageCode: String?, system: [String]) -> [String] {
-        guard let appLanguageCode else { return system }
-        return [appLanguageCode] + system.filter { $0 != appLanguageCode }
-    }
 }

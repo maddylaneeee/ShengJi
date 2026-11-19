@@ -173,20 +173,23 @@ enum SubtitleFileParser {
             }
             throw SubtitleValidationError.noTimestamps
         }
+        // Trim each line once; large files have tens of thousands of lines.
+        let trimmed = lines.map { $0.trimmingCharacters(in: .whitespaces) }
         var cues: [SubtitleCue] = []
+        cues.reserveCapacity(lines.count / 4)
         var sawTiming = false
         var index = 0
         if isWebVTT {
             // Skip the WEBVTT header block.
-            while index < lines.count, !lines[index].trimmingCharacters(in: .whitespaces).isEmpty { index += 1 }
+            while index < trimmed.count, !trimmed[index].isEmpty { index += 1 }
         }
-        while index < lines.count {
-            while index < lines.count, lines[index].trimmingCharacters(in: .whitespaces).isEmpty { index += 1 }
-            guard index < lines.count else { break }
+        while index < trimmed.count {
+            while index < trimmed.count, trimmed[index].isEmpty { index += 1 }
+            guard index < trimmed.count else { break }
             let blockStart = index
             var block: [(number: Int, text: String)] = []
-            while index < lines.count, !lines[index].trimmingCharacters(in: .whitespaces).isEmpty {
-                block.append((index + 1, lines[index].trimmingCharacters(in: .whitespaces)))
+            while index < trimmed.count, !trimmed[index].isEmpty {
+                block.append((index + 1, trimmed[index]))
                 index += 1
             }
             if isWebVTT, let first = block.first?.text,
@@ -222,20 +225,27 @@ enum SubtitleFileParser {
     }
 
     /// Parses `HH:MM:SS,mmm`, `HH:MM:SS.mmm`, or (WebVTT) `MM:SS.mmm`.
+    /// Hand-written instead of a regular expression: it runs twice per cue.
     static func parseClock(_ raw: String, allowsMissingHours: Bool) -> TimeInterval? {
-        let pattern = allowsMissingHours
-            ? #"^(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{1,3})$"#
-            : #"^(\d+):(\d{1,2}):(\d{2})[.,](\d{1,3})$"#
-        guard let match = raw.firstMatch(of: try! Regex(pattern)) else { return nil }
-        func field(_ index: Int) -> Int? {
-            guard index < match.count, let substring = match[index].substring else { return nil }
-            return Int(substring)
+        let fields = raw.utf8.split(separator: UInt8(ascii: ":"), omittingEmptySubsequences: false)
+        guard fields.count == 3 || (allowsMissingHours && fields.count == 2) else { return nil }
+        let last = fields[fields.count - 1]
+        guard let separator = last.firstIndex(where: { $0 == UInt8(ascii: ".") || $0 == UInt8(ascii: ",") }) else { return nil }
+        let secondsField = last[last.startIndex..<separator]
+        let fractionField = last[last.index(after: separator)...]
+        let hoursField = fields.count == 3 ? fields[0] : nil
+        let minutesField = fields[fields.count - 2]
+
+        var hours = 0
+        if let hoursField {
+            guard let parsed = digits(hoursField, lengths: 1...9) else { return nil }
+            hours = parsed
         }
-        let hours = field(1) ?? 0
-        guard let minutes = field(2), let seconds = field(3),
-              let fractionText = match[4].substring, let fraction = Int(fractionText),
+        guard let minutes = digits(minutesField, lengths: 1...2),
+              let seconds = digits(secondsField, lengths: 2...2),
+              let fraction = digits(fractionField, lengths: 1...3),
               minutes < 60, seconds < 60 else { return nil }
-        let divisor = pow(10, Double(fractionText.count))
+        let divisor = pow(10, Double(fractionField.count))
         return Double(hours) * 3_600 + Double(minutes) * 60 + Double(seconds) + Double(fraction) / divisor
     }
 
@@ -244,14 +254,14 @@ enum SubtitleFileParser {
     private static let sbvTimingPattern = #"^\d+:\d{1,2}:\d{2}\.\d{1,3},\d+:\d{1,2}:\d{2}\.\d{1,3}$"#
 
     private static func parseSBV(_ text: String) throws -> [SubtitleCue] {
-        let lines = text.components(separatedBy: "\n")
+        let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
         var cues: [SubtitleCue] = []
         var sawTiming = false
         var index = 0
         while index < lines.count {
-            while index < lines.count, lines[index].trimmingCharacters(in: .whitespaces).isEmpty { index += 1 }
+            while index < lines.count, lines[index].isEmpty { index += 1 }
             guard index < lines.count else { break }
-            let timingLine = lines[index].trimmingCharacters(in: .whitespaces)
+            let timingLine = lines[index]
             let timingNumber = index + 1
             index += 1
             let parts = timingLine.split(separator: ",", omittingEmptySubsequences: false)
@@ -263,8 +273,8 @@ enum SubtitleFileParser {
             }
             sawTiming = true
             var body: [String] = []
-            while index < lines.count, !lines[index].trimmingCharacters(in: .whitespaces).isEmpty {
-                body.append(stripMarkup(lines[index].trimmingCharacters(in: .whitespaces)))
+            while index < lines.count, !lines[index].isEmpty {
+                body.append(stripMarkup(lines[index]))
                 index += 1
             }
             let joined = body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -289,13 +299,14 @@ enum SubtitleFileParser {
                 continue
             }
             guard inEvents else { continue }
-            if line.lowercased().hasPrefix("format:") {
+            let prefix = line.prefix(9).lowercased()
+            if prefix.hasPrefix("format:") {
                 fields = line.dropFirst("format:".count)
                     .split(separator: ",")
                     .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
                 continue
             }
-            guard line.lowercased().hasPrefix("dialogue:") else { continue }
+            guard prefix == "dialogue:" else { continue }
             sawDialogue = true
             let values = line.dropFirst("dialogue:".count)
                 .split(separator: ",", maxSplits: max(fields.count - 1, 0), omittingEmptySubsequences: false)
@@ -309,8 +320,10 @@ enum SubtitleFileParser {
                   end > start else {
                 throw SubtitleValidationError.invalidTimestamp(line: offset + 1)
             }
-            let body = values[textIndex]
-                .replacingOccurrences(of: #"\{[^}]*\}"#, with: "", options: .regularExpression)
+            let rawText = values[textIndex]
+            let body = (rawText.contains("{")
+                ? rawText.replacingOccurrences(of: #"\{[^}]*\}"#, with: "", options: .regularExpression)
+                : rawText)
                 .replacingOccurrences(of: "\\N", with: "\n")
                 .replacingOccurrences(of: "\\n", with: "\n")
                 .replacingOccurrences(of: "\\h", with: " ")
@@ -323,12 +336,31 @@ enum SubtitleFileParser {
 
     /// ASS uses `H:MM:SS.cc` (centiseconds).
     static func parseASSTime(_ raw: String) -> TimeInterval? {
-        guard let match = raw.firstMatch(of: #/^(\d+):(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?$/#),
-              let hours = Int(match.1), let minutes = Int(match.2), let seconds = Int(match.3),
+        let fields = raw.utf8.split(separator: UInt8(ascii: ":"), omittingEmptySubsequences: false)
+        guard fields.count == 3 else { return nil }
+        let last = fields[2]
+        let separator = last.firstIndex(of: UInt8(ascii: "."))
+        let secondsField = separator.map { last[last.startIndex..<$0] } ?? last[...]
+        let fractionField = separator.map { last[last.index(after: $0)...] }
+        guard let hours = digits(fields[0], lengths: 1...9),
+              let minutes = digits(fields[1], lengths: 1...2),
+              let seconds = digits(secondsField, lengths: 1...2),
               minutes < 60, seconds < 60 else { return nil }
         var value = Double(hours) * 3_600 + Double(minutes) * 60 + Double(seconds)
-        if let fraction = match.4, let number = Int(fraction) {
-            value += Double(number) / pow(10, Double(fraction.count))
+        if let fractionField {
+            guard let number = digits(fractionField, lengths: 1...3) else { return nil }
+            value += Double(number) / pow(10, Double(fractionField.count))
+        }
+        return value
+    }
+
+    /// Parses ASCII digits only (no sign or spaces) with a length limit.
+    private static func digits<S: Collection>(_ bytes: S, lengths: ClosedRange<Int>) -> Int? where S.Element == UInt8 {
+        guard lengths.contains(bytes.count) else { return nil }
+        var value = 0
+        for byte in bytes {
+            guard byte >= UInt8(ascii: "0"), byte <= UInt8(ascii: "9") else { return nil }
+            value = value * 10 + Int(byte - UInt8(ascii: "0"))
         }
         return value
     }
@@ -382,7 +414,9 @@ enum SubtitleFileParser {
     }
 
     static func stripMarkup(_ text: String) -> String {
-        text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        // Most cue lines carry no markup; skip the regular expressions for them.
+        guard text.contains(where: { $0 == "<" || $0 == "{" || $0 == "&" }) else { return text }
+        return text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
             .replacingOccurrences(of: #"\{\\[^}]*\}"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "&lt;", with: "<")
