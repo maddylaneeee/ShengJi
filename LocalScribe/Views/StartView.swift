@@ -9,6 +9,7 @@ struct StartView: View {
     let startMicrophone: () -> Void
     let chooseFile: () -> Void
     let chooseTranscript: () -> Void
+    let openSubtitleBurn: () -> Void
     let restoreRecovery: () -> Void
     let clearRecovery: () -> Void
 
@@ -21,7 +22,7 @@ struct StartView: View {
                     recoveryCard(recoverySnapshot)
                 }
                 enginePanel
-                importAndTranslationRow
+                importAndBurnRow
                 actionGrid
                 liveCaptionCard
                 privacyNote
@@ -276,45 +277,34 @@ struct StartView: View {
             && (preferences.engine != .apple || catalog.isSpeechAvailable)
     }
 
-    private var translationPanel: some View {
+    private var subtitleBurnPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("转录后翻译", systemImage: "translate")
+                    Label("烧录字幕", systemImage: "captions.bubble")
                         .font(.headline)
-                    Text("转录完成后可生成译文，也可选择完全离线的翻译方式。")
+                    Text("把 SRT、VTT、ASS 等带时间戳的字幕烧录进视频画面。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Image(systemName: "apple.logo")
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Apple 默认")
+                Button("烧录…", systemImage: "film.stack") { openSubtitleBurn() }
+                    .buttonStyle(.bordered)
             }
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) {
-                    Label("首次使用某个语言组合时，macOS 可能下载语言资源。", systemImage: "info.circle")
-                    Spacer()
-                    Label("在这台 Mac 上处理", systemImage: "lock.shield")
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("首次使用某个语言组合时，macOS 可能下载语言资源。", systemImage: "info.circle")
-                    Label("在这台 Mac 上处理", systemImage: "lock.shield")
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            Label("默认创建副本；可选择字体与字幕样式。", systemImage: "doc.on.doc")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(18)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private var importAndTranslationRow: some View {
+    private var importAndBurnRow: some View {
         HStack(alignment: .top, spacing: 12) {
             importPanel
-            translationPanel
+            subtitleBurnPanel
         }
     }
 

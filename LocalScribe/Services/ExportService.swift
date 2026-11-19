@@ -116,6 +116,18 @@ enum TranscriptExporter {
         return source.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
+    /// Caption cues for burning, split exactly like SRT/WebVTT export.
+    static func burnCues(
+        text: String,
+        duration: TimeInterval,
+        segments: [TranscriptSegment],
+        manuallyEdited: Bool
+    ) -> [SubtitleCue] {
+        formattedSubtitleCues(text: text, duration: duration, segments: segments, manuallyEdited: manuallyEdited)
+            .filter { $0.startTime.isFinite && $0.endTime > $0.startTime && $0.startTime >= 0 }
+            .map { SubtitleCue(startTime: $0.startTime, endTime: $0.endTime, text: $0.text) }
+    }
+
     private static func formattedSubtitleCues(
         text: String,
         duration: TimeInterval,

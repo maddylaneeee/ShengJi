@@ -63,6 +63,10 @@ source_files = %w[
   Services/GemmaOptimization.swift
   Services/AIPromptPreferences.swift
   Services/LiveCaptionController.swift
+  Services/SubtitleFileParser.swift
+  Services/SubtitleBurnStyle.swift
+  Services/SubtitleRenderer.swift
+  Services/SubtitleBurnService.swift
   Views/RootView.swift
   Views/InterfaceStyles.swift
   Views/StartView.swift
@@ -72,6 +76,8 @@ source_files = %w[
   Views/SettingsView.swift
   Views/AIServiceConfigurationView.swift
   Views/AIPromptEditorView.swift
+  Views/SubtitleBurnView.swift
+  Views/SubtitleBurnControls.swift
 ]
 
 source_files.each do |relative_path|
@@ -96,6 +102,8 @@ test_target.add_dependency(target)
   TranscriptionLifecycleTests.swift
   SessionAudioTests.swift
   SessionAudioIntegrationTests.swift
+  SubtitleFileParserTests.swift
+  SubtitleBurnTests.swift
 ].each do |relative_path|
   reference = tests_group.new_file(relative_path)
   test_target.source_build_phase.add_file_reference(reference)

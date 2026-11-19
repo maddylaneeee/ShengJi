@@ -118,6 +118,9 @@ struct TranscriptionView: View {
             session.updateReduceMotion(reduceMotion)
             syncPendingConfiguration()
             session.speechAudio.refresh()
+#if DEBUG
+            if ProcessInfo.processInfo.environment["LOCALSCRIBE_EXPORT_PREVIEW"] == "burn" { isShowingExport = true }
+#endif
         }
         .onChange(of: reduceMotion) { _, enabled in
             session.updateReduceMotion(enabled)
@@ -1885,6 +1888,7 @@ struct TranscriptionView: View {
         CompanionExportSheet(asset: session.audioAsset, defaultName: defaultTitle,
                              hasTranslation: !session.translatedText.isEmpty,
                              approximateTimeline: session.hasManualEdits || !session.timelineProvenance.isReliable,
+                             burnSource: restartAfterExport ? nil : subtitleBurnSource,
                              warning: { format, translated in
             let text = translated ? session.translatedText : session.transcriptText
             let input = session.speechAudio.input(text: text, translation: translated, segments: session.reliableSpeechSegments(translation: translated))
@@ -1901,6 +1905,23 @@ struct TranscriptionView: View {
             if restartAfterExport { restartAfterExport = false; restart() }
         }, close: { isShowingExport = false; restartAfterExport = false })
     }
+    /// Only offered for a finished transcription of a video file. Burns the text currently on screen.
+    private var subtitleBurnSource: SubtitleBurnSessionSource? {
+        guard session.phase == .finished, case .file(let url) = session.source,
+              SubtitleBurnSessionSource.isVideoFile(url) else { return nil }
+        let translated = isShowingTranslation && !session.translatedText.isEmpty
+        let approximate = translated
+            ? session.reliableSpeechSegments(translation: true).isEmpty
+            : session.hasManualEdits || !session.timelineProvenance.isReliable
+        let cues = TranscriptExporter.burnCues(
+            text: translated ? session.translatedText : session.transcriptText,
+            duration: session.elapsed,
+            segments: translated ? session.translatedSegments : session.segments,
+            manuallyEdited: approximate
+        )
+        return SubtitleBurnSessionSource(videoURL: url, cues: cues, isTranslation: translated, approximateTimeline: approximate)
+    }
+
     private func prepareRestartExport() {
         restartAfterExport = true
         isShowingExport = true
