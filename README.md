@@ -12,10 +12,12 @@
 
 LocalScribe is a free, open-source native speech-to-text and audio/video transcription app for Apple silicon Macs, with no account required. It combines local recognition, floating live captions, subtitle editing and export, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement behind one SwiftUI interface. Recognition audio stays on the Mac. AI runs locally by default; optional cloud AI sends the text needed for an enhancement task to the selected service.
 
-Current release: **1.7.2 (42)** · [Release notes](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.7.2) · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current release: **1.8.0 (43)** · [Release notes](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.8.0) · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **New in 1.7.2 — long transcript fixes:** Transcripts beyond 1,000 lines scroll smoothly with correctly formatted line numbers. Apple Speech file progress follows recognized audio, and exports default to `<start time>_Transcription` for microphone sessions or `<file name>_Transcription` for files.
+> **New in 1.8.0 — burn subtitles into video:** The home screen’s **Burn Subtitles** card (File → Burn Subtitles…) burns SRT, WebVTT, LocalScribe JSON, ASS/SSA, SBV, or TTML/DFXP subtitles into a video. When a video transcription finishes, **Burn into Video** next to Export opens the same page with the transcript or translation currently shown. A copy is created by default; the font and subtitle style are remembered.
+>
+> **Added in 1.7.2 — long transcript fixes:** Transcripts beyond 1,000 lines scroll smoothly with correctly formatted line numbers. Apple Speech file progress follows recognized audio, and exports default to `<start time>_Transcription` for microphone sessions or `<file name>_Transcription` for files.
 >
 > **Added in 1.7.1 — custom AI services:** Settings → Models → Use a custom AI service connects to LM Studio, OpenAI, or DeepSeek. Enabling it cancels Gemma downloads and prevents Gemma loading, with no automatic fallback. Cloud connectors are a preview pending production-key validation.
 >
@@ -118,6 +120,16 @@ For supported third-party engines, the right inspector includes an Advanced sect
 
 Numeric options support both direct keyboard entry and sliders or steppers, with range validation and short hover explanations. The app remembers the last engine, model, and advanced configuration for the next task; Restore Model Defaults resets only the selected engine.
 
+## Burn subtitles into video (1.8.0)
+
+Open **Burn Subtitles** on the home screen, or choose **File → Burn Subtitles…** (⇧⌘B). Choose a video (MP4, MOV, M4V, or another format macOS can play) and a subtitle file, or drag each file onto its row. Supported subtitle formats: SRT, WebVTT, LocalScribe JSON with segments, ASS/SSA, SBV, and TTML/DFXP. LocalScribe checks the file before burning: files without timestamps, with a malformed or reversed timestamp (the line number is shown), or in any other format are marked unsupported. ASS styling and TTML regions are ignored; text is rendered with LocalScribe’s own style.
+
+After a video transcription finishes, click **Burn into Video** next to **Export Transcript**. The burn page opens with the source video and the text currently shown—original or translation—already filled in and locked, and labels which one is used. If the transcript was edited, the timeline is approximate and a warning is shown. **Back to Preview** in the toolbar returns to the result page to keep editing.
+
+- **Output:** Create Copy (default, with a save dialog) or Burn into Original (asks for confirmation and replaces the original only after the new file is rendered and verified). This choice is never remembered.
+- **Subtitle Style** is always visible next to a large live preview: any installed font, size, top or bottom position with margin, an optional background, and a soft shadow that can be turned off or adjusted in color and width. The style is remembered and can be reset to defaults.
+- Rendering runs on this Mac with AVFoundation and keeps the source resolution and orientation. Burned subtitles require re-encoding; HEVC sources stay HEVC, other sources are written as H.264.
+
 ## Custom AI services (1.7.1)
 
 Open **Settings → Models → Use a custom AI service**, then configure LM Studio, OpenAI, or DeepSeek. LM Studio accepts only this Mac’s loopback address (default `http://127.0.0.1:1234/v1`); start its server and prepare a text model yourself. Cloud API addresses are fixed to their official services. Fetch a model list or enter a model ID, and optionally run a synthetic connection test. Requests are constructed by the app; no JSON template is needed. See the [setup and validation guide](Documentation/AI-SERVICES.md).
@@ -136,10 +148,11 @@ OpenAI and DeepSeek connectors are **preview features**: local request/response 
 - Adaptive progressive text display for file and microphone transcription.
 - Editable transcripts with search, replacement, selection deletion, and range trimming.
 - SRT, WebVTT, TXT, Markdown, and LocalScribe JSON import.
+- Burn SRT, WebVTT, LocalScribe JSON, ASS/SSA, SBV, or TTML/DFXP subtitles into video with a custom font and style.
 - TXT, Markdown, JSON, PDF, SRT, WebVTT, and clipboard export.
 - Apple Translation by default, with optional local NLLB INT8 translation.
 - Append-only session journals and recovery snapshots for long-running work.
-- A command-line interface for models, transcription, export, and translation.
+- A command-line interface for models, transcription, export, translation, and subtitle burning.
 
 ## Requirements and current limitations
 
@@ -195,6 +208,8 @@ LocalScribe.app/Contents/MacOS/LocalScribe --cli help
 LocalScribe.app/Contents/MacOS/LocalScribe --cli models --json
 LocalScribe.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
   --engine whisper --language en_US --format srt --output output.srt
+LocalScribe.app/Contents/MacOS/LocalScribe --cli burn \
+  --video input.mp4 --subtitles input.srt --output input-subtitled.mp4
 ```
 
 ## Privacy and updates

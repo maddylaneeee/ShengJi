@@ -12,14 +12,26 @@
 
 声迹是一款面向 Apple silicon Mac 的免费、开源原生语音转文字与音视频转录应用，无需注册账号。它把本地识别、悬浮实时字幕、字幕编辑与导出、离线翻译、长任务恢复，以及 Gemma 4 文稿优化整合在一个 SwiftUI 界面中。识别音频留在本机。AI 默认在本机运行；主动选择云端 AI 时，会发送任务需要的文字稿。
 
-当前发布版本：**1.7.2（42）** · [发布说明](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.7.2) · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [首次启动安装指南](INSTALL.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+当前发布版本：**1.8.0（43）** · [发布说明](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.8.0) · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [首次启动安装指南](INSTALL.zh-CN.md) · [使用文档](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
+> **1.8.0 新增字幕烧录：** 首页“烧录字幕”卡片（文件 → 烧录字幕…）可把 SRT、WebVTT、声迹 JSON、ASS/SSA、SBV 或 TTML/DFXP 字幕烧录进视频。视频转录完成后，点结果页底部“导出转录”旁的“烧录到视频”，会带着当前显示的原文或译文进入烧录页。默认创建副本；字体与字幕样式会被记住。
+>
 > **1.7.2 长稿件修复：** 超过 1000 行的稿件滚动流畅，行号不再出现千位分隔符或折行；Apple 引擎处理文件时，进度按已识别的音频计算；导出默认名改为麦克风“开始时间_Transcription”、文件“原文件名_Transcription”。
 >
 > **1.7.1 新增自定义 AI 服务源：** 在设置 → 模型开启“使用自定义ai服务源”，可接入 LM Studio、OpenAI 或 DeepSeek。开启后取消并禁止 Gemma 下载和加载，不自动回退。云端连接器仍为待正式 key 验证的预览功能。
 >
 > **1.7.0 新增原音保存：** 全新麦克风转录可选择保存原始录音，完成后播放，并与文字稿一同导出 M4A。提供三档音质；修复切换语言后菜单标题、AI 提示词编辑弹窗及导出弹窗不立即更新的问题。本版完全禁用语音朗读。
+
+## 字幕烧录到视频（1.8.0）
+
+在首页点击“烧录字幕”，或选择“文件 → 烧录字幕…”（⇧⌘B）。分别选择视频（MP4、MOV、M4V 等 macOS 可以播放的格式）和字幕文件，也可以把文件直接拖到对应的那一行。支持的字幕格式：SRT、WebVTT、带片段的声迹 JSON、ASS/SSA、SBV、TTML/DFXP。烧录前会先检测：没有时间戳、时间戳格式错误或前后颠倒（显示行号），以及其他格式，都会标为不支持。ASS 样式和 TTML 区域会被忽略，文字统一按声迹的样式渲染。
+
+视频转录完成后，点结果页底部“导出转录”旁的“烧录到视频”。烧录页会自动带入源视频和当前显示的文字（原文或译文）并锁定，同时标明是哪一种；稿件经过编辑时，时间轴是近似值，会显示警告。点工具栏右上角“回退到预览页面”可回到结果页继续修改。
+
+- **输出方式：** 创建副本（默认，弹出保存面板）或直接烧录到原视频（需要二次确认，新文件渲染并校验成功后才替换原文件）。这个选择不会被记住。
+- **字幕样式**常驻显示在大预览旁：可选本机任意字体、字号、顶部或底部位置与边距、可选背景，以及可开关、颜色和宽度可调的柔和阴影。样式会被记住，也可以恢复默认。
+- 渲染在这台 Mac 上用 AVFoundation 完成，保留原分辨率和方向。硬字幕需要重新编码：HEVC 视频仍输出 HEVC，其余输出 H.264。
 
 ## 自定义 AI 服务源（1.7.1）
 
@@ -192,6 +204,8 @@ LocalScribe.app/Contents/MacOS/LocalScribe --cli help
 LocalScribe.app/Contents/MacOS/LocalScribe --cli models --json
 LocalScribe.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
   --engine whisper --language zh_CN --format srt --output output.srt
+LocalScribe.app/Contents/MacOS/LocalScribe --cli burn \
+  --video input.mp4 --subtitles input.srt --output input-subtitled.mp4
 ```
 
 ## 文档与反馈

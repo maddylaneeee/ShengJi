@@ -12,9 +12,11 @@
 
 LocalScribeは、Appleシリコン搭載Mac向けの無料・オープンソースのネイティブ文字起こしアプリです。アカウント登録は不要です。ローカル音声認識、フローティング字幕、字幕の編集と書き出し、オフライン翻訳、長時間タスクの復元、Gemma 4による文章の校正・推敲・要約を、ひとつのSwiftUIアプリにまとめています。認識用の音声は本機に保持します。AI は標準で本機上で動作し、クラウド AI を選択した場合のみ必要な文章を送信します。
 
-現在のリリース：**1.7.2（42）** · [リリースノート（英語）](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.7.2) · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [初回起動ガイド（英語）](INSTALL.md) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
+現在のリリース：**1.8.0（43）** · [リリースノート（英語）](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.8.0) · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [初回起動ガイド（英語）](INSTALL.md) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
+> **1.8.0の新機能：字幕の焼き込み。** ホーム画面の「字幕の焼き込み」（ファイル → 字幕を焼き込む…）で、SRT、WebVTT、LocalScribe JSON、ASS/SSA、SBV、TTML/DFXP の字幕を動画に焼き込めます。動画の文字起こし完了後は、結果画面下部の「文字起こしを書き出す」の隣にある「動画に焼き込む」から、表示中の原文または訳文を焼き込めます。既定ではコピーを作成し、フォントと字幕スタイルは記憶されます。
+>
 > **1.7.2の修正：長い原稿。** 1,000行を超える原稿も滑らかにスクロールでき、行番号に区切り記号や折り返しが入りません。Apple音声認識のファイル進捗は認識済みの音声に基づきます。書き出しの既定名は、マイクが「開始時刻_Transcription」、ファイルが「元のファイル名_Transcription」です。
 >
 > **1.7.1の新機能：カスタム AI サービス。** 設定 → モデルで LM Studio、OpenAI、DeepSeek を設定できます。有効にすると Gemma のダウンロードと読み込みを禁止します。クラウド接続は正式キーによる検証待ちのプレビューです。
@@ -83,7 +85,8 @@ Gemmaは原意を保ちながら、つなぎ言葉、繰り返し、明らかな
 - **編集して書き出し。** 検索、置換、選択範囲の削除、範囲指定での切り詰め、翻訳ができます。TXT、Markdown、JSON、PDF、SRT、WebVTTとクリップボードへの書き出しに対応します。
 - **既存の原稿を活用。** SRT、WebVTT、TXT、Markdown、LocalScribe JSONを読み込み、編集したり、末尾にマイクの文字起こしを追加したりできます。
 - **ローカルAIで文章を整理。** Gemma 4で校正・推敲・要約を行い、用語や文体、重点、形式を指示できます。
-- **CLI。** モデル管理、文字起こし、書き出し、翻訳をコマンドラインから実行できます。
+- **字幕の焼き込み。** SRT、WebVTT、LocalScribe JSON、ASS/SSA、SBV、TTML/DFXP の字幕を、フォントやスタイルを指定して動画に焼き込めます。タイムスタンプがない、または不正なファイルは非対応として表示されます。元の動画の上書きは確認後にのみ行います。
+- **CLI。** モデル管理、文字起こし、書き出し、翻訳、字幕の焼き込みをコマンドラインから実行できます。
 
 ## 原稿の編集と翻訳
 
@@ -176,6 +179,8 @@ LocalScribe.app/Contents/MacOS/LocalScribe --cli help
 LocalScribe.app/Contents/MacOS/LocalScribe --cli models --json
 LocalScribe.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
   --engine whisper --language ja_JP --format srt --output output.srt
+LocalScribe.app/Contents/MacOS/LocalScribe --cli burn \
+  --video input.mp4 --subtitles input.srt --output input-subtitled.mp4
 ```
 
 ## プライバシーとアップデート

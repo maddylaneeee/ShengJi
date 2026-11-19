@@ -43,6 +43,8 @@ enum CLIController {
                 try await transcribe(rest)
             case "translate":
                 try await translate(rest)
+            case "burn":
+                try await burnSubtitles(rest)
             default:
                 throw CLIError.badArguments(L10n.format("未知命令：%@", command))
             }
@@ -394,6 +396,35 @@ enum CLIController {
         }
     }
 
+    private static func burnSubtitles(_ arguments: [String]) async throws {
+        let savedStyle = await MainActor.run { SubtitleBurnPreferences.shared.effectiveStyle }
+        let options = try SubtitleBurnCLIOptions.parse(arguments, baseStyle: savedStyle)
+        let document = try SubtitleFileParser.load(url: options.subtitlesURL)
+        let info = try await SubtitleBurner.inspect(videoURL: options.videoURL)
+        for warning in document.warnings(videoDuration: info.duration) {
+            fputs(L10n.format("警告：%@\n", warning.message), stderr)
+        }
+        let output: SubtitleBurnOutput
+        if options.inPlace {
+            output = .replaceOriginal
+        } else {
+            let destination = options.outputURL
+                ?? info.url.deletingLastPathComponent().appendingPathComponent(info.suggestedCopyName)
+            if destination.standardizedFileURL == info.url.standardizedFileURL {
+                throw CLIError.badArguments(L10n.text("输出路径与原视频相同；如需覆盖原视频请使用 --in-place。"))
+            }
+            if FileManager.default.fileExists(atPath: destination.path), !options.overwrite {
+                throw CLIError.badArguments(L10n.format("输出文件已存在：%@（使用 --overwrite 覆盖）", destination.path))
+            }
+            output = .copy(destination)
+        }
+        let printer = CLIBurnProgressPrinter()
+        let result = try await SubtitleBurner.burn(info: info, cues: document.cues, style: options.style, output: output) { progress in
+            printer.print(progress: progress)
+        }
+        print(L10n.format("已烧录：%@", result.path))
+    }
+
     private static func parseOptions(_ arguments: [String]) -> [String: String] {
         var output: [String: String] = [:]
         var index = 0
@@ -445,7 +476,116 @@ private final class CLIProgressPrinter: @unchecked Sendable {
     }
 }
 
-private enum CLIError: LocalizedError {
+private final class CLIBurnProgressPrinter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lastBucket = -1
+
+    func print(progress: Double) {
+        lock.withLock {
+            let bucket = Int(progress * 100) / 5
+            guard bucket != lastBucket else { return }
+            lastBucket = bucket
+            fputs(L10n.format("烧录：%lld%%\n", Int64(progress * 100)), stderr)
+        }
+    }
+}
+
+/// Arguments for `LocalScribe --cli burn`. Style flags override the style saved in the app
+/// for this run only; they are never written back.
+struct SubtitleBurnCLIOptions: Equatable {
+    var videoURL: URL
+    var subtitlesURL: URL
+    var outputURL: URL?
+    var inPlace = false
+    var overwrite = false
+    var style: SubtitleBurnStyle
+
+    static func parse(_ arguments: [String], baseStyle: SubtitleBurnStyle) throws -> SubtitleBurnCLIOptions {
+        var values: [String: String] = [:]
+        var flags = Set<String>()
+        let valueKeys: Set<String> = ["video", "subtitles", "output", "font", "size", "position", "margin",
+                                      "background", "shadow", "shadow-color", "shadow-width"]
+        var index = 0
+        while index < arguments.count {
+            let argument = arguments[index]
+            guard argument.hasPrefix("--") else {
+                throw CLIError.badArguments(L10n.format("无法识别的参数：%@", argument))
+            }
+            let key = String(argument.dropFirst(2))
+            if key == "in-place" || key == "overwrite" {
+                flags.insert(key)
+                index += 1
+            } else if valueKeys.contains(key) {
+                guard index + 1 < arguments.count, !arguments[index + 1].hasPrefix("--") else {
+                    throw CLIError.badArguments(L10n.format("参数 --%@ 缺少值。", key))
+                }
+                values[key] = arguments[index + 1]
+                index += 2
+            } else {
+                throw CLIError.badArguments(L10n.format("无法识别的参数：%@", argument))
+            }
+        }
+        guard let video = values["video"], let subtitles = values["subtitles"] else {
+            throw CLIError.badArguments(L10n.text("请同时提供 --video 与 --subtitles。"))
+        }
+        if flags.contains("in-place"), values["output"] != nil {
+            throw CLIError.badArguments(L10n.text("--output 与 --in-place 不能同时使用。"))
+        }
+
+        func number(_ key: String, in range: ClosedRange<Double>) throws -> Double? {
+            guard let raw = values[key] else { return nil }
+            guard let value = Double(raw), value.isFinite, range.contains(value) else {
+                throw CLIError.badArguments(L10n.format("参数 --%@ 的值无效：%@", key, raw))
+            }
+            return value
+        }
+
+        var style = baseStyle
+        if let font = values["font"] {
+            guard SubtitleFontCatalog.isInstalled(font) else {
+                throw CLIError.badArguments(L10n.format("找不到字体：%@", font))
+            }
+            style.fontFamily = font
+        }
+        if let size = try number("size", in: SubtitleBurnStyle.fontSizeRange) { style.fontSizePercent = size }
+        if let margin = try number("margin", in: SubtitleBurnStyle.marginRange) { style.marginPercent = margin }
+        if let position = values["position"] {
+            guard let parsed = SubtitleBurnPosition(rawValue: position.lowercased()) else {
+                throw CLIError.badArguments(L10n.format("参数 --%@ 的值无效：%@", "position", position))
+            }
+            style.position = parsed
+        }
+        if let background = try number("background", in: 0...80) {
+            style.backgroundEnabled = background > 0
+            if background > 0 { style.backgroundOpacity = background / 100 }
+        }
+        if let raw = values["shadow"] {
+            switch raw.lowercased() {
+            case "on": style.shadowEnabled = true
+            case "off": style.shadowEnabled = false
+            default: throw CLIError.badArguments(L10n.format("参数 --%@ 的值无效：%@", "shadow", raw))
+            }
+        }
+        if let raw = values["shadow-color"] {
+            guard let color = SubtitleBurnColor(hex: raw) else {
+                throw CLIError.badArguments(L10n.format("参数 --%@ 的值无效：%@", "shadow-color", raw))
+            }
+            style.shadowColor = color
+        }
+        if let width = try number("shadow-width", in: SubtitleBurnStyle.shadowWidthRange) { style.shadowWidth = width }
+
+        return SubtitleBurnCLIOptions(
+            videoURL: URL(fileURLWithPath: (video as NSString).expandingTildeInPath),
+            subtitlesURL: URL(fileURLWithPath: (subtitles as NSString).expandingTildeInPath),
+            outputURL: values["output"].map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) },
+            inPlace: flags.contains("in-place"),
+            overwrite: flags.contains("overwrite"),
+            style: style.clamped()
+        )
+    }
+}
+
+enum CLIError: LocalizedError, Equatable {
     case badArguments(String)
 
     var errorDescription: String? {

@@ -116,6 +116,10 @@ private struct LocalizedAppCommands: Commands {
                 NotificationCenter.default.post(name: .chooseTranscriptFile, object: nil)
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
+            Button(L10n.text("烧录字幕…", languageCode: language.languageCode)) {
+                NotificationCenter.default.post(name: .openSubtitleBurn, object: nil)
+            }
+            .keyboardShortcut("b", modifiers: [.command, .shift])
         }
         CommandGroup(after: .appSettings) {
             Button(L10n.text("检查更新…", languageCode: language.languageCode)) {
@@ -129,4 +133,5 @@ extension Notification.Name {
     static let startMicrophoneTranscription = Notification.Name("startMicrophoneTranscription")
     static let chooseTranscriptionFile = Notification.Name("chooseTranscriptionFile")
     static let chooseTranscriptFile = Notification.Name("chooseTranscriptFile")
+    static let openSubtitleBurn = Notification.Name("openSubtitleBurn")
 }

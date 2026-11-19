@@ -17,6 +17,7 @@ struct RootView: View {
     @State private var recoverySnapshot: RecoverySnapshot?
     @State private var isShowingPreparedUpdate = false
     @State private var updateInstallError: String?
+    @State private var isShowingSubtitleBurn = false
 
     var body: some View {
         NavigationStack {
@@ -28,6 +29,7 @@ struct RootView: View {
                 startMicrophone: startMicrophone,
                 chooseFile: { showFileImporter(.transcriptionMedia) },
                 chooseTranscript: { showFileImporter(.transcript) },
+                openSubtitleBurn: { isShowingSubtitleBurn = true },
                 restoreRecovery: restoreRecovery,
                 clearRecovery: clearRecovery
             )
@@ -48,6 +50,9 @@ struct RootView: View {
                     )
                 }
             }
+            .navigationDestination(isPresented: $isShowingSubtitleBurn) {
+                SubtitleBurnView(close: { isShowingSubtitleBurn = false })
+            }
 
         }
         .toolbarBackground(
@@ -62,9 +67,13 @@ struct RootView: View {
             if ProcessInfo.processInfo.environment["LOCALSCRIBE_LIVE_CAPTION_PREVIEW"] == "1" {
                 liveCaptions.showDesignPreview()
             }
+            if ProcessInfo.processInfo.environment["LOCALSCRIBE_SUBTITLE_BURN_PREVIEW"] == "1" {
+                isShowingSubtitleBurn = true
+            }
             if ProcessInfo.processInfo.environment["LOCALSCRIBE_RESULT_PREVIEW"] == "1" {
+                let previewVideo = ProcessInfo.processInfo.environment["LOCALSCRIBE_RESULT_PREVIEW_VIDEO"]
                 let preview = TranscriptionSessionModel(
-                    source: .recovered("LocalScribe sample"),
+                    source: previewVideo.map { .file(URL(fileURLWithPath: $0)) } ?? .recovered("LocalScribe sample"),
                     locale: Locale(identifier: "en_US"),
                     configuration: RecognitionConfiguration(engine: .apple)
                 )
@@ -148,6 +157,10 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .chooseTranscriptFile)) { _ in
             guard session == nil else { return }
             showFileImporter(.transcript)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openSubtitleBurn)) { _ in
+            guard session == nil else { return }
+            isShowingSubtitleBurn = true
         }
     }
 
