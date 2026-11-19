@@ -15,39 +15,14 @@ enum SubtitleBurnOutputMode: String, CaseIterable, Identifiable {
     }
 }
 
-/// Output mode, style, preview, and progress for one burn. Shared by the
-/// standalone page and the export sheet. The output mode always starts at
-/// "copy" and is never persisted.
-struct SubtitleBurnPanel: View {
+/// Copy vs. replace original. The mode always starts at "copy" and is never persisted.
+struct SubtitleBurnOutputPicker: View {
+    @Binding var outputMode: SubtitleBurnOutputMode
     let videoInfo: SubtitleBurnVideoInfo?
-    let cues: [SubtitleCue]
-    var blockedReason: String?
-    @Bindable var job: SubtitleBurnJob
-    var previewMaxHeight: CGFloat = 260
-    @Bindable var preferences: SubtitleBurnPreferences = .shared
-    @State private var outputMode: SubtitleBurnOutputMode = .copy
-    @State private var isConfirmingReplace = false
+    var isDisabled = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            outputPicker
-            SubtitleStyleDisclosure(preferences: preferences, videoInfo: videoInfo, cues: cues, previewMaxHeight: previewMaxHeight)
-            Divider()
-            actionRow
-        }
-        .alert("直接烧录到原视频？", isPresented: $isConfirmingReplace) {
-            Button("取消", role: .cancel) {}
-            Button("烧录并替换原视频", role: .destructive) { startBurn(.replaceOriginal) }
-        } message: {
-            Text("烧录成功后会用新视频替换原文件，原视频无法恢复。")
-        }
-    }
-
-    private var outputPicker: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("输出方式")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
             Picker("输出方式", selection: $outputMode) {
                 ForEach(SubtitleBurnOutputMode.allCases) { mode in
                     Text(mode.title).tag(mode)
@@ -55,8 +30,7 @@ struct SubtitleBurnPanel: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .fixedSize()
-            .disabled(job.isRunning)
+            .disabled(isDisabled)
             if outputMode == .replaceOriginal, let videoInfo, !videoInfo.canReplaceOriginal {
                 Label("这个视频的格式无法原样写回，请选择“创建副本”。", systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
@@ -65,20 +39,45 @@ struct SubtitleBurnPanel: View {
                 Label("会覆盖原视频，且无法恢复。", systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            } else {
+                Text("烧录完成后另存为新视频，原视频保持不变。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
+}
+
+/// Start button, progress, result, and the save/confirm flow for one burn.
+struct SubtitleBurnActionBar: View {
+    let videoInfo: SubtitleBurnVideoInfo?
+    let cues: [SubtitleCue]
+    var blockedReason: String?
+    @Bindable var job: SubtitleBurnJob
+    let outputMode: SubtitleBurnOutputMode
+    @Bindable var preferences: SubtitleBurnPreferences = .shared
+    @State private var isConfirmingReplace = false
+
+    var body: some View {
+        content
+            .frame(minHeight: 32)
+            .alert("直接烧录到原视频？", isPresented: $isConfirmingReplace) {
+                Button("取消", role: .cancel) {}
+                Button("烧录并替换原视频", role: .destructive) { startBurn(.replaceOriginal) }
+            } message: {
+                Text("烧录成功后会用新视频替换原文件，原视频无法恢复。")
+            }
+    }
 
     @ViewBuilder
-    private var actionRow: some View {
+    private var content: some View {
         switch job.state {
         case .running(let progress):
             HStack(spacing: 10) {
                 ProgressView(value: progress)
-                    .frame(maxWidth: 260)
                 Text(L10n.format("正在烧录 %lld%%", Int64((progress * 100).rounded())))
                     .font(.callout.monospacedDigit())
-                Spacer()
+                    .fixedSize()
                 Button("取消") { job.cancel() }
             }
         default:
@@ -87,6 +86,7 @@ struct SubtitleBurnPanel: View {
                 Spacer(minLength: 8)
                 Button("开始烧录", systemImage: "captions.bubble") { begin() }
                     .primaryActionStyle()
+                    .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canStart)
             }
@@ -110,6 +110,7 @@ struct SubtitleBurnPanel: View {
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
                 .font(.callout)
+                .lineLimit(3)
                 .textSelection(.enabled)
         case .cancelled:
             Label("已取消，原视频未被修改。", systemImage: "xmark.circle")
@@ -157,115 +158,153 @@ struct SubtitleBurnPanel: View {
     }
 }
 
-/// Collapsed-by-default style section with a live preview frame.
-struct SubtitleStyleDisclosure: View {
+/// Always-visible style controls (font, size, position, background, shadow).
+struct SubtitleStyleControls: View {
     @Bindable var preferences: SubtitleBurnPreferences
-    let videoInfo: SubtitleBurnVideoInfo?
-    let cues: [SubtitleCue]
-    var previewMaxHeight: CGFloat = 260
-    @State private var isExpanded = false
+    var isDisabled = false
     @State private var families: [String] = []
 
-    var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 12) {
-                controls
-                SubtitlePreviewFrame(videoInfo: videoInfo, cues: cues, style: preferences.effectiveStyle, maxHeight: previewMaxHeight)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 10)
-        } label: {
-            Label("字幕样式", systemImage: "paintpalette")
-                .font(.headline)
-        }
-        .onChange(of: isExpanded) { _, expanded in
-            if expanded, families.isEmpty { families = SubtitleFontCatalog.families() }
-        }
-#if DEBUG
-        .onAppear {
-            if ProcessInfo.processInfo.environment["LOCALSCRIBE_BURN_STYLE_EXPANDED"] == "1" { isExpanded = true }
-        }
-#endif
-    }
+    static let shadowPresets: [(name: String, color: SubtitleBurnColor)] = [
+        ("黑色", .black),
+        ("深灰", SubtitleBurnColor(red: 0.2, green: 0.2, blue: 0.2)),
+        ("深蓝", SubtitleBurnColor(red: 0.05, green: 0.12, blue: 0.35)),
+        ("深红", SubtitleBurnColor(red: 0.4, green: 0.04, blue: 0.04)),
+        ("白色", SubtitleBurnColor(red: 1, green: 1, blue: 1)),
+    ]
 
-    private var controls: some View {
-        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 10) {
-            GridRow {
-                Text("字体").gridColumnAlignment(.trailing)
-                Picker("字体", selection: Binding(
-                    get: { preferences.effectiveStyle.fontFamily ?? "" },
-                    set: { preferences.style.fontFamily = $0.isEmpty ? nil : $0 }
-                )) {
-                    Text("系统字体").tag("")
-                    Divider()
-                    ForEach(families, id: \.self) { family in
-                        Text(family).tag(family)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("字幕样式", systemImage: "paintpalette")
+                    .font(.headline)
+                Spacer()
+                Button("恢复默认", systemImage: "arrow.counterclockwise") { preferences.resetToDefault() }
+                    .controlSize(.small)
+                    .disabled(preferences.style == .default || isDisabled)
+            }
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 9) {
+                GridRow(alignment: .center) {
+                    rowLabel("字体")
+                    Picker("字体", selection: Binding(
+                        get: { preferences.effectiveStyle.fontFamily ?? "" },
+                        set: { preferences.style.fontFamily = $0.isEmpty ? nil : $0 }
+                    )) {
+                        Text("系统字体").tag("")
+                        Divider()
+                        ForEach(families, id: \.self) { family in
+                            Text(family).tag(family)
+                        }
                     }
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .labelsHidden()
-                .frame(maxWidth: 280, alignment: .leading)
-            }
-            GridRow {
-                Text("字号")
-                sliderRow(value: $preferences.style.fontSizePercent, range: SubtitleBurnStyle.fontSizeRange, step: 0.5,
-                          label: "\(preferences.style.fontSizePercent.formatted(.number.precision(.fractionLength(1))))%",
-                          accessibility: "字号")
-            }
-            GridRow {
-                Text("位置")
-                HStack(spacing: 12) {
+                GridRow(alignment: .center) {
+                    rowLabel("字号")
+                    slider($preferences.style.fontSizePercent, SubtitleBurnStyle.fontSizeRange, step: 0.5,
+                           value: "\(preferences.style.fontSizePercent.formatted(.number.precision(.fractionLength(1))))%",
+                           accessibility: "字号")
+                }
+                GridRow(alignment: .center) {
+                    rowLabel("位置")
                     Picker("位置", selection: $preferences.style.position) {
                         ForEach(SubtitleBurnPosition.allCases) { Text($0.title).tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .fixedSize()
-                    Text("边距")
-                    sliderRow(value: $preferences.style.marginPercent, range: SubtitleBurnStyle.marginRange, step: 1,
-                              label: "\(Int(preferences.style.marginPercent))%", accessibility: "边距")
+                }
+                GridRow(alignment: .center) {
+                    rowLabel("边距")
+                    slider($preferences.style.marginPercent, SubtitleBurnStyle.marginRange, step: 1,
+                           value: "\(Int(preferences.style.marginPercent))%", accessibility: "边距")
+                }
+                GridRow(alignment: .center) {
+                    rowLabel("背景")
+                    HStack(spacing: 10) {
+                        Toggle("显示背景", isOn: $preferences.style.backgroundEnabled)
+                            .toggleStyle(.switch)
+                            .controlSize(.mini)
+                            .labelsHidden()
+                        slider($preferences.style.backgroundOpacity, SubtitleBurnStyle.backgroundOpacityRange, step: 0.05,
+                               value: "\(Int((preferences.style.backgroundOpacity * 100).rounded()))%", accessibility: "背景不透明度")
+                            .disabled(!preferences.style.backgroundEnabled)
+                    }
+                }
+                GridRow(alignment: .center) {
+                    rowLabel("阴影")
+                    HStack(spacing: 10) {
+                        Toggle("显示阴影", isOn: $preferences.style.shadowEnabled)
+                            .toggleStyle(.switch)
+                            .controlSize(.mini)
+                            .labelsHidden()
+                        shadowSwatches
+                            .disabled(!preferences.style.shadowEnabled)
+                            .opacity(preferences.style.shadowEnabled ? 1 : 0.4)
+                    }
+                }
+                GridRow(alignment: .center) {
+                    rowLabel("阴影宽度")
+                    slider($preferences.style.shadowWidth, SubtitleBurnStyle.shadowWidthRange, step: 1,
+                           value: "\(Int(preferences.style.shadowWidth))", accessibility: "阴影宽度")
+                        .disabled(!preferences.style.shadowEnabled)
                 }
             }
-            GridRow {
-                Text("背景")
-                HStack(spacing: 12) {
-                    Toggle("显示背景", isOn: $preferences.style.backgroundEnabled)
-                    sliderRow(value: $preferences.style.backgroundOpacity, range: SubtitleBurnStyle.backgroundOpacityRange, step: 0.05,
-                              label: "\(Int((preferences.style.backgroundOpacity * 100).rounded()))%", accessibility: "背景不透明度")
-                        .disabled(!preferences.style.backgroundEnabled)
-                }
-            }
-            GridRow {
-                Text("阴影")
-                HStack(spacing: 12) {
-                    ColorPicker("阴影颜色", selection: Binding(
-                        get: { Color(nsColor: preferences.style.shadowColor.nsColor) },
-                        set: { preferences.style.shadowColor = SubtitleBurnColor(NSColor($0)) }
-                    ), supportsOpacity: false)
-                    Text("宽度")
-                    sliderRow(value: $preferences.style.shadowWidth, range: SubtitleBurnStyle.shadowWidthRange, step: 1,
-                              label: "\(Int(preferences.style.shadowWidth))", accessibility: "阴影宽度")
-                }
-            }
-            GridRow {
-                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
-                Button("恢复默认", systemImage: "arrow.counterclockwise") { preferences.resetToDefault() }
-                    .controlSize(.small)
-                    .disabled(preferences.style == .default)
-            }
+            .disabled(isDisabled)
+        }
+        .onAppear {
+            if families.isEmpty { families = SubtitleFontCatalog.families() }
         }
     }
 
-    private func sliderRow(value: Binding<Double>, range: ClosedRange<Double>, step: Double, label: String, accessibility: LocalizedStringKey) -> some View {
+    private func rowLabel(_ title: LocalizedStringKey) -> some View {
+        Text(title)
+            .foregroundStyle(.secondary)
+            .gridColumnAlignment(.trailing)
+            .fixedSize()
+    }
+
+    private var shadowSwatches: some View {
+        HStack(spacing: 6) {
+            ForEach(Array(Self.shadowPresets.enumerated()), id: \.offset) { _, preset in
+                let selected = preferences.style.shadowColor == preset.color
+                Button {
+                    preferences.style.shadowColor = preset.color
+                } label: {
+                    Circle()
+                        .fill(Color(nsColor: preset.color.nsColor))
+                        .overlay(Circle().strokeBorder(.secondary.opacity(0.5), lineWidth: 0.5))
+                        .padding(2)
+                        .overlay(Circle().strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2))
+                        .frame(width: 20, height: 20)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help(L10n.text(preset.name))
+                .accessibilityLabel(L10n.text(preset.name))
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+            ColorPicker("自定义阴影颜色", selection: Binding(
+                get: { Color(nsColor: preferences.style.shadowColor.nsColor) },
+                set: { preferences.style.shadowColor = SubtitleBurnColor(NSColor($0)) }
+            ), supportsOpacity: false)
+            .labelsHidden()
+            .help(Text("自定义阴影颜色"))
+        }
+    }
+
+    private func slider(_ binding: Binding<Double>, _ range: ClosedRange<Double>, step: Double, value: String,
+                        accessibility: LocalizedStringKey) -> some View {
         HStack(spacing: 8) {
-            Slider(value: value, in: range, step: step)
-                .frame(minWidth: 120, maxWidth: 200)
+            Slider(value: binding, in: range, step: step)
+                .controlSize(.small)
                 .accessibilityLabel(Text(accessibility))
-                .accessibilityValue(label)
-            Text(label)
+                .accessibilityValue(value)
+            Text(value)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
-                .frame(width: 44, alignment: .leading)
+                .frame(width: 40, alignment: .trailing)
         }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -274,7 +313,6 @@ struct SubtitlePreviewFrame: View {
     let videoInfo: SubtitleBurnVideoInfo?
     let cues: [SubtitleCue]
     let style: SubtitleBurnStyle
-    var maxHeight: CGFloat = 260
     @State private var image: CGImage?
 
     private var aspectRatio: CGFloat {
@@ -298,8 +336,7 @@ struct SubtitlePreviewFrame: View {
             }
         }
         .aspectRatio(aspectRatio, contentMode: .fit)
-        .frame(maxWidth: 420, maxHeight: maxHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityLabel("字幕预览")
         .task(id: taskID) {
             try? await Task.sleep(for: .milliseconds(150))

@@ -12,6 +12,7 @@ struct TranscriptionView: View {
     let restart: () -> Void
 
     @State private var isShowingExport = false
+    @State private var burnSource: SubtitleBurnSessionSource?
     @State private var isShowingPreflightInfo = false
     @State private var exportError: String?
     @State private var isShowingTranslation = false
@@ -86,6 +87,15 @@ struct TranscriptionView: View {
         .sheet(isPresented: $isShowingAIConfiguration) {
             AIServiceConfigurationView(preferences: aiServices).environment(\.locale, interfaceLocale)
         }
+        .navigationDestination(isPresented: Binding(
+            get: { burnSource != nil },
+            set: { if !$0 { burnSource = nil } }
+        )) {
+            if let burnSource {
+                SubtitleBurnView(sessionSource: burnSource, close: { self.burnSource = nil })
+                    .environment(\.locale, interfaceLocale)
+            }
+        }
         .sheet(isPresented: $isShowingExport) {
             exportSheet.environment(\.locale, interfaceLocale)
         }
@@ -119,7 +129,9 @@ struct TranscriptionView: View {
             syncPendingConfiguration()
             session.speechAudio.refresh()
 #if DEBUG
-            if ProcessInfo.processInfo.environment["LOCALSCRIBE_EXPORT_PREVIEW"] == "burn" { isShowingExport = true }
+            if ProcessInfo.processInfo.environment["LOCALSCRIBE_RESULT_BURN"] == "1" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { burnSource = subtitleBurnSource }
+            }
 #endif
         }
         .onChange(of: reduceMotion) { _, enabled in
@@ -954,6 +966,10 @@ struct TranscriptionView: View {
             if session.phase == .finished {
                 Button("重新开始", systemImage: "arrow.counterclockwise") {
                     isConfirmingRestart = true
+                }
+                if subtitleBurnAvailable {
+                    Button("烧录到视频", systemImage: "captions.bubble") { burnSource = subtitleBurnSource }
+                        .disabled(session.speechAudio.isGenerating || session.isSavingOriginalAudio)
                 }
                 Button("导出转录", systemImage: "square.and.arrow.up") { isShowingExport = true }
                     .disabled(session.speechAudio.isGenerating || session.isSavingOriginalAudio)
@@ -1888,7 +1904,6 @@ struct TranscriptionView: View {
         CompanionExportSheet(asset: session.audioAsset, defaultName: defaultTitle,
                              hasTranslation: !session.translatedText.isEmpty,
                              approximateTimeline: session.hasManualEdits || !session.timelineProvenance.isReliable,
-                             burnSource: restartAfterExport ? nil : subtitleBurnSource,
                              warning: { format, translated in
             let text = translated ? session.translatedText : session.transcriptText
             let input = session.speechAudio.input(text: text, translation: translated, segments: session.reliableSpeechSegments(translation: translated))
@@ -1905,10 +1920,15 @@ struct TranscriptionView: View {
             if restartAfterExport { restartAfterExport = false; restart() }
         }, close: { isShowingExport = false; restartAfterExport = false })
     }
-    /// Only offered for a finished transcription of a video file. Burns the text currently on screen.
+    /// Only offered for a finished transcription of a video file.
+    private var subtitleBurnAvailable: Bool {
+        guard session.phase == .finished, case .file(let url) = session.source else { return false }
+        return SubtitleBurnSessionSource.isVideoFile(url)
+    }
+
+    /// Snapshot of the text currently on screen, taken when the burn page opens.
     private var subtitleBurnSource: SubtitleBurnSessionSource? {
-        guard session.phase == .finished, case .file(let url) = session.source,
-              SubtitleBurnSessionSource.isVideoFile(url) else { return nil }
+        guard subtitleBurnAvailable, case .file(let url) = session.source else { return nil }
         let translated = isShowingTranslation && !session.translatedText.isEmpty
         let approximate = translated
             ? session.reliableSpeechSegments(translation: true).isEmpty

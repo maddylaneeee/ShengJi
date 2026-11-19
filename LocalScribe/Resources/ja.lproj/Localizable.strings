@@ -431,7 +431,7 @@
 "更多线程不一定更快，过高可能造成资源争用。如果不确定，请重新开启自动模式。" = "スレッドを増やしても速くなるとは限らず、多すぎるとリソースの競合が起きる場合があります。不明な場合は自動モードに戻してください。";
 "已展开" = "展開中";
 "已折叠" = "折りたたみ中";
-"cli.help" = "LocalScribe CLI\n\n使い方：\n  LocalScribe --cli models [--json]\n  LocalScribe --cli download <model-id>\n  LocalScribe --cli remove <model-id>\n  LocalScribe --cli transcribe <audio-or-video> [--engine whisper|sensevoice|parakeet] [--model <model-id>] [--compute auto|coreml|metal|cpu] [--language en_US] [--translate-to zh-Hans] [--translation-provider apple|nllb] [--format txt|md|json|pdf|srt|vtt] [--output <path>]\n  LocalScribe --cli burn --video <path> --subtitles <path> [--output <path> | --in-place] [--overwrite] [--font <family>] [--size 3-10] [--position bottom|top] [--margin 2-20] [--background 0-80] [--shadow-color #RRGGBB] [--shadow-width 0-10]\n  LocalScribe --cli translate <text> --source en_US --target zh-Hans [--provider apple|nllb]\n\n主なモデルID：\n  whisper.largeV3TurboQ5\n  whisper.largeV3Turbo\n  sensevoice.int8_2025\n  parakeet.tdt06bV3Int8\n\n注意：\n  CLIのファイル文字起こしはWhisper、SenseVoice、NVIDIA Parakeetに対応しています。\n  標準ではバックエンドを自動選択し、実際の処理方式を標準エラー出力に表示します。標準のWhisper MetalモデルはANEを自動では使用しません。\n  翻訳はApple翻訳とNLLBに対応しています。画面を使わないApple翻訳のCLIセッションにはmacOS 26が必要です。NLLBはmacOS 15.5以降で利用できます。";
+"cli.help" = "LocalScribe CLI\n\n使い方：\n  LocalScribe --cli models [--json]\n  LocalScribe --cli download <model-id>\n  LocalScribe --cli remove <model-id>\n  LocalScribe --cli transcribe <audio-or-video> [--engine whisper|sensevoice|parakeet] [--model <model-id>] [--compute auto|coreml|metal|cpu] [--language en_US] [--translate-to zh-Hans] [--translation-provider apple|nllb] [--format txt|md|json|pdf|srt|vtt] [--output <path>]\n  LocalScribe --cli burn --video <path> --subtitles <path> [--output <path> | --in-place] [--overwrite] [--font <family>] [--size 3-10] [--position bottom|top] [--margin 2-20] [--background 0-80] [--shadow on|off] [--shadow-color #RRGGBB] [--shadow-width 0-10]\n  LocalScribe --cli translate <text> --source en_US --target zh-Hans [--provider apple|nllb]\n\n主なモデルID：\n  whisper.largeV3TurboQ5\n  whisper.largeV3Turbo\n  sensevoice.int8_2025\n  parakeet.tdt06bV3Int8\n\n注意：\n  CLIのファイル文字起こしはWhisper、SenseVoice、NVIDIA Parakeetに対応しています。\n  標準ではバックエンドを自動選択し、実際の処理方式を標準エラー出力に表示します。標準のWhisper MetalモデルはANEを自動では使用しません。\n  翻訳はApple翻訳とNLLBに対応しています。画面を使わないApple翻訳のCLIセッションにはmacOS 26が必要です。NLLBはmacOS 15.5以降で利用できます。";
 "未知命令：%@" = "不明なコマンド：%@";
 "错误：%@\n" = "エラー：%@\n";
 "请提供有效 model-id。可用 `models` 查看。" = "有効なモデルIDを指定してください。`models`で一覧を確認できます。";
@@ -789,7 +789,6 @@
 "字幕预览" = "字幕プレビュー";
 "字幕预览 Subtitle Preview" = "字幕プレビュー";
 "宽度" = "幅";
-"导出方式" = "書き出し方法";
 "将烧录：原文（当前显示的内容）" = "焼き込み対象：原文（現在表示中の内容）";
 "将烧录：译文（当前显示的内容）" = "焼き込み対象：訳文（現在表示中の内容）";
 "已取消，原视频未被修改。" = "キャンセルしました。元の動画は変更されていません。";
@@ -798,8 +797,6 @@
 "开始烧录" = "焼き込みを開始";
 "找不到字体：%@" = "フォントが見つかりません：%@";
 "把 SRT、VTT、ASS 等带时间戳的字幕烧录进视频画面。" = "SRT、VTT、ASS などのタイムスタンプ付き字幕を動画に焼き込みます。";
-"把带时间戳的字幕渲染进视频画面；处理在这台 Mac 上完成。也可以把文件拖到这里。" = "タイムスタンプ付き字幕を動画の映像にレンダリングします。処理はこの Mac 上で行われます。ファイルをここへドラッグすることもできます。";
-"支持 MP4、MOV、M4V 等 macOS 可以播放的视频" = "MP4、MOV、M4V など macOS で再生できる動画に対応";
 "无法替换原视频：%@" = "元の動画を置き換えられません：%@";
 "无法识别的参数：%@" = "認識できない引数：%@";
 "无法读取所选字幕文件。" = "選択した字幕ファイルを読み込めません。";
@@ -840,3 +837,21 @@
 "阴影颜色" = "影の色";
 "顶部" = "上";
 "默认创建副本；可选择字体与字幕样式。" = "デフォルトではコピーを作成します。フォントと字幕スタイルを選択できます。";
+"烧录完成后另存为新视频，原视频保持不变。" = "焼き込み後は新しい動画として保存され、元の動画は変更されません。";
+"黑色" = "黒";
+"深灰" = "ダークグレー";
+"深蓝" = "ダークブルー";
+"深红" = "ダークレッド";
+"白色" = "白";
+"自定义阴影颜色" = "カスタムの影の色";
+"显示阴影" = "影を表示";
+"预览" = "プレビュー";
+"预览第一条字幕 · %@" = "最初の字幕をプレビュー · %@";
+"来自转录结果" = "文字起こし結果から";
+"拖入视频，或点“选择…”" = "動画をここにドロップするか、「選択…」をクリック";
+"拖入字幕，或点“选择…”" = "字幕をここにドロップするか、「選択…」をクリック";
+"MP4、MOV、M4V 等 macOS 可以播放的视频" = "MP4、MOV、M4V など macOS で再生できる動画";
+"正在检查字幕…" = "字幕を確認中…";
+"字幕" = "字幕";
+"回退到预览页面" = "プレビューに戻る";
+"回到转录结果，继续修改或导出" = "文字起こし結果に戻って編集や書き出しを続けます";

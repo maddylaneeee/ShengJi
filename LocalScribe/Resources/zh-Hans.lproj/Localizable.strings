@@ -431,7 +431,7 @@
 "更多线程不一定更快，过高可能造成资源争用。如果不确定，请重新开启自动模式。" = "更多线程不一定更快，过高可能造成资源争用。如果不确定，请重新开启自动模式。";
 "已展开" = "已展开";
 "已折叠" = "已折叠";
-"cli.help" = "声迹 CLI\n\n用法：\n  LocalScribe --cli models [--json]\n  LocalScribe --cli download <model-id>\n  LocalScribe --cli remove <model-id>\n  LocalScribe --cli transcribe <audio-or-video> [--engine whisper|sensevoice|parakeet] [--model <model-id>] [--compute auto|coreml|metal|cpu] [--language zh_CN] [--translate-to en] [--translation-provider apple|nllb] [--format txt|md|json|pdf|srt|vtt] [--output <path>]\n  LocalScribe --cli burn --video <path> --subtitles <path> [--output <path> | --in-place] [--overwrite] [--font <family>] [--size 3-10] [--position bottom|top] [--margin 2-20] [--background 0-80] [--shadow-color #RRGGBB] [--shadow-width 0-10]\n  LocalScribe --cli translate <text> --source zh_CN --target en [--provider apple|nllb]\n\n常用模型 ID：\n  whisper.largeV3TurboQ5\n  whisper.largeV3Turbo\n  sensevoice.int8_2025\n  parakeet.tdt06bV3Int8\n\n说明：\n  CLI 文件转录支持 Whisper、SenseVoice 与 NVIDIA Parakeet。\n  默认自动选择后端并在 stderr 报告实际路径；普通 Whisper Metal 模型不会自动使用 ANE。\n  翻译支持 Apple Translation 与 NLLB；Apple 的无界面 CLI 会话需要 macOS 26，NLLB 可用于 macOS 15.5+。";
+"cli.help" = "声迹 CLI\n\n用法：\n  LocalScribe --cli models [--json]\n  LocalScribe --cli download <model-id>\n  LocalScribe --cli remove <model-id>\n  LocalScribe --cli transcribe <audio-or-video> [--engine whisper|sensevoice|parakeet] [--model <model-id>] [--compute auto|coreml|metal|cpu] [--language zh_CN] [--translate-to en] [--translation-provider apple|nllb] [--format txt|md|json|pdf|srt|vtt] [--output <path>]\n  LocalScribe --cli burn --video <path> --subtitles <path> [--output <path> | --in-place] [--overwrite] [--font <family>] [--size 3-10] [--position bottom|top] [--margin 2-20] [--background 0-80] [--shadow on|off] [--shadow-color #RRGGBB] [--shadow-width 0-10]\n  LocalScribe --cli translate <text> --source zh_CN --target en [--provider apple|nllb]\n\n常用模型 ID：\n  whisper.largeV3TurboQ5\n  whisper.largeV3Turbo\n  sensevoice.int8_2025\n  parakeet.tdt06bV3Int8\n\n说明：\n  CLI 文件转录支持 Whisper、SenseVoice 与 NVIDIA Parakeet。\n  默认自动选择后端并在 stderr 报告实际路径；普通 Whisper Metal 模型不会自动使用 ANE。\n  翻译支持 Apple Translation 与 NLLB；Apple 的无界面 CLI 会话需要 macOS 26，NLLB 可用于 macOS 15.5+。";
 "未知命令：%@" = "未知命令：%@";
 "错误：%@\n" = "错误：%@\n";
 "请提供有效 model-id。可用 `models` 查看。" = "请提供有效 model-id。可用 `models` 查看。";
@@ -789,7 +789,6 @@
 "字幕预览" = "字幕预览";
 "字幕预览 Subtitle Preview" = "字幕预览 Subtitle Preview";
 "宽度" = "宽度";
-"导出方式" = "导出方式";
 "将烧录：原文（当前显示的内容）" = "将烧录：原文（当前显示的内容）";
 "将烧录：译文（当前显示的内容）" = "将烧录：译文（当前显示的内容）";
 "已取消，原视频未被修改。" = "已取消，原视频未被修改。";
@@ -798,8 +797,6 @@
 "开始烧录" = "开始烧录";
 "找不到字体：%@" = "找不到字体：%@";
 "把 SRT、VTT、ASS 等带时间戳的字幕烧录进视频画面。" = "把 SRT、VTT、ASS 等带时间戳的字幕烧录进视频画面。";
-"把带时间戳的字幕渲染进视频画面；处理在这台 Mac 上完成。也可以把文件拖到这里。" = "把带时间戳的字幕渲染进视频画面；处理在这台 Mac 上完成。也可以把文件拖到这里。";
-"支持 MP4、MOV、M4V 等 macOS 可以播放的视频" = "支持 MP4、MOV、M4V 等 macOS 可以播放的视频";
 "无法替换原视频：%@" = "无法替换原视频：%@";
 "无法识别的参数：%@" = "无法识别的参数：%@";
 "无法读取所选字幕文件。" = "无法读取所选字幕文件。";
@@ -840,3 +837,21 @@
 "阴影颜色" = "阴影颜色";
 "顶部" = "顶部";
 "默认创建副本；可选择字体与字幕样式。" = "默认创建副本；可选择字体与字幕样式。";
+"烧录完成后另存为新视频，原视频保持不变。" = "烧录完成后另存为新视频，原视频保持不变。";
+"黑色" = "黑色";
+"深灰" = "深灰";
+"深蓝" = "深蓝";
+"深红" = "深红";
+"白色" = "白色";
+"自定义阴影颜色" = "自定义阴影颜色";
+"显示阴影" = "显示阴影";
+"预览" = "预览";
+"预览第一条字幕 · %@" = "预览第一条字幕 · %@";
+"来自转录结果" = "来自转录结果";
+"拖入视频，或点“选择…”" = "拖入视频，或点“选择…”";
+"拖入字幕，或点“选择…”" = "拖入字幕，或点“选择…”";
+"MP4、MOV、M4V 等 macOS 可以播放的视频" = "MP4、MOV、M4V 等 macOS 可以播放的视频";
+"正在检查字幕…" = "正在检查字幕…";
+"字幕" = "字幕";
+"回退到预览页面" = "回退到预览页面";
+"回到转录结果，继续修改或导出" = "回到转录结果，继续修改或导出";

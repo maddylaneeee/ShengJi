@@ -65,6 +65,7 @@ struct SubtitleBurnStyle: Codable, Equatable, Sendable {
     var marginPercent: Double = 6
     var backgroundEnabled = false
     var backgroundOpacity: Double = 0.45
+    var shadowEnabled = true
     var shadowColor: SubtitleBurnColor = .black
     var shadowWidth: Double = 5
 
@@ -81,6 +82,7 @@ struct SubtitleBurnStyle: Codable, Equatable, Sendable {
         marginPercent = (try? container.decode(Double.self, forKey: .marginPercent)) ?? defaults.marginPercent
         backgroundEnabled = (try? container.decode(Bool.self, forKey: .backgroundEnabled)) ?? defaults.backgroundEnabled
         backgroundOpacity = (try? container.decode(Double.self, forKey: .backgroundOpacity)) ?? defaults.backgroundOpacity
+        shadowEnabled = (try? container.decode(Bool.self, forKey: .shadowEnabled)) ?? defaults.shadowEnabled
         shadowColor = (try? container.decode(SubtitleBurnColor.self, forKey: .shadowColor)) ?? defaults.shadowColor
         shadowWidth = (try? container.decode(Double.self, forKey: .shadowWidth)) ?? defaults.shadowWidth
         self = clamped()

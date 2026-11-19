@@ -15,7 +15,7 @@ LocalScribeは、Appleシリコン搭載Mac向けの無料・オープンソー�
 現在のリリース：**1.8.0（43）** · [リリースノート（英語）](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.8.0) · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [初回起動ガイド（英語）](INSTALL.md) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **1.8.0の新機能：字幕の焼き込み。** ホーム画面の「字幕の焼き込み」（ファイル → 字幕を焼き込む…）で、SRT、WebVTT、LocalScribe JSON、ASS/SSA、SBV、TTML/DFXP の字幕を動画に焼き込めます。動画の文字起こし完了後は、書き出しで「動画に焼き込む」を選ぶと、表示中の原文または訳文を焼き込みます。既定ではコピーを作成し、フォントと字幕スタイルは記憶されます。
+> **1.8.0の新機能：字幕の焼き込み。** ホーム画面の「字幕の焼き込み」（ファイル → 字幕を焼き込む…）で、SRT、WebVTT、LocalScribe JSON、ASS/SSA、SBV、TTML/DFXP の字幕を動画に焼き込めます。動画の文字起こし完了後は、結果画面下部の「文字起こしを書き出す」の隣にある「動画に焼き込む」から、表示中の原文または訳文を焼き込めます。既定ではコピーを作成し、フォントと字幕スタイルは記憶されます。
 >
 > **1.7.2の修正：長い原稿。** 1,000行を超える原稿も滑らかにスクロールでき、行番号に区切り記号や折り返しが入りません。Apple音声認識のファイル進捗は認識済みの音声に基づきます。書き出しの既定名は、マイクが「開始時刻_Transcription」、ファイルが「元のファイル名_Transcription」です。
 >

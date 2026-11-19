@@ -504,7 +504,7 @@ struct SubtitleBurnCLIOptions: Equatable {
         var values: [String: String] = [:]
         var flags = Set<String>()
         let valueKeys: Set<String> = ["video", "subtitles", "output", "font", "size", "position", "margin",
-                                      "background", "shadow-color", "shadow-width"]
+                                      "background", "shadow", "shadow-color", "shadow-width"]
         var index = 0
         while index < arguments.count {
             let argument = arguments[index]
@@ -558,6 +558,13 @@ struct SubtitleBurnCLIOptions: Equatable {
         if let background = try number("background", in: 0...80) {
             style.backgroundEnabled = background > 0
             if background > 0 { style.backgroundOpacity = background / 100 }
+        }
+        if let raw = values["shadow"] {
+            switch raw.lowercased() {
+            case "on": style.shadowEnabled = true
+            case "off": style.shadowEnabled = false
+            default: throw CLIError.badArguments(L10n.format("参数 --%@ 的值无效：%@", "shadow", raw))
+            }
         }
         if let raw = values["shadow-color"] {
             guard let color = SubtitleBurnColor(hex: raw) else {

@@ -9,7 +9,12 @@ import Foundation
 final class SubtitleFrameCompositor: @unchecked Sendable {
     private let cues: [SubtitleCue]
     private let style: SubtitleBurnStyle
-    private let maxCueDuration: TimeInterval
+    /// Cues longer than `longCueThreshold` are checked separately so one very
+    /// long cue (a title held for the whole video) does not force every frame
+    /// to scan back through thousands of short cues.
+    private let longCueThreshold: TimeInterval
+    private let longCueIndices: [Int]
+    private let shortCueWindow: TimeInterval
     private let lock = NSLock()
     private var cache: [CacheKey: CIImage] = [:]
     private var cacheOrder: [CacheKey] = []
@@ -24,7 +29,13 @@ final class SubtitleFrameCompositor: @unchecked Sendable {
     init(cues: [SubtitleCue], style: SubtitleBurnStyle) {
         self.cues = cues.sorted { $0.startTime < $1.startTime }
         self.style = style.clamped()
-        self.maxCueDuration = self.cues.map { $0.endTime - $0.startTime }.max() ?? 0
+        let durations = self.cues.map { $0.endTime - $0.startTime }
+        let sortedDurations = durations.sorted()
+        let median = sortedDurations.isEmpty ? 0 : sortedDurations[sortedDurations.count / 2]
+        let threshold = max(10, median * 4)
+        self.longCueThreshold = threshold
+        self.longCueIndices = durations.indices.filter { durations[$0] > threshold }
+        self.shortCueWindow = durations.filter { $0 <= threshold }.max() ?? 0
     }
 
     /// Indices of cues visible at `time`, in start order.
@@ -37,11 +48,17 @@ final class SubtitleFrameCompositor: @unchecked Sendable {
         }
         var result: [Int] = []
         var index = low - 1
-        while index >= 0, cues[index].startTime >= time - maxCueDuration {
-            if cues[index].startTime <= time, time < cues[index].endTime { result.append(index) }
+        while index >= 0, cues[index].startTime >= time - shortCueWindow {
+            let cue = cues[index]
+            if cue.endTime - cue.startTime <= longCueThreshold, cue.startTime <= time, time < cue.endTime {
+                result.append(index)
+            }
             index -= 1
         }
-        return result.reversed()
+        for longIndex in longCueIndices where cues[longIndex].startTime <= time && time < cues[longIndex].endTime {
+            result.append(longIndex)
+        }
+        return result.sorted()
     }
 
     func composite(_ source: CIImage, at time: TimeInterval, renderSize: CGSize) -> CIImage {
@@ -66,6 +83,12 @@ final class SubtitleFrameCompositor: @unchecked Sendable {
             offset += extent.height - 2 * metrics.padding + 2 * metrics.backgroundInsets.height + metrics.stackGap
         }
         return output.cropped(to: source.extent)
+    }
+
+    /// Number of rasterized cues currently cached (bounded by `cacheLimit`).
+    var cachedImageCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return cache.count
     }
 
     private func cueImage(index: Int, renderSize: CGSize) -> CIImage? {
@@ -104,7 +127,7 @@ struct SubtitleLayoutMetrics {
         margin = shortSide * style.marginPercent / 100
         maxTextWidth = renderSize.width * 0.9
         // Shadow "width" level 0–10 maps to a blur unit proportional to the font size.
-        shadowUnit = fontSize * style.shadowWidth / 30
+        shadowUnit = style.shadowEnabled ? fontSize * style.shadowWidth / 30 : 0
         backgroundInsets = style.backgroundEnabled
             ? CGSize(width: (fontSize * 0.4).rounded(), height: (fontSize * 0.2).rounded())
             : .zero

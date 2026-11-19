@@ -15,7 +15,7 @@ LocalScribe is a free, open-source native speech-to-text and audio/video transcr
 Current release: **1.8.0 (43)** · [Release notes](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.8.0) · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [First-launch installation guide](INSTALL.md) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 > [!TIP]
-> **New in 1.8.0 — burn subtitles into video:** The home screen’s **Burn Subtitles** card (File → Burn Subtitles…) burns SRT, WebVTT, LocalScribe JSON, ASS/SSA, SBV, or TTML/DFXP subtitles into a video. When a video transcription finishes, Export → **Burn into Video** burns the transcript or translation currently shown. A copy is created by default; the font and subtitle style are remembered.
+> **New in 1.8.0 — burn subtitles into video:** The home screen’s **Burn Subtitles** card (File → Burn Subtitles…) burns SRT, WebVTT, LocalScribe JSON, ASS/SSA, SBV, or TTML/DFXP subtitles into a video. When a video transcription finishes, **Burn into Video** next to Export opens the same page with the transcript or translation currently shown. A copy is created by default; the font and subtitle style are remembered.
 >
 > **Added in 1.7.2 — long transcript fixes:** Transcripts beyond 1,000 lines scroll smoothly with correctly formatted line numbers. Apple Speech file progress follows recognized audio, and exports default to `<start time>_Transcription` for microphone sessions or `<file name>_Transcription` for files.
 >
@@ -122,12 +122,12 @@ Numeric options support both direct keyboard entry and sliders or steppers, with
 
 ## Burn subtitles into video (1.8.0)
 
-Open **Burn Subtitles** on the home screen, or choose **File → Burn Subtitles…** (⇧⌘B). Choose a video (MP4, MOV, M4V, or another format macOS can play) and a subtitle file, or drag both onto the page. Supported subtitle formats: SRT, WebVTT, LocalScribe JSON with segments, ASS/SSA, SBV, and TTML/DFXP. LocalScribe checks the file before burning: files without timestamps, with a malformed or reversed timestamp (the line number is shown), or in any other format are marked unsupported. ASS styling and TTML regions are ignored; text is rendered with LocalScribe’s own style.
+Open **Burn Subtitles** on the home screen, or choose **File → Burn Subtitles…** (⇧⌘B). Choose a video (MP4, MOV, M4V, or another format macOS can play) and a subtitle file, or drag each file onto its row. Supported subtitle formats: SRT, WebVTT, LocalScribe JSON with segments, ASS/SSA, SBV, and TTML/DFXP. LocalScribe checks the file before burning: files without timestamps, with a malformed or reversed timestamp (the line number is shown), or in any other format are marked unsupported. ASS styling and TTML regions are ignored; text is rendered with LocalScribe’s own style.
 
-After a video transcription finishes, open **Export** and choose **Burn into Video**. LocalScribe burns whichever text is shown—original or translation—and labels which one is used. If the transcript was edited, the timeline is approximate and a warning is shown.
+After a video transcription finishes, click **Burn into Video** next to **Export Transcript**. The burn page opens with the source video and the text currently shown—original or translation—already filled in and locked, and labels which one is used. If the transcript was edited, the timeline is approximate and a warning is shown. **Back to Preview** in the toolbar returns to the result page to keep editing.
 
 - **Output:** Create Copy (default, with a save dialog) or Burn into Original (asks for confirmation and replaces the original only after the new file is rendered and verified). This choice is never remembered.
-- **Subtitle Style** (collapsed by default): any installed font, size, top or bottom position with margin, optional background, and a soft shadow with adjustable color and width, with a live preview frame. The style is remembered and can be reset to defaults.
+- **Subtitle Style** is always visible next to a large live preview: any installed font, size, top or bottom position with margin, an optional background, and a soft shadow that can be turned off or adjusted in color and width. The style is remembered and can be reset to defaults.
 - Rendering runs on this Mac with AVFoundation and keeps the source resolution and orientation. Burned subtitles require re-encoding; HEVC sources stay HEVC, other sources are written as H.264.
 
 ## Custom AI services (1.7.1)

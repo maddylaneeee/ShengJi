@@ -1,6 +1,5 @@
 import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct SessionAudioPlayerView: View {
     @Bindable var audio: SpeechAudioModel
@@ -103,31 +102,11 @@ struct SpeechSynthesisControls: View {
     }
 }
 
-/// The transcript currently shown in the result page, prepared for burning into its source video.
-struct SubtitleBurnSessionSource {
-    let videoURL: URL
-    let cues: [SubtitleCue]
-    let isTranslation: Bool
-    let approximateTimeline: Bool
-
-    static func isVideoFile(_ url: URL) -> Bool {
-        guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
-        return type.conforms(to: .movie) || type.conforms(to: .video)
-    }
-}
-
-private enum CompanionExportMode: String, CaseIterable, Identifiable {
-    case text
-    case burn
-    var id: String { rawValue }
-}
-
 struct CompanionExportSheet: View {
     let asset: SessionAudioAsset?
     let defaultName: String
     var hasTranslation = false
     var approximateTimeline = false
-    var burnSource: SubtitleBurnSessionSource? = nil
     let warning: (TranscriptExportFormat, Bool) -> String
     let makeData: (TranscriptExportFormat, String, Bool) throws -> Data
     let onSuccess: () -> Void
@@ -138,81 +117,8 @@ struct CompanionExportSheet: View {
     @State private var useTranslation = false
     @State private var exporting = false
     @State private var message: String?
-    @State private var mode: CompanionExportMode = .text
-    @State private var burnJob = SubtitleBurnJob()
-    @State private var burnVideoInfo: SubtitleBurnVideoInfo?
-    @State private var burnVideoError: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if let burnSource {
-                Picker("导出方式", selection: $mode) {
-                    Text("导出文字稿").tag(CompanionExportMode.text)
-                    Text("烧录到视频").tag(CompanionExportMode.burn)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .disabled(burnJob.isRunning || exporting)
-                if mode == .burn {
-                    burnBody(burnSource)
-                } else {
-                    textBody
-                }
-            } else {
-                textBody
-            }
-        }
-        .padding(24).frame(width: mode == .burn ? 620 : 540)
-        .onAppear {
-            name = defaultName; includeAudio = asset != nil
-#if DEBUG
-            if ProcessInfo.processInfo.environment["LOCALSCRIBE_EXPORT_PREVIEW"] == "burn", burnSource != nil { mode = .burn }
-#endif
-        }
-        .task(id: burnSource?.videoURL) {
-            guard let url = burnSource?.videoURL else { return }
-            do { burnVideoInfo = try await SubtitleBurner.inspect(videoURL: url) }
-            catch { burnVideoError = error.localizedDescription }
-        }
-    }
-
-    @ViewBuilder
-    private func burnBody(_ source: SubtitleBurnSessionSource) -> some View {
-        Text("烧录到视频").font(.title2.weight(.semibold))
-        VStack(alignment: .leading, spacing: 6) {
-            Label(source.videoURL.lastPathComponent, systemImage: "film")
-                .lineLimit(1).truncationMode(.middle)
-            Label(source.isTranslation ? L10n.text("将烧录：译文（当前显示的内容）") : L10n.text("将烧录：原文（当前显示的内容）"),
-                  systemImage: source.isTranslation ? "translate" : "text.alignleft")
-                .foregroundStyle(.tint)
-            if source.approximateTimeline {
-                Label("编辑后时间轴为近似值，字幕可能与画面不同步。", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-            }
-            if let burnVideoError {
-                Label(burnVideoError, systemImage: "xmark.octagon.fill").foregroundStyle(.red)
-            } else if let burnVideoInfo {
-                Text(burnVideoInfo.summary).foregroundStyle(.secondary)
-            }
-        }
-        .font(.callout)
-        SubtitleBurnPanel(
-            videoInfo: burnVideoInfo,
-            cues: source.cues,
-            blockedReason: burnVideoError ?? (source.cues.isEmpty ? L10n.text("没有可烧录的文字。") : nil),
-            job: burnJob,
-            previewMaxHeight: 200
-        )
-        HStack {
-            Spacer()
-            Button("关闭", action: close)
-                .keyboardShortcut(.cancelAction)
-                .disabled(burnJob.isRunning)
-        }
-    }
-
-    private var textBody: some View {
-        Group {
             Text("导出文字稿").font(.title2.weight(.semibold))
             TextField("文件名", text: $name)
             Picker("格式", selection: $format) { ForEach(TranscriptExportFormat.allCases) { Text($0.title).tag($0) } }
@@ -249,8 +155,8 @@ struct CompanionExportSheet: View {
                     }
                 }.keyboardShortcut(.defaultAction).primaryActionStyle()
             }
-        }
-        .disabled(exporting)
+        }.padding(24).frame(width: 540).disabled(exporting)
+        .onAppear { name = defaultName; includeAudio = asset != nil }
     }
 }
 

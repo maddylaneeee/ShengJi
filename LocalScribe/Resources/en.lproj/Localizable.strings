@@ -431,7 +431,7 @@
 "更多线程不一定更快，过高可能造成资源争用。如果不确定，请重新开启自动模式。" = "More threads are not always faster; excessive values can cause contention. Re-enable automatic mode if unsure.";
 "已展开" = "Expanded";
 "已折叠" = "Collapsed";
-"cli.help" = "LocalScribe CLI\n\nUsage:\n  LocalScribe --cli models [--json]\n  LocalScribe --cli download <model-id>\n  LocalScribe --cli remove <model-id>\n  LocalScribe --cli transcribe <audio-or-video> [--engine whisper|sensevoice|parakeet] [--model <model-id>] [--compute auto|coreml|metal|cpu] [--language en_US] [--translate-to zh-Hans] [--translation-provider apple|nllb] [--format txt|md|json|pdf|srt|vtt] [--output <path>]\n  LocalScribe --cli burn --video <path> --subtitles <path> [--output <path> | --in-place] [--overwrite] [--font <family>] [--size 3-10] [--position bottom|top] [--margin 2-20] [--background 0-80] [--shadow-color #RRGGBB] [--shadow-width 0-10]\n  LocalScribe --cli translate <text> --source en_US --target zh-Hans [--provider apple|nllb]\n\nCommon model IDs:\n  whisper.largeV3TurboQ5\n  whisper.largeV3Turbo\n  sensevoice.int8_2025\n  parakeet.tdt06bV3Int8\n\nNotes:\n  CLI file transcription supports Whisper, SenseVoice, and NVIDIA Parakeet.\n  The backend is selected automatically by default and the resolved path is reported on stderr. Standard Whisper Metal models do not use ANE automatically.\n  Translation supports Apple Translation and NLLB. Headless Apple Translation CLI sessions require macOS 26; NLLB is available on macOS 15.5+.";
+"cli.help" = "LocalScribe CLI\n\nUsage:\n  LocalScribe --cli models [--json]\n  LocalScribe --cli download <model-id>\n  LocalScribe --cli remove <model-id>\n  LocalScribe --cli transcribe <audio-or-video> [--engine whisper|sensevoice|parakeet] [--model <model-id>] [--compute auto|coreml|metal|cpu] [--language en_US] [--translate-to zh-Hans] [--translation-provider apple|nllb] [--format txt|md|json|pdf|srt|vtt] [--output <path>]\n  LocalScribe --cli burn --video <path> --subtitles <path> [--output <path> | --in-place] [--overwrite] [--font <family>] [--size 3-10] [--position bottom|top] [--margin 2-20] [--background 0-80] [--shadow on|off] [--shadow-color #RRGGBB] [--shadow-width 0-10]\n  LocalScribe --cli translate <text> --source en_US --target zh-Hans [--provider apple|nllb]\n\nCommon model IDs:\n  whisper.largeV3TurboQ5\n  whisper.largeV3Turbo\n  sensevoice.int8_2025\n  parakeet.tdt06bV3Int8\n\nNotes:\n  CLI file transcription supports Whisper, SenseVoice, and NVIDIA Parakeet.\n  The backend is selected automatically by default and the resolved path is reported on stderr. Standard Whisper Metal models do not use ANE automatically.\n  Translation supports Apple Translation and NLLB. Headless Apple Translation CLI sessions require macOS 26; NLLB is available on macOS 15.5+.";
 "未知命令：%@" = "Unknown command: %@";
 "错误：%@\n" = "Error: %@\n";
 "请提供有效 model-id。可用 `models` 查看。" = "Provide a valid model ID. Use `models` to list available models.";
@@ -789,7 +789,6 @@
 "字幕预览" = "Subtitle Preview";
 "字幕预览 Subtitle Preview" = "Subtitle Preview";
 "宽度" = "Width";
-"导出方式" = "Export Type";
 "将烧录：原文（当前显示的内容）" = "Burning: original text (currently shown)";
 "将烧录：译文（当前显示的内容）" = "Burning: translation (currently shown)";
 "已取消，原视频未被修改。" = "Canceled. The original video was not changed.";
@@ -798,8 +797,6 @@
 "开始烧录" = "Start Burning";
 "找不到字体：%@" = "Font not found: %@";
 "把 SRT、VTT、ASS 等带时间戳的字幕烧录进视频画面。" = "Burn timed subtitles such as SRT, VTT, or ASS into video frames.";
-"把带时间戳的字幕渲染进视频画面；处理在这台 Mac 上完成。也可以把文件拖到这里。" = "Render timed subtitles into the video frames on this Mac. You can also drag files here.";
-"支持 MP4、MOV、M4V 等 macOS 可以播放的视频" = "Supports videos macOS can play, such as MP4, MOV, and M4V";
 "无法替换原视频：%@" = "Couldn’t replace the original video: %@";
 "无法识别的参数：%@" = "Unrecognized argument: %@";
 "无法读取所选字幕文件。" = "The selected subtitle file can’t be read.";
@@ -840,3 +837,21 @@
 "阴影颜色" = "Shadow Color";
 "顶部" = "Top";
 "默认创建副本；可选择字体与字幕样式。" = "Creates a copy by default. Font and subtitle style are adjustable.";
+"烧录完成后另存为新视频，原视频保持不变。" = "The burned video is saved as a new file; the original stays unchanged.";
+"黑色" = "Black";
+"深灰" = "Dark Gray";
+"深蓝" = "Dark Blue";
+"深红" = "Dark Red";
+"白色" = "White";
+"自定义阴影颜色" = "Custom Shadow Color";
+"显示阴影" = "Show Shadow";
+"预览" = "Preview";
+"预览第一条字幕 · %@" = "Previewing first cue · %@";
+"来自转录结果" = "From the transcription result";
+"拖入视频，或点“选择…”" = "Drop a video here, or click “Choose…”";
+"拖入字幕，或点“选择…”" = "Drop subtitles here, or click “Choose…”";
+"MP4、MOV、M4V 等 macOS 可以播放的视频" = "MP4, MOV, M4V, and other videos macOS can play";
+"正在检查字幕…" = "Checking subtitles…";
+"字幕" = "Subtitles";
+"回退到预览页面" = "Back to Preview";
+"回到转录结果，继续修改或导出" = "Return to the transcription result to keep editing or exporting";
