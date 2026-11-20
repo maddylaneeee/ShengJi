@@ -1,4 +1,4 @@
-# 在 Mac 上安装声迹 1.6.7
+# 在 Mac 上安装声迹
 
 [English](INSTALL.md) | **简体中文** · [项目简介](README.zh-CN.md)
 

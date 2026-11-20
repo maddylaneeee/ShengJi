@@ -2,6 +2,14 @@
 
 This document summarizes the public acceptance and regression history in English. The complete earlier record is preserved in [Chinese (Simplified)](ACCEPTANCE.zh-CN.md).
 
+## 1.8.0 (43): subtitle burning
+
+- The home screen's Burn Subtitles card, File → Burn Subtitles… (⇧⌘B), and the result page's Burn into Video button open the same burn page; the result-page entry locks the source video and the currently shown original or translation, and Back to Preview returns to the result.
+- SRT, WebVTT, LocalScribe JSON, ASS/SSA, SBV, and TTML/DFXP are detected from file contents. Files without timestamps, with malformed or reversed timestamps, or in other formats are rejected with a line number where possible; cues beyond the video or overlapping cues produce warnings.
+- Create Copy is the default. Burn into Original requires confirmation and replaces the source only after the rendered file is verified. Font, size, position, margin, background, and shadow (on/off, color, width) are remembered and can be reset.
+- The `burn` CLI command supports the same output modes and per-run style overrides, including `--shadow on|off`.
+- Automated coverage includes parsing 20,000 cues in each of four formats, active-cue lookup across three hours at 30 fps, a bounded rendering cache, and a 240-second video with more than 1,200 cues. A 30-minute 1080p30 render with 12,001 cues completed with correct frames and timing and a peak memory of about 167 MB.
+
 ## 1.6.0 (23): adaptive interface, accessibility, and app settings
 
 - Primary actions use native Liquid Glass on macOS 26 with a system-material fallback on macOS 15.5–25; secondary controls no longer receive a custom blue hover treatment.

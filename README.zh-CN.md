@@ -59,7 +59,7 @@ OpenAI、DeepSeek 为**预览功能**：已提供本地协议模拟和故障测�
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/home-zh-CN-dark.png">
-  <img alt="声迹中文首页，包含识别模型、稿件导入、转录后翻译和悬浮实时字幕" src="Documentation/Screenshots/home-zh-CN.png">
+  <img alt="声迹中文首页，包含识别模型、稿件导入、烧录字幕和悬浮实时字幕" src="Documentation/Screenshots/home-zh-CN.png">
 </picture>
 
 <picture>
@@ -109,6 +109,7 @@ OpenAI、DeepSeek 为**预览功能**：已提供本地协议模拟和故障测�
 - **整理可交付稿件：** 搜索、替换、删除、范围裁剪，并导出 TXT、Markdown、JSON、PDF、SRT 或 WebVTT。
 - **用本地 AI 优化文稿：** 通过 Gemma 4 对转录结果纠错、润色或总结，并用提示词指定术语、风格、重点和格式。
 - **继续已有内容：** 导入 SRT、WebVTT、TXT、Markdown 或声迹 JSON，也可在原稿后继续麦克风转录。
+- **把字幕烧录进视频：** 把 SRT、WebVTT、声迹 JSON、ASS/SSA、SBV 或 TTML/DFXP 字幕按自定义字体和样式烧录进视频，也可直接烧录刚转录完成的原文或译文；命令行同样支持 `burn`。
 - **在本机翻译：** 转录后默认使用 Apple Translation，也可下载 NLLB INT8 模型。
 - **处理长录音：** 逐步显示结果，保存追加式恢复记录，并支持暂停、恢复和重新开始。
 

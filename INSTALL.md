@@ -1,4 +1,4 @@
-# Install ShengJi 1.6.7 on your Mac
+# Install LocalScribe on your Mac
 
 **English** | [Chinese (Simplified)](INSTALL.zh-CN.md) · [Project overview](README.md)
 

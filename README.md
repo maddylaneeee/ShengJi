@@ -50,7 +50,7 @@ For illustrated steps, troubleshooting, and SHA-256 verification, see the [Downl
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/home-en-dark.png">
-  <img alt="LocalScribe home screen in English with model selection, import, translation and live-caption controls" src="Documentation/Screenshots/home-en.png">
+  <img alt="LocalScribe home screen in English with model selection, transcript import, subtitle burning and live-caption controls" src="Documentation/Screenshots/home-en.png">
 </picture>
 
 ## On-device Gemma 4 transcript enhancement (new in 1.6.4)
