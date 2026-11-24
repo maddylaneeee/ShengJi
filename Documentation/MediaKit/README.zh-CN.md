@@ -6,7 +6,7 @@
 
 ## 素材
 
-- [`shengji-demo.gif`](shengji-demo.gif) / [暗色版](shengji-demo-dark.gif)：基于 1.6.6 (37) 实机截图的 8 秒无声循环，展示中文首页和稿件编辑器。
+- [`shengji-demo.gif`](shengji-demo.gif) / [暗色版](shengji-demo-dark.gif)：基于 1.8.0 (43) 实机截图的 8 秒无声循环，展示中文首页和稿件编辑器。
 - [英文预览](localscribe-demo-en.gif) / [暗色版](localscribe-demo-en-dark.gif)：英文界面与英文示例稿件。
 - [日文预览](localscribe-demo-ja.gif) / [暗色版](localscribe-demo-ja-dark.gif)：日文界面与日文示例稿件。
 - [`shengji-demo-poster.png`](shengji-demo-poster.png)：展示本地转录完成结果的 16:9 封面图。
