@@ -6,7 +6,7 @@ This directory contains reusable screenshots, installation graphics, project car
 
 ## Assets
 
-- [`localscribe-demo-en.gif`](localscribe-demo-en.gif) / [dark](localscribe-demo-en-dark.gif): 8-second silent English home-screen/editor loop, captured from version 1.6.6 (37).
+- [`localscribe-demo-en.gif`](localscribe-demo-en.gif) / [dark](localscribe-demo-en-dark.gif): 8-second silent English home-screen/editor loop, captured from version 1.8.0 (43).
 - [Japanese preview](localscribe-demo-ja.gif) / [dark](localscribe-demo-ja-dark.gif): the same preview with Japanese UI and sample text.
 - [Chinese preview](shengji-demo.gif) / [dark](shengji-demo-dark.gif): the same preview with Chinese UI and sample text.
 - [`localscribe-demo-poster-en.png`](localscribe-demo-poster-en.png): English poster showing the completed local transcript.
