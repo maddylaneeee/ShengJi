@@ -10,194 +10,161 @@
 
 **マイクの音声、音声・動画ファイル、Macで再生中の音を、そのMac上で編集可能なテキストと字幕に。**
 
-LocalScribeは、Appleシリコン搭載Mac向けの無料・オープンソースのネイティブ文字起こしアプリです。アカウント登録は不要です。ローカル音声認識、フローティング字幕、字幕の編集と書き出し、オフライン翻訳、長時間タスクの復元、Gemma 4による文章の校正・推敲・要約を、ひとつのSwiftUIアプリにまとめています。認識用の音声は本機に保持します。AI は標準で本機上で動作し、クラウド AI を選択した場合のみ必要な文章を送信します。
+LocalScribeは、Appleシリコン搭載Mac向けの無料・オープンソースのSwiftUIネイティブ文字起こしアプリです。アカウント登録は不要です。ローカル音声認識、フローティング字幕、原稿の編集、字幕の書き出しと焼き込み、オフライン翻訳、長時間タスクの復元、本機でのGemma 4による文章の整理をまとめています。認識用の音声はMacの外に出ません。クラウドサービスを選ばない限り、AIも本機で動作します。
 
-現在のリリース：**1.8.0（43）** · [リリースノート（英語）](https://github.com/maddylaneeee/ShengJi/releases/tag/v1.8.0) · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [初回起動ガイド（英語）](INSTALL.md) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
-
-> [!TIP]
-> **1.8.0の新機能：字幕の焼き込み。** ホーム画面の「字幕の焼き込み」（ファイル → 字幕を焼き込む…）で、SRT、WebVTT、LocalScribe JSON、ASS/SSA、SBV、TTML/DFXP の字幕を動画に焼き込めます。動画の文字起こし完了後は、結果画面下部の「文字起こしを書き出す」の隣にある「動画に焼き込む」から、表示中の原文または訳文を焼き込めます。既定ではコピーを作成し、フォントと字幕スタイルは記憶されます。
->
-> **1.7.2の修正：長い原稿。** 1,000行を超える原稿も滑らかにスクロールでき、行番号に区切り記号や折り返しが入りません。Apple音声認識のファイル進捗は認識済みの音声に基づきます。書き出しの既定名は、マイクが「開始時刻_Transcription」、ファイルが「元のファイル名_Transcription」です。
->
-> **1.7.1の新機能：カスタム AI サービス。** 設定 → モデルで LM Studio、OpenAI、DeepSeek を設定できます。有効にすると Gemma のダウンロードと読み込みを禁止します。クラウド接続は正式キーによる検証待ちのプレビューです。
->
-> **1.7.0で追加：マイクの元音声を保存。** 新しいマイク文字起こしで元の録音を任意に保存し、再生して文字と一緒にM4Aを書き出せます。音質は3段階です。言語変更後のメニュー、AIプロンプト編集画面、文字起こしの書き出し画面もすぐに更新されます。このバージョンでは音声合成を無効にしています。
-
-## 動画への字幕の焼き込み（1.8.0）
-
-ホーム画面の「字幕の焼き込み」を開くか、「ファイル → 字幕を焼き込む…」（⇧⌘B）を選びます。動画（MP4、MOV、M4V など macOS で再生できる形式）と字幕ファイルを選ぶか、各ファイルを対応する行にドラッグします。対応する字幕形式は SRT、WebVTT、セグメント付き LocalScribe JSON、ASS/SSA、SBV、TTML/DFXP です。焼き込み前にファイルを検査し、タイムスタンプがない、形式が不正または前後が逆のタイムスタンプがある（行番号を表示）、その他の形式のファイルは非対応として表示します。ASS のスタイルと TTML の領域は無視し、LocalScribe のスタイルで描画します。
-
-動画の文字起こしが完了したら、「文字起こしを書き出す」の隣にある「動画に焼き込む」をクリックします。元の動画と現在表示中のテキスト（原文または訳文）が入力・固定された状態で焼き込み画面が開き、どちらを使うかが表示されます。原稿を編集した場合はタイムラインが概算となり、警告が表示されます。ツールバーの「プレビューに戻る」で結果画面に戻って編集を続けられます。
-
-- **出力：** 「コピーを作成」（既定。保存ダイアログを表示）または「元の動画に直接焼き込む」（確認後、新しい動画の描画と検証が成功した場合のみ元のファイルを置き換え）。この選択は記憶しません。
-- **字幕スタイル**は大きなライブプレビューの横に常に表示されます。インストール済みの任意のフォント、サイズ、上部または下部の位置と余白、任意の背景、オフにでき色と幅を調整できる柔らかい影を設定できます。スタイルは記憶され、既定値に戻せます。
-- 描画はこの Mac 上の AVFoundation で行い、元の解像度と向きを保持します。焼き込みには再エンコードが必要です。HEVC の動画は HEVC のまま、その他は H.264 で書き出します。
-
-## カスタム AI サービス（1.7.1）
-
-設定 → モデル → カスタム AI サービスを使用、で LM Studio、OpenAI、DeepSeek を設定できます。LM Studio は本機のループバックアドレスのみ対応し、標準は `http://127.0.0.1:1234/v1` です。モデル一覧から選択するか ID を入力できます。要求 JSON の作成は不要です。
-
-有効にすると Gemma のダウンロードを中止し、以後の取得と読み込みを禁止します。設定不足、キーなし、API エラー時も自動的に Gemma へ戻りません。既存モデルは保持し、手動で削除できます。無効に戻しても旧ダウンロードは再開しません。低メモリで内蔵 Gemma が無効でもカスタムサービスは利用できます。
-
-長い設定説明はマウスを重ねると表示されます。OpenAI と DeepSeek のモデル一覧取得にも有効な API キーが必要です。未入力の場合はボタン付近に理由を表示します。LM Studio の Token はサーバーが認証を要求する場合のみ必要です。
-
-クラウド接続はプレビューです。ローカルの模擬プロトコルで検証し、正式キーによる検証は未実施です。文章送信と料金の説明への同意が必要です。キーなしで設定を保存できますが、生成には認証情報とモデル ID が必要です。
-
-## 動作の紹介
+現在のリリース：**1.8.0（43）** · [リリースノート（英語）](https://github.com/maddylaneeee/ShengJi/releases) · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Documentation/MediaKit/localscribe-demo-ja-dark.gif">
   <img alt="日本語のホーム画面と編集可能な原稿のプレビュー" src="Documentation/MediaKit/localscribe-demo-ja.gif">
 </picture>
 
-実際の1.6.6アプリで撮影したホーム画面と原稿編集画面を、8秒のループで紹介します。個人情報を含まない日本語のサンプル原稿を使用しています。画像とGIFはライト・ダークの両方を用意し、閲覧テーマに応じて表示します。
-
 > [!IMPORTANT]
-> **Apple SpeechAnalyzerによる音声認識とフローティング字幕にはmacOS 26が必要です。** アプリ自体はmacOS 15.5以降に対応しています。macOS 15.5–25では、ホーム画面でWhisper、SenseVoice、Parakeetのいずれかを手動で選択してください。SenseVoiceとParakeetは現在ファイルの文字起こしのみ対応しています。
+> アプリはmacOS 15.5以降に対応していますが、**Apple Speechによる音声認識とフローティング字幕にはmacOS 26が必要です**。macOS 15.5–25では、ホーム画面でWhisper、SenseVoice、Parakeetのいずれかを選択してください。
 
 ## ダウンロードとインストール
 
 1. [最新のDMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg)します。
 2. DMGを開き、LocalScribeを「アプリケーション」にドラッグします。
-3. 初回起動はmacOSによってブロックされます。一度起動を試みた後、「システム設定」→「プライバシーとセキュリティ」で「このまま開く」を選び、確認画面で「開く」をクリックします。
+3. 一度アプリを開きます。macOSにブロックされた場合は「システム設定」→「プライバシーとセキュリティ」でLocalScribeの「このまま開く」を選び、確認します。
 
-画像付きの手順、トラブルシューティング、SHA-256の確認方法は[ダウンロードとインストールガイド（英語）](Documentation/DOWNLOAD.md)をご覧ください。
+詳しくは[初回起動ガイド（英語）](INSTALL.md)（「このまま開く」が表示されない場合を含む）と、画像付き手順とSHA-256の確認方法を記載した[ダウンロードとインストールガイド（英語）](Documentation/DOWNLOAD.md)をご覧ください。
 
 > [!WARNING]
-> 公開パッケージは完全性確認用のアドホック署名のみで、Developer ID署名もAppleの公証も受けていません。このリポジトリと対象リリースを信頼できる場合のみ、システムの警告を解除してください。各リリースにはSHA-256のチェックサムファイルが付属します。
+> 公開パッケージはアドホック署名のみで、Developer ID署名もAppleの公証も受けていません。このリポジトリを信頼できる場合のみ警告を解除してください。各リリースにはSHA-256ファイルが付属します。
+
+## 主な機能
+
+- **3種類の入力。** マイク（システム標準または指定した入力デバイス）、音声・動画ファイル、Macで再生中の音を文字起こしできます。
+- **フローティング字幕**（macOS 26）。マイク、Macの音声、または両方を混ぜた入力に対応します。
+- **4つのオフライン認識エンジン。** Apple Speech、Metal対応whisper.cpp、SenseVoice、NVIDIA Parakeet。モデルは選択時にのみダウンロードします。
+- **原稿の編集。** 検索、置換、選択範囲の削除、範囲指定での切り詰め。長い原稿も滑らかにスクロールできます。
+- **読み込みと続き。** SRT、WebVTT、TXT、Markdown、LocalScribe JSONを開いて編集したり、末尾にマイクの文字起こしを追加したりできます。
+- **書き出し。** TXT、Markdown、JSON、PDF、SRT、WebVTT、クリップボード。
+- **文字起こし後の翻訳。** Apple翻訳、または任意のローカルNLLB。
+- **AIによる文章の整理。** 本機のGemma 4、またはLM Studio、OpenAI、DeepSeekのカスタムサービスで校正・推敲・要約できます。
+- **動画への字幕の焼き込み。** フォントとスタイルを指定できます。
+- **マイクの元音声を保存**し、原稿と一緒にM4Aで書き出せます。
+- **長時間タスクの保護。** 段階的な結果表示、一時停止と再開、追記式の記録、中断後の復元。
+- **コマンドライン**からモデル管理、文字起こし、翻訳、字幕の焼き込みを実行できます。
+- **英語・簡体字中国語・日本語のインターフェイス。** 標準でmacOSの言語に従い、設定で言語と外観（システム／ライト／ダーク）をすぐに切り替えられます。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/home-ja-dark.png">
   <img alt="モデル選択、原稿の読み込み、字幕の焼き込み、ライブ字幕を備えた日本語のホーム画面" src="Documentation/Screenshots/home-ja.png">
 </picture>
 
-## Gemma 4で文字起こしを校正・推敲・要約
-
-文字起こしが完了したら、または原稿を読み込んだら、右側のインスペクタから「AIで文章を整える」を開けます。原稿を別のAIサービスにコピーしたり、アップロードしたりせずに、このMac上で文章を整理できます。
-
-### 差分を確認しながら校正・推敲
-
-Gemmaは原意を保ちながら、つなぎ言葉、繰り返し、明らかな認識ミスを修正します。原文と提案文の差分が処理中に更新され、バッチの進捗、モデルの状態、このMac上での処理であることを確認できます。検証に失敗したセグメントは原文を保持します。
-
-### 長い原稿から要点をまとめる
-
-要約はテキストプレビューを置き換えますが、元の原稿のスナップショットを保持するため取り消せます。タスクごとに人名、専門用語、文体、要約の長さ、重点、形式などを指定でき、よく使う指示は設定に保存できます。AIの出力は必ず確認してください。
-
-標準のGemma 4 E2B IT Q4モデルは約2.8 GBです。設定で約4.6 GBのE4Bモデルも有効にできます。モデルは必要に応じてダウンロード・検証され、llama.cppとMetalを通してMac上で実行されます。物理メモリが8 GB以下のMacでは内蔵GemmaのAI機能をデフォルトで無効にし、設定でメモリ警告を確認すると有効にできます。AI機能を選択したときだけGemmaを読み込み、文字起こし完了時には事前読み込みしません。Gemmaを読み込む前に、使用中の音声認識とNLLB翻訳ランタイムを解放し、タスク終了後はGemmaヘルパーも終了します。
-
-## 主な機能
-
-- **このMac上で処理。** 音声認識と任意の翻訳をローカルで実行し、認識用の音声は送信しません。任意のクラウド AI は同意後に必要な文章のみ送信します。
-- **複数の入力に対応。** マイク、音声・動画ファイル、Macのシステムオーディオを文字起こしできます。通常のリアルタイム文字起こしでは、Macのシステムオーディオ、システム標準のマイク、指定した入力デバイスからひとつを選べます。
-- **フローティング字幕。** macOS 26ではマイク、Macの音声、両方を混ぜた入力からライブ字幕を表示できます。
-- **複数のオフラインエンジン。** Apple Speech、Metal対応whisper.cpp、SenseVoice、NVIDIA Parakeetを選べます。
-- **長時間の作業に対応。** 結果の段階的な表示、追記式の復元記録、表示量を抑えた描画、一時停止・再開に対応します。
-- **編集して書き出し。** 検索、置換、選択範囲の削除、範囲指定での切り詰め、翻訳ができます。TXT、Markdown、JSON、PDF、SRT、WebVTTとクリップボードへの書き出しに対応します。
-- **既存の原稿を活用。** SRT、WebVTT、TXT、Markdown、LocalScribe JSONを読み込み、編集したり、末尾にマイクの文字起こしを追加したりできます。
-- **ローカルAIで文章を整理。** Gemma 4で校正・推敲・要約を行い、用語や文体、重点、形式を指示できます。
-- **字幕の焼き込み。** SRT、WebVTT、LocalScribe JSON、ASS/SSA、SBV、TTML/DFXP の字幕を、フォントやスタイルを指定して動画に焼き込めます。タイムスタンプがない、または不正なファイルは非対応として表示されます。元の動画の上書きは確認後にのみ行います。
-- **CLI。** モデル管理、文字起こし、書き出し、翻訳、字幕の焼き込みをコマンドラインから実行できます。
-
-## 原稿の編集と翻訳
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/transcript-editor-ja-dark.png">
   <img alt="ローカル翻訳、検索、範囲編集、書き出し、プライバシー情報を備えた日本語の原稿編集画面" src="Documentation/Screenshots/transcript-editor-ja.png">
 </picture>
 
-スクリーンショットは、バージョン1.6.6（37）の実際のmacOSアプリで、個人情報を含まない日本語のサンプル原稿を使って撮影しました。ライト・ダークともに実機画面で、Computer Useのポインタは含まれていません。アプリは英語、簡体字中国語、日本語に対応しています。
-
-## 言語と外観
-
-標準ではmacOSの優先言語順に従います。設定の「アプリの言語」で英語、簡体字中国語、日本語を選ぶと、システムの言語を変更せずにすぐ切り替えられます。メニューバーやライブ字幕の音声ソースも同時に更新されます。音声認識の言語メニューでは、英語とMacの言語を重複なしで「おすすめの言語」に表示します。
-
-外観はシステムに従う設定、ライト、ダークから選べます。設定ではマイク、音声認識、システムオーディオのアクセス権も確認できます。表示言語と、音声認識・翻訳で利用できる言語は別であり、後者は選択したエンジンやモデルに依存します。
-
-NLLB ローカル翻訳には 4 GB 以上のメモリが必要です。容量の判定には 128 MiB の誤差を許容します。Apple 翻訳は引き続き利用できます。
-
 ## 音声認識・翻訳エンジン
 
-**利用できる場合は、Appleの標準エンジンを優先してください。** macOSのバージョンと必要な言語が対応している場合、文字起こしにはApple Speech、翻訳にはApple翻訳をおすすめします。ネイティブ環境への最適化と出力品質は、LocalScribeで利用できるサードパーティ製の文字起こし・翻訳モデルよりも明らかに優れています。
+**macOSのバージョンと言語が対応している場合は、Appleの標準エンジンを優先してください。** 品質はサードパーティ製モデルより明らかに優れています。
 
 | エンジン | 用途 | 実行環境 |
 | --- | --- | --- |
-| Apple Speech | マイク、ファイル、ライブ字幕 | SpeechAnalyzer / SpeechTranscriber |
+| Apple Speech | マイク、ファイル、ライブ字幕（macOS 26） | SpeechAnalyzer / SpeechTranscriber |
 | Whisper | マイク、ファイル | whisper.cpp GGML、Metal、CPUへのフォールバック |
 | SenseVoice | ファイル | sherpa-onnx、利用可能な場合はCore ML、CPUへのフォールバック |
 | NVIDIA Parakeet | ファイル | sherpa-onnx、利用可能な場合はCore ML、CPUへのフォールバック |
 | Apple翻訳 | 標準の文字起こし後翻訳 | macOS Translationフレームワーク |
 | NLLB | 任意の文字起こし後翻訳 | CTranslate2 CPU/int8 |
-| Gemma 4 | 原稿の校正・推敲・要約 | llama.cppとMetalによるオンデバイス推論 |
+| Gemma 4 | 校正・推敲・要約 | llama.cppとMetalによるオンデバイス推論 |
 
-Whisperのファイル文字起こしは、アプリ側で音声を固定長に分割するのではなく、モデル内部のスライディングウインドウを使用します。長い素材では同梱のSilero VADにより無音区間をスキップしつつ、発話前後の余白と重なりを保持できます。出力のフィルタでは無音、信頼度、繰り返し、既知のハルシネーションのパターンを考慮します。
+Whisperは長い素材で同梱のSilero VADを使って無音区間をスキップし、無音、低信頼度、繰り返し、既知のハルシネーションを含む出力を除外します。
 
-### 詳細設定
+**詳細設定。** サードパーティ製エンジンでは、右側のインスペクタで折りたたまれた「詳細設定」に、各ランタイムが対応する項目のみ表示します。Whisperではプロンプト、温度と再試行、ビームサーチまたは貪欲法、コンテキスト長、無音と信頼度のフィルタ、VAD、スレッド数を調整できます。最後に使ったエンジン、モデル、設定は記憶され、「モデルの標準設定に戻す」は選択中のエンジンのみをリセットします。
 
-対応する外部エンジンでは、右側のインスペクタに初期状態で折りたたまれた「詳細設定」があります。Whisperではプロンプト、温度と再試行、ビームサーチまたは貪欲法、コンテキスト長、無音と信頼度のフィルタ、VAD、推論スレッド数の自動設定を調整できます。SenseVoiceとParakeetでは、それぞれのランタイムが対応する設定のみ表示します。ファイル専用・マイク専用の項目も入力に応じて表示します。
+## AIによる文章の整理
 
-数値はキーボード、スライダ、ステッパーで入力でき、範囲を検証します。各項目にはポインタを合わせて確認できる短い説明があります。最後に使ったエンジン、モデル、詳細設定は次のタスクでも保持されます。「モデルの標準設定に戻す」は選択したエンジンのみをリセットします。
+文字起こしの完了後、または原稿の読み込み後に、右側のインスペクタで「AIで文章を整える」を開きます。
 
-## 動作環境と現在の制限
+- **校正と推敲：** つなぎ言葉、繰り返し、明らかな認識ミスを修正し、差分をリアルタイムに表示します。検証に失敗したセグメントは原文を保持します。
+- **要約：** プレビューを要約に置き換え、取り消し用のスナップショットを保持します。
+- 人名、用語、文体、長さ、重点、形式などの指示を一時的に、または保存して使えます。AIの出力は必ず確認してください。
 
-- macOS 15.5以降、Appleシリコン（`arm64`）が必要です。Intel Macには対応していません。
-- Apple SpeechAnalyzerの音声認識とライブ字幕にはmacOS 26が必要です。
-- macOS 15.5–25ではWhisper、SenseVoice、Parakeetを手動で選択してください。SenseVoiceとParakeetは現在ファイルのみ対応しています。
-- ライブ字幕の翻訳は現在無効です。文字起こし完了後の翻訳は利用できます。
-- Gemma 4 は 8 GB 以下ではデフォルトで無効です。設定で警告を確認して有効にできます。モデルは AI 機能を選択したときだけ読み込みます。
-- 公開パッケージのDeveloper ID署名とApple公証は未対応です。
+**内蔵Gemma 4。** 標準のE2Bモデルは約2.8 GBで、設定で約4.6 GBのE4Bモデルも有効にできます。モデルは必要時にダウンロードし、AIタスクを選んだときだけ読み込みます。読み込み前に音声認識とNLLBのランタイムを解放します。メモリ8 GB以下のMacでは標準で無効ですが、設定で有効にできます。
 
-マイク入力にはマイクのアクセス権、Macの音声取得には画面収録とシステムオーディオ録音のアクセス権が必要です。画面の映像は録画しません。Apple SpeechとApple翻訳は、macOSが管理する言語リソースをダウンロードする場合があります。
+**カスタムAIサービス。** 「設定 → モデル → カスタム AI サービスを使用」で、LM Studio（ループバックアドレスのみ、標準は`http://127.0.0.1:1234/v1`）、OpenAI、DeepSeekに接続できます。有効にするとGemmaのダウンロードと読み込みを中止・禁止し、自動ではGemmaに戻りません。OpenAIとDeepSeekはプレビューで、同意後にのみタスクの文章を送信します。API利用には料金が発生する場合があります。[設定ガイド（英語）](Documentation/AI-SERVICES.md)をご覧ください。
 
-## ソースからビルド
+## 動画への字幕の焼き込み
 
-XcodeとCommand Line Toolsをインストールしてください。必要なネイティブランタイムはリポジトリに含まれています。大きな音声認識モデル、NLLB、Gemma 4のモデルは選択時にのみダウンロードします。
+ホーム画面の「字幕の焼き込み」、または「ファイル → 字幕を焼き込む…」（⇧⌘B）を選びます。動画（MP4、MOV、M4VなどmacOSで再生できる形式）と字幕ファイル（SRT、WebVTT、LocalScribe JSON、ASS/SSA、SBV、TTML/DFXP）を選ぶか、ドラッグします。有効なタイムスタンプがないファイルは非対応と表示します。ASSのスタイルとTTMLの領域は無視します。
 
-```sh
-ruby generate_project.rb
+動画の文字起こし後は、「文字起こしを書き出す」の隣の「動画に焼き込む」で、表示中の原文または訳文を使って同じ画面を開けます。
 
-xcodebuild \
-  -project LocalScribe.xcodeproj \
-  -scheme LocalScribe \
-  -destination 'platform=macOS,arch=arm64' \
-  build
-```
+- **出力：** 「コピーを作成」（既定）または「元の動画に直接焼き込む」。後者は新しいファイルの描画と検証が成功した後にのみ元のファイルを置き換えます。
+- **スタイル：** インストール済みの任意のフォント、サイズ、上部または下部の位置と余白、任意の背景、調整可能な影。ライブプレビュー付きで、スタイルは記憶されます。
+- AVFoundationで描画し、元の解像度と向きを保持します。HEVCの動画はHEVC、その他はH.264で再エンコードします。
 
-テストを実行するには：
+## マイクの元音声を保存
 
-```sh
-xcodebuild \
-  -project LocalScribe.xcodeproj \
-  -scheme LocalScribe \
-  -destination 'platform=macOS,arch=arm64' \
-  test
-```
+新しいマイク文字起こしを始める前に「元の音声を保存」をオンにし、「容量優先」「品質優先」「最高品質」（M4A、AACまたはALAC）から選びます。完了後は0.5×、1×、2×で再生でき、原稿と同じファイル名で書き出せます。原稿を編集・翻訳しても音声は変わりません。ファイルの文字起こし、Macの音声、ライブ字幕、読み込んだ原稿への追記では利用できません。
 
-CIではGitHubのmacOS 26 AppleシリコンランナーでテストとRelease構成の静的解析を実行します。
+## キーボードショートカット
 
-ローカルのパッケージスクリプトはZIPとDMGを作成し、内包する署名、アーキテクチャ、対応OS、Mach-Oファイル、アーカイブの展開、DMGのマウント、ヘルパーの起動を検証します。
+| ショートカット | 操作 |
+| --- | --- |
+| ⌘N | マイクで文字起こし |
+| ⌘O | ファイルから文字起こし |
+| ⇧⌘O | 原稿を読み込む |
+| ⇧⌘B | 字幕を焼き込む |
+| Return | 文字起こしを開始 |
+| Space | 一時停止／再開 |
+| ⌘E | 文字起こしを書き出す |
 
-```sh
-./tools/package_local_release.sh
-```
+## 動作環境と制限
 
-標準では設定済みのローカル証明書を使用します。`CODESIGN_IDENTITY=-`を指定すると、GitHub Actionsと同じアドホック署名のパッケージを作成します。`Info.plist`のバージョンと一致するタグ（例：`v1.7.1`）、またはビルド番号を含むタグ（例：`v1.7.1-build41`）をpushすると、`release-unsigned.yml`がパッケージを検証してGitHubリリースを作成します。このフローでは証明書やパスワードをGitHub Secretsに保存しません。公開配布にはDeveloper ID署名、タイムスタンプ、公証、ステープル処理が望ましい方法です。
+- macOS 15.5以降、Appleシリコン（`arm64`）。Intel Macには対応していません。
+- Apple Speechの音声認識とライブ字幕にはmacOS 26が必要です。
+- SenseVoiceとParakeetはファイルの文字起こしのみ対応しています。
+- ライブ字幕の翻訳は現在無効です。文字起こし後の翻訳は利用できます。
+- ローカルNLLB翻訳には4 GB以上のメモリが必要です。
+- マイク入力にはマイクのアクセス権、Macの音声には「画面収録とシステムオーディオ録音」のアクセス権が必要です。Apple SpeechとApple翻訳は、macOSが管理する言語リソースをダウンロードする場合があります。
+
+## プライバシーとアップデート
+
+音声認識と翻訳は本機で行い、認識用の音声も内蔵Gemmaで処理する文章も送信しません。LM Studioは同じMacのループバック経由で文章を受け取ります。OpenAIまたはDeepSeekは、選択して同意した場合にのみ、タスクの文章、文脈、指示を受け取ります。APIキーは同期しない本機のキーチェーンに保存します。
+
+その他のネットワーク利用は、必要時のモデルのダウンロード、アップデートの確認とダウンロード、外部ドキュメントを開く場合に限られます。アップデートは起動時と6時間ごとに最新のGitHubリリースの`update.json`を確認し、ZIPのSHA-256、バンドルID、バージョンを検証してから、置き換え前に確認を求めます。自動アップデートは設定で無効にできます。
 
 ## コマンドライン
 
 ```sh
-LocalScribe.app/Contents/MacOS/LocalScribe --cli help
-LocalScribe.app/Contents/MacOS/LocalScribe --cli models --json
-LocalScribe.app/Contents/MacOS/LocalScribe --cli transcribe input.mp4 \
-  --engine whisper --language ja_JP --format srt --output output.srt
-LocalScribe.app/Contents/MacOS/LocalScribe --cli burn \
-  --video input.mp4 --subtitles input.srt --output input-subtitled.mp4
+LS=/Applications/LocalScribe.app/Contents/MacOS/LocalScribe
+
+$LS --cli help
+$LS --cli models --json
+$LS --cli download whisper.largeV3TurboQ5
+$LS --cli transcribe input.mp4 --engine whisper --language ja_JP \
+  --translate-to en --format srt --output output.srt
+$LS --cli translate "こんにちは" --source ja_JP --target en
+$LS --cli burn --video input.mp4 --subtitles input.srt --output subtitled.mp4
 ```
 
-## プライバシーとアップデート
+| コマンド | 内容 |
+| --- | --- |
+| `models [--json]` | モデルとインストール状態を一覧表示 |
+| `download <model-id>` / `remove <model-id>` | 認識モデルをインストール／削除 |
+| `transcribe <ファイル>` | Whisper、SenseVoice、Parakeetで文字起こし。`--model`、`--compute auto\|coreml\|metal\|cpu`、`--translate-to`、`--translation-provider apple\|nllb`、`--format txt\|md\|json\|pdf\|srt\|vtt` などを指定可能 |
+| `translate <テキスト>` | Apple翻訳（macOS 26）またはNLLBでテキストを翻訳 |
+| `burn` | 字幕を焼き込み。`--in-place`、`--overwrite`、`--font`、`--size`、`--position`、`--margin`、`--background`、影のオプションに対応 |
 
-LocalScribe は認識用の音声や内蔵 Gemma で処理する文章を送信しません。音声認識と翻訳は本機で行います。LM Studio は同じ Mac のループバックサービスへ文章を送信します。OpenAI または DeepSeek を選択し同意した場合、必要な文章、文脈、追加指示を公式 API へ送信し、料金が発生する場合があります。認証情報は同期しない本機のキーチェーンに保存します。選択した AI サービスへの要求に加え、ネットワークは必要な音声認識・翻訳・Gemmaモデルのダウンロード、手動または自動のアップデート確認とダウンロード、外部ドキュメントを開く際に使用します。自動アップデートは設定で無効にできます。
+## ソースからビルド
 
-標準では起動時と6時間ごとに最新版のGitHubリリースから`update.json`を確認します。ZIPをダウンロードし、SHA-256、バンドルID、バージョンを検証してから、アプリを置き換えて開き直す前に確認を求めます。この更新経路は、Appleの公証を受けた公開リリースの代わりになるものではありません。
+XcodeとCommand Line Toolsが必要です。ネイティブランタイムはリポジトリに含まれ、大きなモデルは選択時にのみダウンロードします。
+
+```sh
+ruby generate_project.rb
+xcodebuild -project LocalScribe.xcodeproj -scheme LocalScribe \
+  -destination 'platform=macOS,arch=arm64' build
+xcodebuild -project LocalScribe.xcodeproj -scheme LocalScribe \
+  -destination 'platform=macOS,arch=arm64' test
+```
+
+CIはmacOS 26のAppleシリコン環境でテストとRelease構成の静的解析を実行します。`./tools/package_local_release.sh`はZIPとDMGを作成・検証します（`CODESIGN_IDENTITY=-`でアドホック署名）。`Info.plist`のバージョンと一致するタグ（例：`v1.8.0`）をpushすると、`release-unsigned.yml`がGitHubリリースを公開します。
 
 ## 関連ドキュメント
 
@@ -205,15 +172,11 @@ LocalScribe は認識用の音声や内蔵 Gemma で処理する文章を送信�
 
 - [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
 - [ダウンロードとインストールガイド（英語）](Documentation/DOWNLOAD.md)
-- [検証・回帰テストの記録](https://lixinchen.ca/docs/localscribe/acceptance.html)
-- [SherpaOnnxのビルド手順](https://lixinchen.ca/docs/localscribe/sherpa-onnx.html)
+- [カスタムAIサービス（英語）](Documentation/AI-SERVICES.md)
 - [ロードマップ](ROADMAP.md)
 - [開発への参加](CONTRIBUTING.md)
 - [不具合を報告](https://github.com/maddylaneeee/ShengJi/issues)
-- [紹介用の素材](Documentation/MediaKit/README.md)
 
 ## ライセンス
 
-LocalScribeのソースコードは[MITライセンス](LICENSE)で公開しています。外部コンポーネントとモデルにはそれぞれのライセンスが適用されます。[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)と`Vendor`内のライセンスファイルを確認してください。
-
-任意で利用するNLLBモデルは、配布元によりCC-BY-NC-4.0で提供されています。
+LocalScribeのソースコードは[MITライセンス](LICENSE)で公開しています。外部コンポーネントとモデルにはそれぞれのライセンスが適用されます。[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)と`Vendor`内のライセンスファイルをご覧ください。任意で利用するNLLBモデルは、配布元によりCC-BY-NC-4.0で提供されています。
