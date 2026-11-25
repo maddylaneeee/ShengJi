@@ -209,6 +209,33 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testLanguageNamesFollowAppLanguageInsteadOfSystemLanguage() {
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: AppLanguage.defaultsKey)
+        defer {
+            if let previous {
+                defaults.set(previous, forKey: AppLanguage.defaultsKey)
+            } else {
+                defaults.removeObject(forKey: AppLanguage.defaultsKey)
+            }
+        }
+        let identifier = "en_US"
+        let option = LanguageOption(locale: Locale(identifier: identifier), isInstalled: true)
+
+        for language in [AppLanguage.english, .simplifiedChinese, .japanese] {
+            defaults.set(language.rawValue, forKey: AppLanguage.defaultsKey)
+            let expected = Locale(identifier: language.rawValue).localizedString(forIdentifier: identifier)
+            XCTAssertNotNil(expected)
+            XCTAssertEqual(L10n.languageName(for: identifier), expected, language.rawValue)
+            XCTAssertEqual(option.displayName, expected, language.rawValue)
+        }
+
+        defaults.set(AppLanguage.english.rawValue, forKey: AppLanguage.defaultsKey)
+        XCTAssertEqual(L10n.languageName(for: identifier), "English (United States)")
+        defaults.set(AppLanguage.simplifiedChinese.rawValue, forKey: AppLanguage.defaultsKey)
+        XCTAssertEqual(L10n.languageName(for: identifier), "英语（美国）")
+    }
+
     @MainActor
     func testJapaneseSelectionPersistsAndLocalizesRuntimeStrings() throws {
         let suiteName = "LocalizationTests.Japanese.\(UUID().uuidString)"

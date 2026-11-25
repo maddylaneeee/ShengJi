@@ -2,6 +2,12 @@
 
 This document summarizes the public acceptance and regression history in English. The complete earlier record is preserved in [Chinese (Simplified)](ACCEPTANCE.zh-CN.md).
 
+## 1.8.1 (44): language names and quieter settings
+
+- With the macOS system language and the app language set differently, the inspector's recognition language, the Markdown and PDF export language line, unsupported-language errors, live-caption errors, and CLI output use the app language.
+- The result page inspector, the pre-recording info popover, and the home screen no longer show privacy notes; Settings keeps them.
+- Settings option explanations appear as hover tooltips, and standalone notes are collected in an info icon at the bottom of the General, Permissions, Models, and Updates tabs. Status and warning messages remain visible, and the About tab is unchanged.
+
 ## 1.8.0 (43): subtitle burning
 
 - The home screen's Burn Subtitles card, File → Burn Subtitles… (⇧⌘B), and the result page's Burn into Video button open the same burn page; the result-page entry locks the source video and the currently shown original or translation, and Back to Preview returns to the result.

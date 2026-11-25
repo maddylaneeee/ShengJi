@@ -25,7 +25,6 @@ struct StartView: View {
                 importAndBurnRow
                 actionGrid
                 liveCaptionCard
-                privacyNote
                 Spacer(minLength: 18)
             }
             .frame(maxWidth: 900)
@@ -526,17 +525,6 @@ struct StartView: View {
         case .apple:
             EmptyView()
         }
-    }
-
-    private var privacyNote: some View {
-        Label {
-            Text("实时字幕识别在本机完成；首次使用相应语言时，macOS 可能需要下载语言资源。")
-        } icon: {
-            Image(systemName: "lock.shield")
-        }
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .padding(.top, 2)
     }
 
     private func syncLiveCaptionLanguageSelection() {

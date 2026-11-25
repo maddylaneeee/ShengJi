@@ -625,7 +625,7 @@ private final class AppleLiveCaptionPipeline: LiveCaptionPipeline {
     func start() async throws {
         let selectedLocale = await SpeechTranscriber.supportedLocale(equivalentTo: locale)
         guard let selectedLocale else {
-            throw LiveCaptionError.unsupportedLanguage(Locale.current.localizedString(forIdentifier: locale.identifier) ?? locale.identifier)
+            throw LiveCaptionError.unsupportedLanguage(L10n.languageName(for: locale.identifier))
         }
 
         let transcriber = SpeechTranscriber(locale: selectedLocale, preset: .timeIndexedProgressiveTranscription)
@@ -689,7 +689,7 @@ private final class AppleLiveCaptionPipeline: LiveCaptionPipeline {
         let status = await AssetInventory.status(forModules: [module])
         guard status != .installed else { return }
         guard status != .unsupported else {
-            throw LiveCaptionError.unsupportedLanguage(Locale.current.localizedString(forIdentifier: locale.identifier) ?? locale.identifier)
+            throw LiveCaptionError.unsupportedLanguage(L10n.languageName(for: locale.identifier))
         }
         if let request = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
             try await request.downloadAndInstall()

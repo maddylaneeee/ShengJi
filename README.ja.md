@@ -12,7 +12,7 @@
 
 LocalScribeは、Appleシリコン搭載Mac向けの無料・オープンソースのSwiftUIネイティブ文字起こしアプリです。アカウント登録は不要です。ローカル音声認識、フローティング字幕、原稿の編集、字幕の書き出しと焼き込み、オフライン翻訳、長時間タスクの復元、本機でのGemma 4による文章の整理をまとめています。認識用の音声はMacの外に出ません。クラウドサービスを選ばない限り、AIも本機で動作します。
 
-現在のリリース：**1.8.0（43）** · [リリースノート（英語）](https://github.com/maddylaneeee/ShengJi/releases) · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
+現在のリリース：**1.8.1（44）** · [リリースノート（英語）](https://github.com/maddylaneeee/ShengJi/releases) · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Documentation/MediaKit/localscribe-demo-ja-dark.gif">
@@ -164,7 +164,7 @@ xcodebuild -project LocalScribe.xcodeproj -scheme LocalScribe \
   -destination 'platform=macOS,arch=arm64' test
 ```
 
-CIはmacOS 26のAppleシリコン環境でテストとRelease構成の静的解析を実行します。`./tools/package_local_release.sh`はZIPとDMGを作成・検証します（`CODESIGN_IDENTITY=-`でアドホック署名）。`Info.plist`のバージョンと一致するタグ（例：`v1.8.0`）をpushすると、`release-unsigned.yml`がGitHubリリースを公開します。
+CIはmacOS 26のAppleシリコン環境でテストとRelease構成の静的解析を実行します。`./tools/package_local_release.sh`はZIPとDMGを作成・検証します（`CODESIGN_IDENTITY=-`でアドホック署名）。`Info.plist`のバージョンと一致するタグ（例：`v1.8.1`）をpushすると、`release-unsigned.yml`がGitHubリリースを公開します。
 
 ## 関連ドキュメント
 

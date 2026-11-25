@@ -27,6 +27,13 @@ enum L10n {
         )
     }
 
+    /// Display name of a language or locale identifier in the app's interface language.
+    static func languageName(for identifier: String) -> String {
+        interfaceLocale.localizedString(forIdentifier: identifier)
+            ?? Locale(identifier: identifier).localizedString(forIdentifier: identifier)
+            ?? identifier
+    }
+
     static var interfaceLocale: Locale {
         preferredLanguageCode.map(Locale.init(identifier:)) ?? .autoupdatingCurrent
     }

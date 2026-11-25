@@ -12,7 +12,7 @@
 
 LocalScribe is a free, open-source, native SwiftUI transcription app for Apple silicon Macs. No account is required. It combines local speech recognition, floating live captions, transcript editing, subtitle export and burning, offline translation, long-task recovery, and on-device Gemma 4 transcript enhancement. Recognition audio never leaves the Mac; AI runs locally unless you choose a cloud service.
 
-Current release: **1.8.0 (43)** · [Release notes](https://github.com/maddylaneeee/ShengJi/releases) · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current release: **1.8.1 (44)** · [Release notes](https://github.com/maddylaneeee/ShengJi/releases) · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [User documentation](https://lixinchen.ca/docs/localscribe/)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Documentation/MediaKit/localscribe-demo-en-dark.gif">
@@ -164,7 +164,7 @@ xcodebuild -project LocalScribe.xcodeproj -scheme LocalScribe \
   -destination 'platform=macOS,arch=arm64' test
 ```
 
-CI runs tests and Release static analysis on macOS 26 Apple silicon. `./tools/package_local_release.sh` builds and validates ZIP and DMG packages (`CODESIGN_IDENTITY=-` for an ad-hoc build). Pushing a tag that matches the `Info.plist` version, such as `v1.8.0`, publishes a GitHub Release through `release-unsigned.yml`.
+CI runs tests and Release static analysis on macOS 26 Apple silicon. `./tools/package_local_release.sh` builds and validates ZIP and DMG packages (`CODESIGN_IDENTITY=-` for an ad-hoc build). Pushing a tag that matches the `Info.plist` version, such as `v1.8.1`, publishes a GitHub Release through `release-unsigned.yml`.
 
 ## Documentation
 

@@ -133,7 +133,7 @@ enum CLIController {
             let fallback = status.fallbackReason.map { L10n.format("（%@）", $0) } ?? ""
             fputs(L10n.format("计算后端：%@%@\n", status.detail, fallback), stderr)
         }
-        var outputLanguage = Locale.current.localizedString(forIdentifier: language.identifier) ?? language.identifier
+        var outputLanguage = L10n.languageName(for: language.identifier)
         if let targetValue = options["translate-to"] {
             let target = try parseTranslationTarget(targetValue)
             let provider = try parseTranslationProvider(options["translation-provider"])

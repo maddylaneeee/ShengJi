@@ -846,9 +846,7 @@ struct LanguageOption: Identifiable, Hashable, Sendable {
     var id: String { locale.identifier }
 
     var displayName: String {
-        L10n.interfaceLocale.localizedString(forIdentifier: locale.identifier)
-            ?? locale.localizedString(forIdentifier: locale.identifier)
-            ?? locale.identifier
+        L10n.languageName(for: locale.identifier)
     }
 }
 
