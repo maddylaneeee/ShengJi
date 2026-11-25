@@ -351,7 +351,7 @@ final class TranscriptionSessionModel {
     }
 
     var languageName: String {
-        Locale.current.localizedString(forIdentifier: locale.identifier) ?? locale.identifier
+        L10n.languageName(for: locale.identifier)
     }
 
     var canPause: Bool { phase == .transcribing }

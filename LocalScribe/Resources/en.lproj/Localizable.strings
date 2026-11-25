@@ -58,7 +58,6 @@
 "正在释放识别/翻译模型并加载 Gemma…" = "Releasing recognition and translation models, then loading Gemma…";
 "没有诊断信息" = "No diagnostic information";
 "用于已完成转录的纠错、润色或总结" = "Proofread, refine, or summarize completed transcripts";
-"用途与隐私" = "Purpose and Privacy";
 "移除" = "Remove";
 "粘贴" = "Paste";
 "纠错与润色" = "Proofread and Refine";
@@ -124,9 +123,7 @@
 "实时字幕" = "Live Captions";
 "实时字幕悬浮窗" = "Floating Live Captions";
 "实时字幕翻译已暂时关闭；转录完成后的翻译仍可在结果页使用。" = "Live-caption translation is temporarily unavailable. Translation after transcription remains available on the results page.";
-"实时字幕识别在本机完成；首次使用相应语言时，macOS 可能需要下载语言资源。" = "Live-caption recognition runs on this Mac. macOS may download language resources the first time you use a language.";
 "导入…" = "Import…";
-"导入内容不会由本应用上传。" = "Imported content is never uploaded by this app.";
 "导入稿件" = "Import Transcript";
 "导出" = "Export";
 "导出译文" = "Export Translation";
@@ -200,7 +197,6 @@
 "计算后端" = "Compute Backend";
 "设为节点 A" = "Set as Point A";
 "设为节点 B" = "Set as Point B";
-"识别在本机完成" = "Recognition runs on this Mac";
 "识别模型" = "Recognition Model";
 "识别语言" = "Recognition Language";
 "译为" = "Translate To";
@@ -225,8 +221,6 @@
 "重置状态" = "Reset State";
 "重试" = "Retry";
 "问题" = "Issues";
-"隐私" = "Privacy";
-"音频不会由本应用上传。" = "Audio is never uploaded by this app.";
 "首次使用某个语言组合时，macOS 可能下载语言资源。" = "macOS may download language resources the first time you use a language pair.";
 "麦克风、音频和视频转文字；识别与翻译在这台 Mac 上完成。" = "Transcribe microphone, audio, and video; recognition and translation run on this Mac.";
 "麦克风输入电平" = "Microphone Input Level";
@@ -602,7 +596,7 @@
 "未获得“录屏与系统录音”权限。请在系统设置的“隐私与安全性”中允许声迹访问。" = "Screen and System Audio Recording permission was denied. Allow ShengJi access in Privacy & Security settings.";
 "“录屏与系统录音”权限已授予。请退出并重新打开声迹后重试。" = "Screen and System Audio Recording permission was granted. Quit and reopen ShengJi, then try again.";
 
-"识别与隐私说明" = "Recognition & Privacy";
+"识别说明" = "About Recognition";
 
 "Gemma 已关闭。可在设置的模型页面手动开启；低内存设备可能出现卡顿。" = "Gemma is disabled. Enable it in Settings > Models; low-memory Macs may slow down.";
 
@@ -746,7 +740,6 @@
 "模型列表已更新。" = "Model list updated.";
 "转录完成后，可使用所选 AI 服务进行纠错、润色或总结。" = "After transcription, use your selected AI service to proofread, refine, or summarize.";
 "已配置；可开始 AI 优化" = "Configured; ready for AI enhancement";
-"稿件由你导入" = "Transcript imported by you";
 "识别音频不会上传。选择云端 AI 后，任务文字稿会发送给所选服务；更新和模型下载访问对应官方来源。" = "Recognition audio is not uploaded. Optional cloud AI sends task text to the selected service; updates and model downloads use their official sources.";
 
 "预览功能" = "Preview";
@@ -855,3 +848,4 @@
 "字幕" = "Subtitles";
 "回退到预览页面" = "Back to Preview";
 "回到转录结果，继续修改或导出" = "Return to the transcription result to keep editing or exporting";
+"更多说明" = "More Information";

@@ -12,7 +12,7 @@
 
 声迹是一款面向 Apple silicon Mac 的免费、开源 SwiftUI 原生转录应用，无需注册账号。它整合了本地语音识别、悬浮实时字幕、稿件编辑、字幕导出与烧录、离线翻译、长任务恢复，以及本机 Gemma 4 文稿优化。识别音频始终留在本机；除非你主动选择云端服务，AI 也在本机运行。
 
-当前版本：**1.8.0（43）** · [发布说明](https://github.com/maddylaneeee/ShengJi/releases) · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+当前版本：**1.8.1（44）** · [发布说明](https://github.com/maddylaneeee/ShengJi/releases) · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [使用文档](https://lixinchen.ca/docs/localscribe/)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Documentation/MediaKit/shengji-demo-dark.gif">
@@ -164,7 +164,7 @@ xcodebuild -project LocalScribe.xcodeproj -scheme LocalScribe \
   -destination 'platform=macOS,arch=arm64' test
 ```
 
-CI 在 macOS 26 Apple silicon 上运行测试和 Release 静态分析。`./tools/package_local_release.sh` 会生成并校验 ZIP 与 DMG（设置 `CODESIGN_IDENTITY=-` 生成 ad-hoc 包）。推送与 `Info.plist` 版本一致的标签（如 `v1.8.0`）会通过 `release-unsigned.yml` 发布 GitHub Release。
+CI 在 macOS 26 Apple silicon 上运行测试和 Release 静态分析。`./tools/package_local_release.sh` 会生成并校验 ZIP 与 DMG（设置 `CODESIGN_IDENTITY=-` 生成 ad-hoc 包）。推送与 `Info.plist` 版本一致的标签（如 `v1.8.1`）会通过 `release-unsigned.yml` 发布 GitHub Release。
 
 ## 文档与反馈
 

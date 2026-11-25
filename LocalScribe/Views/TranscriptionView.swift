@@ -377,16 +377,16 @@ struct TranscriptionView: View {
     }
 
     private var preflightInfoButton: some View {
-        Button("识别与隐私说明", systemImage: "info.circle") {
+        Button("识别说明", systemImage: "info.circle") {
             isShowingPreflightInfo.toggle()
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .help("识别与隐私说明")
+        .help("识别说明")
         .popover(isPresented: $isShowingPreflightInfo) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("识别与隐私说明")
+                Text("识别说明")
                     .font(.headline)
                 Text(computePreferenceHint)
                 if case .microphone = session.source,
@@ -396,7 +396,6 @@ struct TranscriptionView: View {
                         systemImage: "rectangle.slash"
                     )
                 }
-                Label("识别在本机完成", systemImage: "lock.shield")
             }
             .font(.callout)
             .padding(18)
@@ -1148,14 +1147,6 @@ struct TranscriptionView: View {
                 }
             }
 
-            Section("隐私") {
-                Label(session.isImportedTranscript ? L10n.text("稿件由你导入") : L10n.text("识别在本机完成"), systemImage: "checkmark.shield")
-                Text(aiServices.privacyDescription).font(.caption).foregroundStyle(.secondary)
-                Text(session.isImportedTranscript ? "导入内容不会由本应用上传。" : "音频不会由本应用上传。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
             if case .failed(let message) = session.phase {
                 Section("问题") {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -1213,7 +1204,6 @@ struct TranscriptionView: View {
                 if aiServices.isEnabled {
                     LabeledContent("当前服务", value: aiServices.provider.title)
                     LabeledContent("模型 ID", value: aiServices.configuration.modelID)
-                    Text(aiServices.privacyDescription).font(.caption).foregroundStyle(.secondary)
                     Button("配置…") { isShowingAIConfiguration = true }
                 } else {
                     Picker("模型", selection: $gemmaModel) {

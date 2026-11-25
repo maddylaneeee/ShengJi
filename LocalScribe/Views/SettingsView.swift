@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Bindable var presentationPreferences: AppPresentationPreferences
     @Bindable var aiPromptPreferences: AIPromptPreferences
     @Environment(\.openURL) private var openURL
+    @Environment(\.locale) private var interfaceLocale
     @State private var permissionCenter = PermissionCenter()
     @State private var isConfirmingInstall = false
     @State private var installError: String?
@@ -109,178 +110,161 @@ struct SettingsView: View {
     }
 
     private var generalTab: some View {
-        Form {
-            Section("外观与语言") {
-                Picker("程序语言", selection: $presentationPreferences.language) {
-                    ForEach(AppLanguage.allCases) { language in
-                        Text(language.title).tag(language)
+        settingsPage(notes: [
+            "语音识别、翻译和导出均在本机完成",
+            "识别音频不会上传。选择云端 AI 后，任务文字稿会发送给所选服务；更新和模型下载访问对应官方来源。",
+        ]) {
+            Form {
+                Section("外观与语言") {
+                    Picker("程序语言", selection: $presentationPreferences.language) {
+                        ForEach(AppLanguage.allCases) { language in
+                            Text(language.title).tag(language)
+                        }
+                    }
+                    .id("language-\(presentationPreferences.language.rawValue)")
+                    .help("语言和外观更改会立即应用到声迹的所有窗口。")
+                    Picker("外观", selection: $presentationPreferences.appearance) {
+                        ForEach(AppAppearance.allCases) { appearance in
+                            Text(appearance.title).tag(appearance)
+                        }
+                    }
+                    .id("appearance-\(presentationPreferences.language.rawValue)")
+                    .help("语言和外观更改会立即应用到声迹的所有窗口。")
+                }
+
+                Section("应用") {
+                    Toggle("登录时自动启动声迹", isOn: Binding(
+                        get: { launchesAtLogin },
+                        set: updateLaunchAtLogin
+                    ))
+                    Button("在 Finder 中显示应用", systemImage: "folder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+                    }
+                    Button("卸载声迹…", systemImage: "trash", role: .destructive) {
+                        isConfirmingUninstall = true
                     }
                 }
-                .id("language-\(presentationPreferences.language.rawValue)")
-                Picker("外观", selection: $presentationPreferences.appearance) {
-                    ForEach(AppAppearance.allCases) { appearance in
-                        Text(appearance.title).tag(appearance)
-                    }
-                }
-                .id("appearance-\(presentationPreferences.language.rawValue)")
-                Text("语言和外观更改会立即应用到声迹的所有窗口。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
-
-            Section("应用") {
-                Toggle("登录时自动启动声迹", isOn: Binding(
-                    get: { launchesAtLogin },
-                    set: updateLaunchAtLogin
-                ))
-                Button("在 Finder 中显示应用", systemImage: "folder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
-                }
-                Button("卸载声迹…", systemImage: "trash", role: .destructive) {
-                    isConfirmingUninstall = true
-                }
-            }
-
-            Section("隐私") {
-                Label("语音识别、翻译和导出均在本机完成", systemImage: "lock.shield")
-                Text("识别音频不会上传。选择云端 AI 后，任务文字稿会发送给所选服务；更新和模型下载访问对应官方来源。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
-        .padding(20)
     }
 
     private var permissionsTab: some View {
-        Form {
-            Section("录音与识别") {
-                permissionRow(
-                    title: "麦克风",
-                    detail: "用于麦克风转录和麦克风实时字幕。",
-                    symbol: "mic",
-                    state: permissionCenter.microphone,
-                    request: { Task { await permissionCenter.requestMicrophone() } },
-                    openSettings: { permissionCenter.openSystemSettings(for: .microphone) }
-                )
-                permissionRow(
-                    title: "语音识别",
-                    detail: "用于 Apple 本地识别和实时字幕。",
-                    symbol: "waveform",
-                    state: permissionCenter.speechRecognition,
-                    request: { Task { await permissionCenter.requestSpeechRecognition() } },
-                    openSettings: { permissionCenter.openSystemSettings(for: .speechRecognition) }
-                )
-                permissionRow(
-                    title: "屏幕与系统音频录制",
-                    detail: "仅在采集 Mac 正在播放的声音时使用。声迹不会录制屏幕画面。",
-                    symbol: "speaker.wave.2",
-                    state: permissionCenter.screenRecording,
-                    request: { permissionCenter.requestScreenRecording() },
-                    openSettings: { permissionCenter.openSystemSettings(for: .screenRecording) }
-                )
+        settingsPage(notes: [
+            "打开或导出时由你选择文件和保存位置",
+            "伴随导出时选择保存文件夹，文字稿和音频保存到该文件夹。",
+        ]) {
+            Form {
+                Section("录音与识别") {
+                    permissionRow(
+                        title: "麦克风",
+                        detail: "用于麦克风转录和麦克风实时字幕。",
+                        symbol: "mic",
+                        state: permissionCenter.microphone,
+                        request: { Task { await permissionCenter.requestMicrophone() } },
+                        openSettings: { permissionCenter.openSystemSettings(for: .microphone) }
+                    )
+                    permissionRow(
+                        title: "语音识别",
+                        detail: "用于 Apple 本地识别和实时字幕。",
+                        symbol: "waveform",
+                        state: permissionCenter.speechRecognition,
+                        request: { Task { await permissionCenter.requestSpeechRecognition() } },
+                        openSettings: { permissionCenter.openSystemSettings(for: .speechRecognition) }
+                    )
+                    permissionRow(
+                        title: "屏幕与系统音频录制",
+                        detail: "仅在采集 Mac 正在播放的声音时使用。声迹不会录制屏幕画面。",
+                        symbol: "speaker.wave.2",
+                        state: permissionCenter.screenRecording,
+                        request: { permissionCenter.requestScreenRecording() },
+                        openSettings: { permissionCenter.openSystemSettings(for: .screenRecording) }
+                    )
+                }
             }
-
-            Section("文件") {
-                Label("打开或导出时由你选择文件和保存位置", systemImage: "folder.badge.questionmark")
-                Text("伴随导出时选择保存文件夹，文字稿和音频保存到该文件夹。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
-        .padding(20)
         .onAppear { permissionCenter.refresh() }
     }
 
     private var modelsTab: some View {
-        Form {
-            Section("AI 服务源") {
-                Toggle("使用自定义ai服务源", isOn: Binding(
-                    get: { aiServices.isEnabled },
-                    set: { enabled in
-                        aiServices.setEnabled(enabled)
-                        if enabled { isShowingAIConfiguration = true }
-                    }
-                ))
-                if aiServices.isEnabled {
-                    LabeledContent("当前服务", value: aiServices.provider.title)
-                    LabeledContent("模型 ID", value: aiServices.configuration.modelID)
-                    Text(aiServices.readinessError ?? L10n.text("已配置；可在配置菜单测试连接。"))
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("配置…") { isShowingAIConfiguration = true }
-                    Text("正在使用自定义服务源，不会下载或加载 Gemma。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Text(aiServices.privacyDescription).font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Gemma 4") {
-                Toggle("启用 Gemma AI 功能", isOn: Binding(
-                    get: { enableGemma },
-                    set: { enabled in
-                        if enabled && GemmaHardwareSupport.requiresOptIn {
-                            isConfirmingGemma = true
-                        } else {
-                            enableGemma = enabled
+        settingsPage(notes: modelsPageNotes) {
+            Form {
+                Section("AI 服务源") {
+                    Toggle("使用自定义ai服务源", isOn: Binding(
+                        get: { aiServices.isEnabled },
+                        set: { enabled in
+                            aiServices.setEnabled(enabled)
+                            if enabled { isShowingAIConfiguration = true }
                         }
+                    ))
+                    .help(aiServices.privacyDescription)
+                    if aiServices.isEnabled {
+                        LabeledContent("当前服务", value: aiServices.provider.title)
+                        LabeledContent("模型 ID", value: aiServices.configuration.modelID)
+                        Text(aiServices.readinessError ?? L10n.text("已配置；可在配置菜单测试连接。"))
+                            .font(.caption).foregroundStyle(.secondary)
+                        Button("配置…") { isShowingAIConfiguration = true }
+                        Text("正在使用自定义服务源，不会下载或加载 Gemma。")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                ))
-                .disabled(aiServices.isEnabled)
-                Text("8 GB 及以下默认关闭，需手动确认启用。模型仅在点击 AI 功能后加载，任务结束后释放内存。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if !aiServices.isEnabled && !GemmaHardwareSupport.isSupported {
-                    Label(GemmaHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
-                        .foregroundStyle(.red)
                 }
-                Toggle("启用 Gemma 4 E4B 选项", isOn: $enableGemmaE4B)
-                    .disabled(aiServices.isEnabled || !GemmaHardwareSupport.isSupported)
-                Text("E2B 是默认模型。E4B 占用更多统一内存，仅在开启后出现在 AI 优化的模型列表中。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Section("Gemma 4") {
+                    Toggle("启用 Gemma AI 功能", isOn: Binding(
+                        get: { enableGemma },
+                        set: { enabled in
+                            if enabled && GemmaHardwareSupport.requiresOptIn {
+                                isConfirmingGemma = true
+                            } else {
+                                enableGemma = enabled
+                            }
+                        }
+                    ))
+                    .disabled(aiServices.isEnabled)
+                    .help("8 GB 及以下默认关闭，需手动确认启用。模型仅在点击 AI 功能后加载，任务结束后释放内存。")
+                    if !aiServices.isEnabled && !GemmaHardwareSupport.isSupported {
+                        Label(GemmaHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
+                            .foregroundStyle(.red)
+                    }
+                    Toggle("启用 Gemma 4 E4B 选项", isOn: $enableGemmaE4B)
+                        .disabled(aiServices.isEnabled || !GemmaHardwareSupport.isSupported)
+                        .help("E2B 是默认模型。E4B 占用更多统一内存，仅在开启后出现在 AI 优化的模型列表中。")
 
-                gemmaModelRow(.e2b)
-                if enableGemmaE4B { gemmaModelRow(.e4b) }
-            }
+                    gemmaModelRow(.e2b)
+                    if enableGemmaE4B { gemmaModelRow(.e4b) }
+                }
 
-            Section("离线翻译") {
                 if !NLLBHardwareSupport.isSupported {
-                    Label(NLLBHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
+                    Section("离线翻译") {
+                        Label(NLLBHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
+                    }
                 }
-                Text("NLLB 本机翻译模型需要至少 4 GB 内存；容量判断允许小幅误差。Apple 翻译仍可使用。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
 
-            Section("用途与隐私") {
-                Label("用于已完成转录的纠错、润色或总结", systemImage: "sparkles")
-                if !aiServices.isEnabled { Text("模型由 llama.cpp 通过 Metal 在本机运行。稿件不会上传；开始加载前会释放声迹持有的识别和 NLLB 翻译运行环境，任务结束后也会退出 Gemma helper。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary) }
-                Text("AI 输出可能出错。纠错结果会按片段 ID、数量、非空、长度、数字、链接、邮箱和时间表达进行校验；未通过的片段保留原文。重要内容仍需人工复核。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("AI 提示词") {
-                Button {
-                    isShowingPromptEditor = true
-                } label: {
-                    Label("编辑提示词…", systemImage: "text.badge.gearshape")
+                Section("AI 提示词") {
+                    Button("编辑提示词…", systemImage: "square.and.pencil") {
+                        isShowingPromptEditor = true
+                    }
+                    .help("仅开放安全的附加指令；模型协议和校验规则保持受保护。")
                 }
-                Text("仅开放安全的附加指令；模型协议和校验规则保持受保护。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
 
-            Section("来源") {
-                LabeledContent("模型", value: "Google Gemma 4 IT · Apache-2.0")
-                LabeledContent("运行环境", value: "llama.cpp b10333 · MIT")
+                Section("来源") {
+                    LabeledContent("模型", value: "Google Gemma 4 IT · Apache-2.0")
+                    LabeledContent("运行环境", value: "llama.cpp b10333 · MIT")
+                }
             }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
-        .padding(20)
         .onAppear { gemmaModelManager.refresh() }
+    }
+
+    private var modelsPageNotes: [String] {
+        var notes = ["用于已完成转录的纠错、润色或总结"]
+        if !aiServices.isEnabled {
+            notes.append("模型由 llama.cpp 通过 Metal 在本机运行。稿件不会上传；开始加载前会释放声迹持有的识别和 NLLB 翻译运行环境，任务结束后也会退出 Gemma helper。")
+        }
+        notes.append("AI 输出可能出错。纠错结果会按片段 ID、数量、非空、长度、数字、链接、邮箱和时间表达进行校验；未通过的片段保留原文。重要内容仍需人工复核。")
+        notes.append("NLLB 本机翻译模型需要至少 4 GB 内存；容量判断允许小幅误差。Apple 翻译仍可使用。")
+        return notes
     }
 
     @ViewBuilder
@@ -327,16 +311,12 @@ struct SettingsView: View {
                     get: { updateController.automaticUpdatesEnabled },
                     set: { updateController.setAutomaticUpdatesEnabled($0) }
                 ))
-                Text("开启后，声迹会在启动时及每隔六小时检查并下载更新；安装和重新打开应用前仍会征求你的确认。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .help("开启后，声迹会在启动时及每隔六小时检查并下载更新；安装和重新打开应用前仍会征求你的确认。")
             }
 
             Section("当前版本") {
                 LabeledContent("版本", value: "\(AppInfo.version) (\(AppInfo.build))")
-                Text("更新由声迹的官方 GitHub Release 提供。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .help("更新由声迹的官方 GitHub Release 提供。")
             }
 
             Section("检查更新") {
@@ -408,6 +388,21 @@ struct SettingsView: View {
         .padding(20)
     }
 
+    /// Wraps a settings tab and moves standalone explanatory notes into a hover-only info icon at the bottom.
+    private func settingsPage<Content: View>(notes: [String], @ViewBuilder content: () -> Content) -> some View {
+        let tooltip = notes.map { L10n.text($0) }.joined(separator: "\n\n")
+        return VStack(spacing: 6) {
+            content()
+            HStack {
+                Spacer()
+                SettingsNotesIcon(text: tooltip)
+                    .id("settings-notes-\(interfaceLocale.identifier)")
+            }
+            .padding(.horizontal, 20)
+        }
+        .padding(20)
+    }
+
     private func permissionRow(
         title: String,
         detail: String,
@@ -424,10 +419,6 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(L10n.text(title))
                     .font(.callout.weight(.medium))
-                Text(L10n.text(detail))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
             Label(state.title, systemImage: state.symbol)
@@ -440,7 +431,9 @@ struct SettingsView: View {
                 Button("打开系统设置", action: openSettings)
             }
         }
+        .help(L10n.text(detail))
         .accessibilityElement(children: .contain)
+        .accessibilityHint(L10n.text(detail))
     }
 
     @ViewBuilder
@@ -540,5 +533,79 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+}
+
+/// Info icon whose notes appear after a short hover, instead of waiting for the system tooltip delay.
+private struct SettingsNotesIcon: View {
+    let text: String
+    @State private var isPresented = false
+    @State private var hoverTask: Task<Void, Never>?
+
+    var body: some View {
+        Image(systemName: "info.circle")
+            .foregroundStyle(.secondary)
+            .padding(4)
+            .contentShape(Rectangle())
+            .background(HoverTrackingView(onHoverChange: hoverChanged))
+            .onDisappear {
+                hoverTask?.cancel()
+                isPresented = false
+            }
+            .popover(isPresented: $isPresented, arrowEdge: .top) {
+                Text(text)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: 360, alignment: .leading)
+                    .padding(14)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("更多说明")
+            .accessibilityHint(text)
+    }
+
+    private func hoverChanged(_ hovering: Bool) {
+        hoverTask?.cancel()
+        guard hovering else {
+            isPresented = false
+            return
+        }
+        hoverTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            isPresented = true
+        }
+    }
+}
+
+/// AppKit tracking area that reports hover in any window state; SwiftUI `onHover` does not fire reliably in the Settings window.
+private struct HoverTrackingView: NSViewRepresentable {
+    let onHoverChange: (Bool) -> Void
+
+    func makeNSView(context: Context) -> TrackingNSView {
+        let view = TrackingNSView()
+        view.onHoverChange = onHoverChange
+        return view
+    }
+
+    func updateNSView(_ nsView: TrackingNSView, context: Context) {
+        nsView.onHoverChange = onHoverChange
+    }
+
+    final class TrackingNSView: NSView {
+        var onHoverChange: ((Bool) -> Void)?
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(
+                rect: .zero,
+                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: self
+            ))
+        }
+
+        override func mouseEntered(with event: NSEvent) { onHoverChange?(true) }
+        override func mouseExited(with event: NSEvent) { onHoverChange?(false) }
     }
 }
