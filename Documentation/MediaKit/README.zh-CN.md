@@ -11,6 +11,7 @@
 - [日文预览](localscribe-demo-ja.gif) / [暗色版](localscribe-demo-ja-dark.gif)：日文界面与日文示例稿件。
 - [`shengji-demo-poster.png`](shengji-demo-poster.png)：展示本地转录完成结果的 16:9 封面图。
 - [`social-card-zh-CN.png`](social-card-zh-CN.png)：中文 16:9 项目介绍卡。
+- [`social-preview-en.jpg`](social-preview-en.jpg)：1280 × 640 英文 GitHub 社交预览图，发布前参阅[设计与生成说明（英文）](SOCIAL-PREVIEW.md)。
 - [`download-flow-zh-CN.png`](download-flow-zh-CN.png)：中文四步安装图。
 - [`../Screenshots/home-zh-CN.png`](../Screenshots/home-zh-CN.png) / [暗色版](../Screenshots/home-zh-CN-dark.png)：中文首页实机截图。
 - [`../Screenshots/transcript-editor-zh-CN.png`](../Screenshots/transcript-editor-zh-CN.png) / [暗色版](../Screenshots/transcript-editor-zh-CN-dark.png)：使用导入示例稿件的中文编辑器实机截图。
