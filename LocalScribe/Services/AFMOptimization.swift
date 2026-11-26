@@ -30,7 +30,8 @@ struct AFMOptimizer: Sendable {
             return try await run.execute(progress: progress)
         case .summarize:
             if AIOptimizationService.isUnsafeSummaryGuidance(prompt) { throw GemmaOptimizationError.unsafeGuidance }
-            let run = AFMSummaryRun(optimizer: self, segments: segments, prompt: prompt, preview: preview)
+            let limited = AFMOptimizer(generator: generator, windows: windows.limitedForSummary())
+            let run = AFMSummaryRun(optimizer: limited, segments: segments, prompt: prompt, preview: preview)
             let (summary, skipped) = try await run.execute(progress: progress)
             return AIOptimizationResult(
                 text: segments.map(\.text).joined(separator: "\n"),
@@ -52,12 +53,23 @@ struct AFMOptimizer: Sendable {
 
 // MARK: - Proofreading
 
+/// One proofread decision for a source segment.
+enum AFMProofreadEdit: Equatable, Sendable {
+    /// The segment keeps its place with new text; `through` is the last
+    /// segment joined into it (itself when nothing was joined).
+    case text(String, through: UUID)
+    /// The segment was joined into an earlier one.
+    case joined
+    /// The segment held only filler words.
+    case removed
+}
+
 private final class AFMProofreadRun: @unchecked Sendable {
     let optimizer: AFMOptimizer
     let segments: [TranscriptSegment]
     let prompt: String
     let preview: @Sendable (String) -> Void
-    var output: [TranscriptSegment]
+    var edits: [UUID: AFMProofreadEdit] = [:]
     var failures: [GemmaSegmentFailure] = []
 
     init(optimizer: AFMOptimizer, segments: [TranscriptSegment], prompt: String, preview: @escaping @Sendable (String) -> Void) {
@@ -65,23 +77,24 @@ private final class AFMProofreadRun: @unchecked Sendable {
         self.segments = segments
         self.prompt = prompt
         self.preview = preview
-        output = segments
     }
 
     func execute(progress: @escaping @Sendable (Int, Int) -> Void) async throws -> AIOptimizationResult {
         let instructions = try AFMPrompt.instructions(.afmProofread)
-        let ranges = TokenBudget.windows(
-            costs: segments.map { TokenBudget.estimate($0.text) },
-            target: optimizer.windows.targetSourceTokens
+        let ranges = AFMProofreadPlan.ranges(
+            texts: segments.map(\.text),
+            target: optimizer.windows.proofreadSourceTokens,
+            maximumCount: TokenBudget.Windows.proofreadMaximumLines
         )
         for (index, range) in ranges.enumerated() {
             try Task.checkCancellation()
             try await process(Array(range), instructions: instructions)
             progress(index + 1, ranges.count)
-            preview(output.map(\.text).joined(separator: "\n"))
+            preview(AFMProofreadPlan.text(of: AFMProofreadPlan.applying(edits, to: segments)))
         }
+        let output = AFMProofreadPlan.applying(edits, to: segments)
         return AIOptimizationResult(
-            text: output.map(\.text).joined(separator: "\n"),
+            text: AFMProofreadPlan.text(of: output),
             segments: output,
             summary: nil,
             failures: failures
@@ -91,7 +104,8 @@ private final class AFMProofreadRun: @unchecked Sendable {
     private func process(_ indices: [Int], instructions: String) async throws {
         guard let first = indices.first, let last = indices.last else { return }
         let editable = indices.map { segments[$0] }
-        let before = output[max(0, first - 2)..<first].map(\.text)
+        let done = AFMProofreadPlan.applying(edits, to: Array(segments[..<first]))
+        let before = done.suffix(2).map(\.text)
         let after = segments[(last + 1)..<min(segments.count, last + 3)].map(\.text)
         var sections: [String] = []
         if let preferences = AFMPrompt.userPreferences(prompt) { sections.append(preferences) }
@@ -104,8 +118,10 @@ private final class AFMProofreadRun: @unchecked Sendable {
         }
         let requestPrompt = sections.joined(separator: "\n\n")
         let sourceTokens = editable.reduce(0) { $0 + TokenBudget.estimate($1.text) }
-        let baseline = output
+        let baseline = edits
+        let all = segments
         let preview = self.preview
+        let gate = AFMSnapshotGate()
 
         do {
             let limit = try optimizer.responseLimit(
@@ -119,32 +135,29 @@ private final class AFMProofreadRun: @unchecked Sendable {
                     prompt: requestPrompt,
                     options: .greedy(maximumResponseTokens: limit),
                     onSnapshot: { snapshot in
-                        let parsed = AFMNumberedLineParser.parse(snapshot, isFinal: false)
-                        let proposed = AIOptimizationService.applyingPreviewCorrections(
-                            Self.corrections(from: parsed, editable: editable),
-                            editable: editable,
-                            baseline: baseline
-                        )
-                        preview(proposed.map(\.text).joined(separator: "\n"))
+                        let lines = AFMProofreadPlan.outputLines(snapshot, closedOnly: true)
+                        guard gate.advance(to: lines.count) else { return }
+                        let plan = AFMProofreadPlan.make(from: lines, editable: editable)
+                        var proposed = baseline
+                        proposed.merge(plan.edits) { _, new in new }
+                        preview(AFMProofreadPlan.text(of: AFMProofreadPlan.applying(proposed, to: all)))
                     }
                 )
             }
-            let parsed = AFMNumberedLineParser.parse(response, isFinal: true)
-            if parsed.lines.isEmpty, AFMRefusalDetector.isRefusal(parsed.preamble, source: editable.map(\.text).joined(separator: " ")) {
+            let lines = AFMProofreadPlan.outputLines(response, closedOnly: false)
+            let source = editable.map(\.text).joined(separator: " ")
+            if lines.isEmpty || (lines.count == 1 && AFMRefusalDetector.isRefusal(lines[0], source: source)) {
                 throw AFMFailure.refusal
             }
-            let validated = AIOptimizationService.validate(Self.corrections(from: parsed, editable: editable), originals: editable)
-            for segment in editable {
-                if let corrected = validated.values[segment.id],
-                   let index = output.firstIndex(where: { $0.id == segment.id }) {
-                    output[index] = TranscriptSegment(id: segment.id, startTime: segment.startTime, endTime: segment.endTime, text: corrected)
-                } else {
-                    failures.append(GemmaSegmentFailure(
-                        id: segment.id,
-                        message: validated.errors[segment.id] ?? L10n.text("该片段未通过结果校验")
-                    ))
-                }
+            let plan = AFMProofreadPlan.make(from: lines, editable: editable)
+            // When little of the answer can be traced back to the source, the
+            // model rewrote or drifted; a smaller window usually fixes it.
+            let substantive = editable.filter { !AFMProofreadPlan.isFillerOnly($0.text) }.count
+            if substantive >= 8, plan.matchedLines * 3 < substantive {
+                throw AFMFailure.refusal
             }
+            edits.merge(plan.edits) { _, new in new }
+            failures.append(contentsOf: plan.failures)
         } catch {
             guard let failure = AFMFailure.classify(error) else { throw CancellationError() }
             switch failure {
@@ -166,17 +179,325 @@ private final class AFMProofreadRun: @unchecked Sendable {
             }
         }
     }
+}
 
-    /// Maps numbered lines back to segment IDs, dropping refusals.
-    static func corrections(from parsed: AFMNumberedOutput, editable: [TranscriptSegment]) -> [GemmaCorrection] {
-        editable.enumerated().compactMap { offset, segment in
-            let number = offset + 1
-            guard !parsed.duplicates.contains(number),
-                  let value = parsed.lines[number]?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !value.isEmpty,
-                  !AFMRefusalDetector.isRefusal(value, source: segment.text) else { return nil }
-            return GemmaCorrection(id: segment.id.uuidString, text: value)
+/// Lets a streaming preview recompute only when a new output line closes.
+private final class AFMSnapshotGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = -1
+    func advance(to value: Int) -> Bool {
+        lock.withLock {
+            guard value != count else { return false }
+            count = value
+            return true
         }
+    }
+}
+
+/// Maps free-form proofread output back onto the source segments.
+///
+/// The on-device model naturally rewrites fragments as whole sentences and
+/// renumbers them, so its line numbers cannot be trusted. Instead every
+/// output line is aligned, in order, to a run of consecutive source lines
+/// whose words it actually contains. Output that cannot be traced back to
+/// its source is dropped and those segments keep their original text, so
+/// the diff preview always matches what is applied.
+enum AFMProofreadPlan {
+    /// Source lines one output sentence may absorb.
+    static let maximumJoinedLines = 6
+    static let maximumJoinedCharacters = 400
+    /// Output lines one long source line may be split into.
+    static let maximumSplitLines = 3
+    /// Share of output words that must come from the matched source.
+    static let minimumPrecision = 0.75
+    /// Share of the source's non-filler words the output must keep.
+    static let minimumRecall = 0.6
+
+    struct Result {
+        var edits: [UUID: AFMProofreadEdit] = [:]
+        var failures: [GemmaSegmentFailure] = []
+        /// Source lines covered by an accepted edit.
+        var matchedLines = 0
+    }
+
+    private enum Step {
+        case skipSource
+        case skipOutput
+        case match(sourceEnd: Int, outputEnd: Int, shared: Int)
+    }
+
+    static func make(from outputs: [String], editable: [TranscriptSegment]) -> Result {
+        let n = editable.count
+        let m = outputs.count
+        let sourceTokens = editable.map { AFMLineAlignment.tokens($0.text) }
+        let outputTokens = outputs.map(AFMLineAlignment.tokens)
+        let sourceCounts = sourceTokens.map(counts)
+        let outputCounts = outputTokens.map(counts)
+
+        // Suffix DP: best number of shared words aligning sources[i...] with outputs[k...].
+        var score = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+        var steps = Array(repeating: Array(repeating: Step.skipSource, count: m + 1), count: n + 1)
+        for i in stride(from: n, through: 0, by: -1) {
+            for k in stride(from: m, through: 0, by: -1) where i < n || k < m {
+                var best = -1
+                var step = Step.skipSource
+                if i < n, score[i + 1][k] > best { best = score[i + 1][k]; step = .skipSource }
+                if k < m, score[i][k + 1] > best { best = score[i][k + 1]; step = .skipOutput }
+                if i < n, k < m, !outputCounts[k].isEmpty {
+                    var output: [String: Int] = [:]
+                    for outputEnd in (k + 1)...min(m, k + maximumSplitLines) {
+                        merge(&output, outputCounts[outputEnd - 1])
+                        var source: [String: Int] = [:]
+                        var characters = 0
+                        for sourceEnd in (i + 1)...min(n, i + maximumJoinedLines) {
+                            merge(&source, sourceCounts[sourceEnd - 1])
+                            characters += editable[sourceEnd - 1].text.count
+                            if characters > maximumJoinedCharacters { break }
+                            // One sentence may absorb several lines, or one line
+                            // may become several sentences, but not both at once.
+                            if outputEnd - k > 1, sourceEnd - i > 1 { break }
+                            guard acceptedOverlap(output: output, source: source) != nil,
+                                  let shared = acceptedOrder(
+                                      output: Array(outputTokens[k..<outputEnd].joined()),
+                                      source: Array(sourceTokens[i..<sourceEnd].joined())
+                                  ) else { continue }
+                            let total = shared + score[sourceEnd][outputEnd]
+                            if total > best { best = total; step = .match(sourceEnd: sourceEnd, outputEnd: outputEnd, shared: shared) }
+                        }
+                    }
+                }
+                score[i][k] = max(best, 0)
+                steps[i][k] = step
+            }
+        }
+
+        var result = Result()
+        var matched = Set<Int>()
+        var rejectedAt: [Int] = []
+        var i = 0
+        var k = 0
+        while i < n || k < m {
+            switch steps[i][k] {
+            case .skipSource:
+                i += 1
+            case .skipOutput:
+                if !outputCounts[k].isEmpty { rejectedAt.append(i) }
+                k += 1
+            case .match(let sourceEnd, let outputEnd, _):
+                let group = Array(editable[i..<sourceEnd])
+                let head = group[0]
+                let text = joined(Array(outputs[k..<outputEnd]))
+                let source = joined(group.map(\.text))
+                let combined = TranscriptSegment(id: head.id, startTime: head.startTime, endTime: group.last!.endTime, text: source)
+                let validated = AFMRefusalDetector.isRefusal(text, source: source)
+                    ? nil
+                    : AIOptimizationService.validate([GemmaCorrection(id: head.id.uuidString, text: text)], originals: [combined])
+                if let value = validated?.values[head.id] {
+                    result.edits[head.id] = .text(value, through: group.last!.id)
+                    for member in group.dropFirst() { result.edits[member.id] = .joined }
+                    matched.formUnion(i..<sourceEnd)
+                } else {
+                    result.failures.append(GemmaSegmentFailure(
+                        id: head.id,
+                        message: validated?.errors[head.id] ?? L10n.text("该片段未通过结果校验")
+                    ))
+                }
+                i = sourceEnd
+                k = outputEnd
+            }
+        }
+        result.matchedLines = matched.count
+
+        // Output that matched nothing: flag the nearest untouched source line.
+        var flagged = Set(result.failures.map(\.id))
+        for position in rejectedAt {
+            let candidates = [position, position - 1].filter { $0 >= 0 && $0 < n && !matched.contains($0) }
+            guard let index = candidates.first(where: { !isFillerOnly(editable[$0].text) }),
+                  flagged.insert(editable[index].id).inserted else { continue }
+            result.failures.append(GemmaSegmentFailure(id: editable[index].id, message: L10n.text("该片段的修改与原文对不上，已保留原文")))
+        }
+        // Filler-only lines the cleaned text left out are dropped.
+        if !matched.isEmpty {
+            for (index, segment) in editable.enumerated() where !matched.contains(index) && isFillerOnly(segment.text) {
+                result.edits[segment.id] = .removed
+            }
+        }
+        return result
+    }
+
+    /// Words kept in order when `output` is a faithful cleanup of `source`:
+    /// almost every output word comes from the source, in the same order,
+    /// and most of the source's content words survive.
+    static func acceptedOrder(output: [String], source: [String]) -> Int? {
+        let shared = commonSubsequence(output, source)
+        guard shared > 0, Double(shared) / Double(output.count) >= minimumPrecision else { return nil }
+        let content = source.filter { !fillers.contains($0) }
+        if !content.isEmpty {
+            let kept = commonSubsequence(output.filter { !fillers.contains($0) }, content)
+            guard Double(kept) / Double(content.count) >= minimumRecall else { return nil }
+        }
+        return shared
+    }
+
+    static func commonSubsequence(_ a: [String], _ b: [String]) -> Int {
+        guard !a.isEmpty, !b.isEmpty else { return 0 }
+        var previous = Array(repeating: 0, count: b.count + 1)
+        var current = previous
+        for x in a {
+            for (index, y) in b.enumerated() {
+                current[index + 1] = x == y ? previous[index] + 1 : max(previous[index + 1], current[index])
+            }
+            swap(&previous, &current)
+        }
+        return previous[b.count]
+    }
+
+    /// Cheap bag-of-words filter run before the order check.
+    static func acceptedOverlap(output: [String: Int], source: [String: Int]) -> Int? {
+        let outputTotal = output.values.reduce(0, +)
+        guard outputTotal > 0 else { return nil }
+        var shared = 0
+        var sharedContent = 0
+        var sourceContent = 0
+        for (token, count) in source {
+            let common = min(count, output[token] ?? 0)
+            shared += common
+            if !fillers.contains(token) {
+                sourceContent += count
+                sharedContent += common
+            }
+        }
+        guard shared > 0, Double(shared) / Double(outputTotal) >= minimumPrecision else { return nil }
+        if sourceContent > 0, Double(sharedContent) / Double(sourceContent) < minimumRecall { return nil }
+        return shared
+    }
+
+    /// Cleaned lines from a (possibly partial) response, without the
+    /// numbering, bullets and stray `[n]` tags the model likes to add.
+    static func outputLines(_ response: String, closedOnly: Bool) -> [String] {
+        var lines = response.components(separatedBy: .newlines)
+        if closedOnly { lines.removeLast() }
+        return lines.compactMap { line in
+            var value = line.trimmingCharacters(in: .whitespaces)
+            value = value.replacingOccurrences(of: #"^(?:\[\s*\d{0,3}\s*\]|\d{1,3}[.)、:：](?=\s)|[-*•](?=\s))\s*"#, with: "", options: .regularExpression)
+            value = value.replacingOccurrences(of: #"(?:\s*\[\s*(?:n|\d{1,3}|\+|-)?\s*\])+\s*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+            value = value.trimmingCharacters(in: .whitespaces)
+            guard !value.isEmpty, !isHeader(value) else { return nil }
+            return value
+        }
+    }
+
+    private static func isHeader(_ value: String) -> Bool {
+        value.range(
+            of: #"^(?:LINES|TRANSCRIPT|OUTPUT|CLEANED(?: TEXT| TRANSCRIPT)?|CONTEXT(?: BEFORE| AFTER)?(?: \(REFERENCE ONLY\))?)\s*[:：]?$"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+    }
+
+    /// Windows of at most `maximumCount` lines and about `target` tokens,
+    /// cut after a sentence end when one is near so the model is not asked
+    /// to clean half a sentence.
+    static func ranges(texts: [String], target: Int, maximumCount: Int) -> [Range<Int>] {
+        var result: [Range<Int>] = []
+        var start = 0
+        while start < texts.count {
+            var end = start
+            var total = 0
+            while end < texts.count, end - start < maximumCount {
+                let cost = TokenBudget.estimate(texts[end])
+                if end > start, total + cost > target { break }
+                total += cost
+                end += 1
+            }
+            if end < texts.count {
+                let floor = start + max(1, (end - start) / 2)
+                if let cut = (floor...end).reversed().first(where: { endsSentence(texts[$0 - 1]) }) {
+                    end = cut
+                }
+            }
+            result.append(start..<end)
+            start = end
+        }
+        return result
+    }
+
+    static func endsSentence(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'”’」』)）]")))
+        guard let last = trimmed.last else { return false }
+        return ".?!。？！…".contains(last)
+    }
+
+    static func applying(_ edits: [UUID: AFMProofreadEdit], to segments: [TranscriptSegment]) -> [TranscriptSegment] {
+        let endTimes = Dictionary(segments.map { ($0.id, $0.endTime) }, uniquingKeysWith: { first, _ in first })
+        return segments.compactMap { segment in
+            switch edits[segment.id] {
+            case nil:
+                return segment
+            case .joined, .removed:
+                return nil
+            case .text(let text, let through):
+                let end = max(segment.endTime, endTimes[through] ?? segment.endTime)
+                return TranscriptSegment(id: segment.id, startTime: segment.startTime, endTime: end, text: text)
+            }
+        }
+    }
+
+    static func text(of segments: [TranscriptSegment]) -> String {
+        segments.map(\.text).joined(separator: "\n")
+    }
+
+    static let fillers: Set<String> = [
+        "um", "umm", "uh", "uhm", "erm", "er", "ah", "oh", "hmm", "mm", "mhm", "like", "so", "okay", "ok",
+        "yeah", "well", "right", "you", "know", "i", "mean", "and", "but",
+        "嗯", "啊", "呃", "额", "哦", "唔", "噢", "哎", "诶", "欸", "那", "个", "就", "是", "然", "后",
+        "えー", "えっと", "あの", "あのー", "ま", "まあ", "その",
+    ]
+
+    static func isFillerOnly(_ text: String) -> Bool {
+        let tokens = AFMLineAlignment.tokens(text)
+        return !tokens.isEmpty && tokens.allSatisfy(fillers.contains)
+    }
+
+    static func joined(_ texts: [String]) -> String {
+        texts.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .reduce("") { result, text in
+                guard let last = result.unicodeScalars.last, let first = text.unicodeScalars.first else { return result + text }
+                let tight = TokenBudget.isDense(last) && TokenBudget.isDense(first)
+                return result + (tight ? "" : " ") + text
+            }
+    }
+
+    private static func counts(_ tokens: [String]) -> [String: Int] {
+        tokens.reduce(into: [:]) { $0[$1, default: 0] += 1 }
+    }
+
+    private static func merge(_ target: inout [String: Int], _ other: [String: Int]) {
+        target.merge(other, uniquingKeysWith: +)
+    }
+}
+
+enum AFMLineAlignment {
+    /// Word tokens, lower-cased; one token per CJK character.
+    static func tokens(_ text: String) -> [String] {
+        var result: [String] = []
+        var word = ""
+        func flush() {
+            if !word.isEmpty { result.append(word) }
+            word = ""
+        }
+        for scalar in text.lowercased().unicodeScalars {
+            if TokenBudget.isDense(scalar) {
+                flush()
+                if CharacterSet.alphanumerics.contains(scalar) { result.append(String(scalar)) }
+            } else if CharacterSet.alphanumerics.contains(scalar) {
+                word.unicodeScalars.append(scalar)
+            } else {
+                flush()
+            }
+        }
+        flush()
+        return result
     }
 }
 

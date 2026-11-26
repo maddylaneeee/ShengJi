@@ -52,14 +52,39 @@ enum TokenBudget {
         var summaryNotesTokens: Int { Int(Double(contextSize) * 0.15) }
         /// Glossary and style notes injected into one translation window.
         var memoryTokens: Int { max(120, contextSize / 32) }
+        /// Proofreading must keep every output line on its own input line.
+        /// The on-device model starts merging and shifting short transcript
+        /// fragments in long windows, so proofreading uses small windows.
+        var proofreadSourceTokens: Int { min(targetSourceTokens, 600) }
+        static let proofreadMaximumLines = 24
 
         static var current: Windows { Windows(contextSize: AppleIntelligenceSupport.contextSize) }
+
+        /// Total per-call budget for summaries. macOS 26 is limited to about
+        /// 3,000 tokens and Macs with 9 GB of memory or less to about 4,000,
+        /// which keeps the model's memory use and latency predictable.
+        static func summaryContextCap(operatingSystemMajor: Int, physicalMemory: UInt64) -> Int? {
+            if operatingSystemMajor <= 26 { return 3_000 }
+            if physicalMemory <= 9 * 1_024 * 1_024 * 1_024 { return 4_000 }
+            return nil
+        }
+
+        func limitedForSummary(
+            operatingSystemMajor: Int = ProcessInfo.processInfo.operatingSystemVersion.majorVersion,
+            physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory
+        ) -> Windows {
+            guard let cap = Self.summaryContextCap(operatingSystemMajor: operatingSystemMajor, physicalMemory: physicalMemory) else {
+                return self
+            }
+            return Windows(contextSize: min(contextSize, cap))
+        }
     }
 
     /// Groups consecutive items into windows without splitting an item.
     static func windows(
         costs: [Int],
-        target: Int
+        target: Int,
+        maximumCount: Int = .max
     ) -> [Range<Int>] {
         guard !costs.isEmpty else { return [] }
         var ranges: [Range<Int>] = []
@@ -67,7 +92,7 @@ enum TokenBudget {
         var total = 0
         for index in costs.indices {
             let cost = max(1, costs[index])
-            if index > start, total + cost > target {
+            if index > start, total + cost > target || index - start >= maximumCount {
                 ranges.append(start..<index)
                 start = index
                 total = 0

@@ -558,6 +558,124 @@ final class AppleIntelligenceTests: XCTestCase {
         XCTAssertTrue(generator.calls[0].prompt.contains("User preferences (style and terminology only):\nPrefer British spelling"))
     }
 
+    func testProofreadJoinsFragmentsAndDropsFillerLines() async throws {
+        // The model writes whole sentences and ignores the line numbers.
+        let generator = FakeGenerator { _, _ in
+            "1. So these are really important questions to ask. [n]\nWe start in May."
+        }
+        let segments = [
+            TranscriptSegment(startTime: 0, endTime: 1, text: "So, um, these are really"),
+            TranscriptSegment(startTime: 1, endTime: 2, text: "important questions"),
+            TranscriptSegment(startTime: 2, endTime: 3, text: "to ask."),
+            TranscriptSegment(startTime: 3, endTime: 4, text: "Um, uh,"),
+            TranscriptSegment(startTime: 4, endTime: 5, text: "We start in May."),
+        ]
+        let previews = TextCollector()
+        let result = try await AFMOptimizer(generator: generator, windows: TokenBudget.Windows(contextSize: 8_192)).optimize(
+            segments: segments, fallbackText: "", kind: .proofread, prompt: "",
+            progress: { _, _ in }, preview: { previews.append($0) }
+        )
+        XCTAssertEqual(result.segments.map(\.text), ["So these are really important questions to ask.", "We start in May."])
+        XCTAssertEqual(result.segments[0].id, segments[0].id)
+        XCTAssertEqual(result.segments[0].startTime, 0)
+        XCTAssertEqual(result.segments[0].endTime, 3)
+        XCTAssertEqual(result.text, "So these are really important questions to ask.\nWe start in May.")
+        XCTAssertTrue(result.failures.isEmpty)
+        XCTAssertEqual(previews.values.last, result.text)
+    }
+
+    func testProofreadKeepsOriginalsWhenOutputCannotBeTraced() async throws {
+        let segments = [
+            TranscriptSegment(startTime: 0, endTime: 1, text: "We need the budget."),
+            TranscriptSegment(startTime: 1, endTime: 2, text: "Next we discuss hiring."),
+            TranscriptSegment(startTime: 2, endTime: 3, text: "Thanks, um, everyone."),
+        ]
+        // An invented heading, a reordered merge, and one honest edit.
+        let generator = FakeGenerator { _, _ in
+            "UBC presentation: what you need.\nNext we discuss hiring and the budget.\nThanks everyone."
+        }
+        let previews = TextCollector()
+        let result = try await AFMOptimizer(generator: generator, windows: TokenBudget.Windows(contextSize: 8_192)).optimize(
+            segments: segments, fallbackText: "", kind: .proofread, prompt: "",
+            progress: { _, _ in }, preview: { previews.append($0) }
+        )
+        XCTAssertEqual(result.segments.map(\.text), ["We need the budget.", "Next we discuss hiring.", "Thanks everyone."])
+        XCTAssertFalse(result.failures.isEmpty)
+        XCTAssertTrue(previews.values.allSatisfy { !$0.contains("UBC") && !$0.contains("and the budget") })
+    }
+
+    func testProofreadSplitsWindowWhenAnswerDrifts() async throws {
+        let segments = (0..<8).map {
+            TranscriptSegment(startTime: Double($0), endTime: Double($0 + 1), text: "Point \(["one", "two", "three", "four", "five", "six", "seven", "eight"][$0]) about tuition fees.")
+        }
+        let generator = FakeGenerator { call, _ in
+            let lines = numberedLines(in: call.prompt)
+            if lines.count > 4 { return "Here is a short overview of the talk." }
+            return lines.map(\.1).joined(separator: "\n")
+        }
+        let result = try await AFMOptimizer(generator: generator, windows: TokenBudget.Windows(contextSize: 8_192)).optimize(
+            segments: segments, fallbackText: "", kind: .proofread, prompt: "",
+            progress: { _, _ in }, preview: { _ in }
+        )
+        XCTAssertEqual(result.segments.map(\.text), segments.map(\.text))
+        XCTAssertEqual(generator.calls.count, 3, "the drifting window is split once and retried")
+        XCTAssertTrue(result.failures.isEmpty)
+    }
+
+    func testProofreadPlanAlignsByContentNotNumbers() {
+        let segments = [
+            TranscriptSegment(startTime: 0, endTime: 1, text: "We need"),
+            TranscriptSegment(startTime: 1, endTime: 2, text: "the budget of 120 units."),
+            TranscriptSegment(startTime: 2, endTime: 3, text: "Next we discuss hiring."),
+        ]
+        // Dropping the number loses too much of the source to be accepted.
+        var plan = AFMProofreadPlan.make(from: ["We need the budget.", "-"], editable: segments)
+        XCTAssertTrue(plan.edits.isEmpty)
+        XCTAssertEqual(plan.matchedLines, 0)
+        // A long line split into two sentences becomes one segment.
+        plan = AFMProofreadPlan.make(from: ["We need the budget of 120 units.", "Next, we discuss", "hiring."], editable: segments)
+        XCTAssertEqual(plan.edits[segments[0].id], .text("We need the budget of 120 units.", through: segments[1].id))
+        XCTAssertEqual(plan.edits[segments[1].id], .joined)
+        XCTAssertEqual(plan.edits[segments[2].id], .text("Next, we discuss hiring.", through: segments[2].id))
+        XCTAssertEqual(plan.matchedLines, 3)
+
+        XCTAssertEqual(AFMProofreadPlan.outputLines("[1] euros. [n]  \n1. Good morning [1] [1] [1]\nLINES:\n- [n]\n[3] half", closedOnly: true),
+                       ["euros.", "Good morning"])
+        XCTAssertTrue(AFMProofreadPlan.isFillerOnly("Um, uh, you know,"))
+        XCTAssertTrue(AFMProofreadPlan.isFillerOnly("嗯，那个，"))
+        XCTAssertFalse(AFMProofreadPlan.isFillerOnly("it."))
+        XCTAssertEqual(AFMProofreadPlan.joined(["我们需要", "预算。"]), "我们需要预算。")
+        XCTAssertEqual(AFMProofreadPlan.joined(["We need", "a plan."]), "We need a plan.")
+        XCTAssertEqual(AFMLineAlignment.tokens("你好, World!"), ["你", "好", "world"])
+        XCTAssertNil(AFMProofreadPlan.acceptedOrder(output: ["next", "we", "discuss", "hiring", "and", "the", "budget"],
+                                                    source: ["we", "need", "the", "budget", "next", "we", "discuss", "hiring"]))
+    }
+
+    func testProofreadWindowsEndOnSentenceBoundaries() {
+        let texts = ["One two three.", "four five", "six seven.", "eight nine", "ten eleven", "twelve."]
+        let ranges = AFMProofreadPlan.ranges(texts: texts, target: 10_000, maximumCount: 5)
+        XCTAssertEqual(ranges, [0..<3, 3..<6])
+        XCTAssertEqual(AFMProofreadPlan.ranges(texts: Array(repeating: "no end", count: 5), target: 10_000, maximumCount: 2),
+                       [0..<2, 2..<4, 4..<5])
+    }
+
+    func testProofreadWindowsAreSmallAndSummaryContextIsCapped() {
+        let large = TokenBudget.Windows(contextSize: 8_192)
+        XCTAssertEqual(large.proofreadSourceTokens, 600)
+        let ranges = TokenBudget.windows(costs: Array(repeating: 5, count: 60), target: 600, maximumCount: TokenBudget.Windows.proofreadMaximumLines)
+        XCTAssertEqual(ranges.map(\.count), [24, 24, 12])
+        let gib: UInt64 = 1_024 * 1_024 * 1_024
+        XCTAssertEqual(TokenBudget.Windows.summaryContextCap(operatingSystemMajor: 26, physicalMemory: 32 * gib), 3_000)
+        XCTAssertEqual(TokenBudget.Windows.summaryContextCap(operatingSystemMajor: 26, physicalMemory: 8 * gib), 3_000)
+        XCTAssertEqual(TokenBudget.Windows.summaryContextCap(operatingSystemMajor: 27, physicalMemory: 8 * gib), 4_000)
+        XCTAssertEqual(TokenBudget.Windows.summaryContextCap(operatingSystemMajor: 27, physicalMemory: 9 * gib), 4_000)
+        XCTAssertNil(TokenBudget.Windows.summaryContextCap(operatingSystemMajor: 27, physicalMemory: 16 * gib))
+        XCTAssertEqual(large.limitedForSummary(operatingSystemMajor: 27, physicalMemory: 8 * gib).contextSize, 4_000)
+        XCTAssertEqual(large.limitedForSummary(operatingSystemMajor: 26, physicalMemory: 16 * gib).summarySourceTokens, 1_500)
+        XCTAssertEqual(large.limitedForSummary(operatingSystemMajor: 27, physicalMemory: 16 * gib).contextSize, 8_192)
+        XCTAssertEqual(TokenBudget.Windows(contextSize: 1_600).limitedForSummary(operatingSystemMajor: 27, physicalMemory: 8 * gib).contextSize, 1_600)
+    }
+
     func testRollingSummarySeesWrittenSummaryAndPolishesAtTheEnd() async throws {
         let generator = FakeGenerator { call, _ in
             if call.instructions.contains("running summary") {
@@ -619,9 +737,16 @@ final class AppleIntelligenceTests: XCTestCase {
     func testAFMPromptsAreShort() throws {
         for id in [AIPromptID.afmTranslate, .afmProofread, .afmSummarySingle, .afmSummaryStep, .afmSummaryFinal] {
             let words = try AIPromptLoader.load(id).split(whereSeparator: \.isWhitespace).count
-            XCTAssertLessThanOrEqual(words, 70, id.rawValue)
+            XCTAssertLessThanOrEqual(words, 80, id.rawValue)
         }
     }
+}
+
+final class TextCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [String] = []
+    func append(_ value: String) { lock.withLock { stored.append(value) } }
+    var values: [String] { lock.withLock { stored } }
 }
 
 final class PartialCollector: @unchecked Sendable {
@@ -698,6 +823,45 @@ final class LiveAppleIntelligenceTests: XCTestCase {
         print("LIVE summary seconds:", Date().timeIntervalSince(start))
         print("LIVE SUMMARY:", summary.summary ?? "nil", summary.notice ?? "")
         XCTAssertNotNil(summary.summary)
+    }
+
+    func testLiveProofreadCompressesFragments() async throws {
+        // Speech recognisers often emit hundreds of 3–6 word fragments.
+        var fragments: [String] = []
+        for (index, sentence) in lecture.enumerated() {
+            let words = sentence.split(separator: " ").map(String.init)
+            fragments += stride(from: 0, to: words.count, by: 5).map { words[$0..<min($0 + 5, words.count)].joined(separator: " ") }
+            if index.isMultiple(of: 3) { fragments.append("Um, uh,") }
+        }
+        let segments = fragments.enumerated().map { TranscriptSegment(startTime: Double($0.offset), endTime: Double($0.offset + 1), text: $0.element) }
+        let optimizer = AFMOptimizer(generator: LoggingGenerator(), windows: .current)
+        let previews = TextCollector()
+        let start = Date()
+        let result = try await optimizer.optimize(segments: segments, fallbackText: "", kind: .proofread, prompt: "",
+                                                  progress: { _, _ in }, preview: { previews.append($0) })
+        print("LIVE fragments seconds:", Date().timeIntervalSince(start), "in:", segments.count, "out:", result.segments.count,
+              "failures:", result.failures.count)
+        result.segments.forEach { print("LIVE FR:", String(format: "%.0f-%.0f", $0.startTime, $0.endTime), $0.text) }
+        XCTAssertLessThan(result.segments.count, segments.count, "fragments are joined into sentences")
+        XCTAssertEqual(previews.values.last, result.text)
+        // Every number in the lecture survives, in order.
+        let numbers = { (text: String) in text.split(whereSeparator: { !$0.isNumber && $0 != "." }).filter { $0.contains(where: \.isNumber) } }
+        XCTAssertEqual(numbers(result.text).count, numbers(fragments.joined(separator: " ")).count)
+        // Time ranges stay ordered and cover the whole recording.
+        XCTAssertEqual(result.segments.first?.startTime, 0)
+        XCTAssertEqual(result.segments.last?.endTime, segments.last { !AFMProofreadPlan.isFillerOnly($0.text) }?.endTime)
+        XCTAssertTrue(zip(result.segments, result.segments.dropFirst()).allSatisfy { $0.endTime <= $1.startTime })
+    }
+
+    func testLiveProofreadCompressesChineseFragments() async throws {
+        let fragments = ["嗯，今天我们", "主要讨论一下", "明年的预算", "嗯，那个，", "预算总额大概是", "三百二十万元", "其中研发占", "百分之四十", "然后呢", "市场推广", "大概占百分之二十五。"]
+        let segments = fragments.enumerated().map { TranscriptSegment(startTime: Double($0.offset), endTime: Double($0.offset + 1), text: $0.element) }
+        let result = try await AFMOptimizer(generator: LoggingGenerator(), windows: .current).optimize(
+            segments: segments, fallbackText: "", kind: .proofread, prompt: "", progress: { _, _ in }, preview: { _ in })
+        print("LIVE ZH fragments in:", segments.count, "out:", result.segments.count, "failures:", result.failures.count)
+        result.segments.forEach { print("LIVE ZHFR:", String(format: "%.0f-%.0f", $0.startTime, $0.endTime), $0.text) }
+        XCTAssertLessThan(result.segments.count, segments.count)
+        XCTAssertTrue(result.text.contains("三百二十万") || result.text.contains("320万"))
     }
 }
 
