@@ -4,7 +4,10 @@ import Observation
 @MainActor
 @Observable
 final class AIPromptPreferences {
-    static let maximumCustomInstructionLength = 1_200
+    static let maximumCustomInstructionLength = 500
+    static let maximumOneTimeInstructionLength = 500
+    /// Posted across processes when the CLI changes the saved prompts.
+    nonisolated static let externalChangeNotification = Notification.Name("ca.lixinchen.localscribe.AIPromptsChanged")
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let appVersion: String
@@ -17,6 +20,9 @@ final class AIPromptPreferences {
     private var proofreadValue: String
     private var summaryValue: String
     private var preserveValue: Bool
+    /// True when a saved prompt was longer than the current limit and was cut.
+    private(set) var wasTruncated = false
+    @ObservationIgnored private var observers: [NSObjectProtocol] = []
 
     var proofreadInstructions: String {
         get { proofreadValue }
@@ -57,10 +63,45 @@ final class AIPromptPreferences {
             defaults.removeObject(forKey: Self.proofreadKey)
             defaults.removeObject(forKey: Self.summaryKey)
         } else {
-            proofreadValue = Self.normalized(defaults.string(forKey: Self.proofreadKey) ?? "")
-            summaryValue = Self.normalized(defaults.string(forKey: Self.summaryKey) ?? "")
+            let storedProofread = defaults.string(forKey: Self.proofreadKey) ?? ""
+            let storedSummary = defaults.string(forKey: Self.summaryKey) ?? ""
+            proofreadValue = Self.normalized(storedProofread)
+            summaryValue = Self.normalized(storedSummary)
+            if storedProofread.count > Self.maximumCustomInstructionLength
+                || storedSummary.count > Self.maximumCustomInstructionLength {
+                wasTruncated = true
+                persist(proofreadValue, key: Self.proofreadKey)
+                persist(summaryValue, key: Self.summaryKey)
+            }
         }
         defaults.set(appVersion, forKey: Self.recordedVersionKey)
+    }
+
+    /// Re-reads values written by another process, such as `--cli prompts edit`.
+    func reload() {
+        CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication)
+        let proofread = Self.normalized(defaults.string(forKey: Self.proofreadKey) ?? "")
+        let summary = Self.normalized(defaults.string(forKey: Self.summaryKey) ?? "")
+        let preserve = defaults.object(forKey: Self.preserveKey) as? Bool ?? false
+        if proofread != proofreadValue { proofreadValue = proofread }
+        if summary != summaryValue { summaryValue = summary }
+        if preserve != preserveValue { preserveValue = preserve }
+    }
+
+    /// Keeps a running GUI in sync with CLI edits.
+    func observeExternalChanges() {
+        guard observers.isEmpty else { return }
+        observers.append(DistributedNotificationCenter.default().addObserver(
+            forName: Self.externalChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reload() }
+        })
+    }
+
+    nonisolated static func postExternalChange() {
+        DistributedNotificationCenter.default().postNotificationName(
+            externalChangeNotification, object: nil, userInfo: nil, deliverImmediately: true
+        )
     }
 
     func instructions(for kind: GemmaOptimizationKind, oneTimeInstructions: String = "") -> String {

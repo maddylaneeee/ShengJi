@@ -10,9 +10,9 @@
 
 **把麦克风、音视频文件和 Mac 正在播放的声音，在本机转成可编辑文字与字幕。**
 
-声迹是一款面向 Apple silicon Mac 的免费、开源 SwiftUI 原生转录应用，无需注册账号。它整合了本地语音识别、悬浮实时字幕、稿件编辑、字幕导出与烧录、离线翻译、长任务恢复，以及本机 Gemma 4 文稿优化。识别音频始终留在本机；除非你主动选择云端服务，AI 也在本机运行。
+声迹是一款面向 Apple silicon Mac 的免费、开源 SwiftUI 原生转录应用，无需注册账号。它整合了本地语音识别、悬浮实时字幕、稿件编辑、字幕导出与烧录、离线翻译、长任务恢复，以及基于 Apple 智能或 Gemma 4 的本机文稿优化。识别音频始终留在本机；除非你主动选择云端服务，AI 也在本机运行。
 
-当前版本：**1.8.1（44）** · [发布说明](https://github.com/maddylaneeee/ShengJi/releases) · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [使用文档](https://lixinchen.ca/docs/localscribe/)
+当前版本：**1.9.0（45）** · [发布说明](https://github.com/maddylaneeee/ShengJi/releases) · [下载 DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [使用文档](https://lixinchen.ca/docs/localscribe/)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Documentation/MediaKit/shengji-demo-dark.gif">
@@ -41,8 +41,8 @@
 - **稿件编辑：** 查找、替换、删除选中内容、范围裁剪；长稿件也能流畅滚动。
 - **导入并继续：** 打开 SRT、WebVTT、TXT、Markdown 或声迹 JSON 进行编辑，或在其后继续麦克风转录。
 - **导出：** TXT、Markdown、JSON、PDF、SRT、WebVTT 或复制到剪贴板。
-- **转录后翻译：** 默认 Apple Translation，也可选本地 NLLB。
-- **AI 文稿优化：** 用本机 Gemma 4，或自定义的 LM Studio、OpenAI、DeepSeek 服务进行纠错、润色或总结。
+- **转录后翻译：** 默认 Apple Translation，也可选 Apple 智能或本地 NLLB。
+- **AI 文稿优化：** 用本机 Apple 智能或 Gemma 4，或自定义的 LM Studio、OpenAI、DeepSeek 服务进行纠错、润色或总结。
 - **字幕烧录到视频**，可自定义字体与样式。
 - **保存麦克风原音**，并与稿件一同导出 M4A。
 - **长任务保护：** 逐步显示结果、暂停与继续、追加式记录，中断后可恢复。
@@ -72,6 +72,7 @@
 | Apple Translation | 默认转录后翻译 | macOS Translation Framework |
 | NLLB | 可选转录后翻译 | CTranslate2 CPU/int8 |
 | Gemma 4 | 纠错、润色、总结 | llama.cpp，Metal 本机推理 |
+| Apple 智能 | 翻译、纠错、润色、总结 | Apple Foundation Models 框架，本机推理（macOS 26+） |
 
 Whisper 对较长素材使用内置 Silero VAD 跳过静音，并过滤静音、低置信度、机械重复和已知幻觉输出。
 
@@ -81,13 +82,15 @@ Whisper 对较长素材使用内置 Silero VAD 跳过静音，并过滤静音、
 
 完成转录或导入稿件后，打开右侧检查器的“AI 优化”。
 
-- **纠错／润色：** 清理口头填充词、重复和明显识别错误，以实时对照显示；未通过校验的片段保留原文。
+- **纠错／润色：** 清理口头填充词、重复和明显识别错误，以实时对照显示；未通过校验的片段保留原文。使用 Apple 智能时，会先单独纠正听错的词，再整理标点与碎句，其余用词保持原话；可在提示词框中列出人名、品牌和术语，帮助模型改对。
 - **总结：** 用总结替换文字预览，并保留可撤销的原稿快照。
-- 可临时或长期指定人名、术语、风格、长度、重点或格式。AI 输出仍需人工复核。
+- 可临时指定（最多 500 字）人名、术语、风格、长度、重点或格式；长期提示词通过 `--cli prompts edit` 编辑。AI 输出仍需人工复核。
 
-**内置 Gemma 4：** 默认 E2B 模型约 2.8 GB，可在设置中启用约 4.6 GB 的 E4B 模型。模型按需下载，仅在选择 AI 任务后加载，加载前会释放识别与 NLLB 运行环境。8 GB 及以下内存的 Mac 默认关闭，可在设置中手动开启。
+**Apple 智能：** 在运行 macOS 26 或更高版本并已开启 Apple 智能的 Mac 上，声迹使用系统自带的本机模型完成翻译、纠错润色与总结，无需下载模型。翻译以更大的窗口送入模型，并在单次翻译中维护人名、术语与风格词表，让后续窗口保持一致；Apple 智能不支持的语言或无法处理的片段会自动改用 Apple 翻译。长文稿总结会分段累积，每一步都能看到已写出的总结。从旧版本更新且已安装 Gemma 或 NLLB 时，声迹会询问一次是否删除旧模型并切换；选择保留则一切照旧，之后可在“设置 → 模型”中切换。NLLB 仍可作为可选翻译模型下载。不支持 Apple 智能的 Mac 继续使用 Gemma 与 NLLB。
 
-**自定义 AI 服务源：** 在“设置 → 模型 → 使用自定义ai服务源”中接入 LM Studio（仅本机回环地址，默认 `http://127.0.0.1:1234/v1`）、OpenAI 或 DeepSeek。开启后取消并禁止 Gemma 下载与加载，不会自动回退。OpenAI 和 DeepSeek 为预览功能，经你确认后才发送任务文字，调用可能产生费用。详见[配置指南](Documentation/AI-SERVICES.zh-CN.md)。
+**内置 Gemma 4**（不支持 Apple 智能的 Mac，或选择保留旧模型时）：默认 E2B 模型约 2.8 GB，可在设置中启用约 4.6 GB 的 E4B 模型。模型按需下载，仅在选择 AI 任务后加载，加载前会释放识别与 NLLB 运行环境。8 GB 及以下内存的 Mac 默认关闭，可在设置中手动开启。
+
+**自定义 AI 服务源：** 在“设置 → 模型 → 使用自定义ai服务源”中接入 LM Studio（仅本机回环地址，默认 `http://127.0.0.1:1234/v1`）、OpenAI 或 DeepSeek。开启后取消并禁止 Gemma 下载与加载，不会自动回退；AI 文稿优化优先使用该服务源而非 Apple 智能。OpenAI 和 DeepSeek 为预览功能，经你确认后才发送任务文字，调用可能产生费用。详见[配置指南](Documentation/AI-SERVICES.zh-CN.md)。
 
 ## 字幕烧录到视频
 
@@ -122,11 +125,12 @@ Whisper 对较长素材使用内置 Silero VAD 跳过静音，并过滤静音、
 - SenseVoice 和 Parakeet 仅支持文件转录。
 - 实时字幕翻译暂时关闭；转录后翻译可正常使用。
 - 本地 NLLB 翻译需要至少 4 GB 内存。
+- Apple 智能需要 macOS 26 或更高版本、受支持的 Mac，并在系统设置中开启 Apple 智能。本机模型上下文有限，可能拒绝处理部分内容；受影响的片段会改用 Apple 翻译或保留原文。macOS 26 路径尚未在真机上测试，开发与测试使用 macOS 27。
 - 麦克风需要麦克风权限；Mac 声音需要“屏幕与系统音频录制”权限。Apple Speech 和 Apple Translation 可能由 macOS 下载语言资源。
 
 ## 隐私与更新
 
-识别和翻译在本机完成，识别音频和内置 Gemma 处理的内容都不会上传。LM Studio 通过本机回环接收文字；只有在你选择并确认后，OpenAI 或 DeepSeek 才会收到任务文字、上下文和指令。API key 保存在本机不同步的钥匙串中。
+识别和翻译在本机完成，识别音频以及 Apple 智能和内置 Gemma 处理的内容都不会上传。LM Studio 通过本机回环接收文字；只有在你选择并确认后，OpenAI 或 DeepSeek 才会收到任务文字、上下文和指令。API key 保存在本机不同步的钥匙串中。
 
 其余联网仅用于按需下载模型、检查与下载更新，以及打开外部文档。更新器在启动时和每六小时检查一次，读取最新 GitHub Release 的 `update.json`，校验 ZIP 的 SHA-256、Bundle ID 和版本，替换 App 前会征求确认。自动更新可在设置中关闭。
 
@@ -141,6 +145,8 @@ $LS --cli download whisper.largeV3TurboQ5
 $LS --cli transcribe input.mp4 --engine whisper --language zh_CN \
   --translate-to en --format srt --output output.srt
 $LS --cli translate "你好" --source zh_CN --target en
+$LS --cli translate "你好" --source zh_CN --target en --provider intelligence
+$LS --cli prompts edit
 $LS --cli burn --video input.mp4 --subtitles input.srt --output subtitled.mp4
 ```
 
@@ -148,8 +154,9 @@ $LS --cli burn --video input.mp4 --subtitles input.srt --output subtitled.mp4
 | --- | --- |
 | `models [--json]` | 列出模型及安装状态 |
 | `download <model-id>` / `remove <model-id>` | 安装或卸载识别模型 |
-| `transcribe <文件>` | 用 Whisper、SenseVoice 或 Parakeet 转录；可用 `--model`、`--compute auto\|coreml\|metal\|cpu`、`--translate-to`、`--translation-provider apple\|nllb`、`--format txt\|md\|json\|pdf\|srt\|vtt` |
-| `translate <文字>` | 用 Apple Translation（macOS 26）或 NLLB 翻译文字 |
+| `transcribe <文件>` | 用 Whisper、SenseVoice 或 Parakeet 转录；可用 `--model`、`--compute auto\|coreml\|metal\|cpu`、`--translate-to`、`--translation-provider apple\|nllb\|intelligence`、`--format txt\|md\|json\|pdf\|srt\|vtt` |
+| `translate <文字>` | 用 Apple Translation（macOS 26）、NLLB 或 Apple 智能（`--provider intelligence`，macOS 26）翻译文字 |
+| `prompts [show\|edit\|reset]` | 查看长期提示词（`--json`）、打开编辑窗口或恢复默认（`proofread\|summary\|all`） |
 | `burn` | 烧录字幕；支持 `--in-place`、`--overwrite`、`--font`、`--size`、`--position`、`--margin`、`--background` 及阴影选项 |
 
 ## 从源码构建
@@ -164,7 +171,7 @@ xcodebuild -project LocalScribe.xcodeproj -scheme LocalScribe \
   -destination 'platform=macOS,arch=arm64' test
 ```
 
-CI 在 macOS 26 Apple silicon 上运行测试和 Release 静态分析。`./tools/package_local_release.sh` 会生成并校验 ZIP 与 DMG（设置 `CODESIGN_IDENTITY=-` 生成 ad-hoc 包）。推送与 `Info.plist` 版本一致的标签（如 `v1.8.1`）会通过 `release-unsigned.yml` 发布 GitHub Release。
+CI 在 macOS 26 Apple silicon 上运行测试和 Release 静态分析。`./tools/package_local_release.sh` 会生成并校验 ZIP 与 DMG（设置 `CODESIGN_IDENTITY=-` 生成 ad-hoc 包）。推送与 `Info.plist` 版本一致的标签（如 `v1.9.0`）会通过 `release-unsigned.yml` 发布 GitHub Release。
 
 ## 文档与反馈
 

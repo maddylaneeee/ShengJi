@@ -24,6 +24,8 @@ struct AIOptimizationResult: Sendable {
     let segments: [TranscriptSegment]
     let summary: String?
     let failures: [GemmaSegmentFailure]
+    /// Non-fatal information for the user, such as skipped summary parts.
+    var notice: String? = nil
 }
 
 // Compatibility for existing internal callers and safety regression tests.
@@ -44,6 +46,12 @@ enum AIPromptID: String, CaseIterable, Sendable {
     case summaryExtract = "summary-extract"
     case summaryReduce = "summary-reduce"
     case summaryVerify = "summary-verify"
+    case afmTranslate = "afm-translate"
+    case afmProofread = "afm-proofread"
+    case afmCorrect = "afm-correct"
+    case afmSummarySingle = "afm-summary-single"
+    case afmSummaryStep = "afm-summary-step"
+    case afmSummaryFinal = "afm-summary-final"
 }
 
 enum AIPromptLoader {
@@ -400,6 +408,45 @@ actor AIOptimizationService {
                 }
                 throw error
             }
+        } onCancel: { task.cancel() }
+    }
+
+    /// Apple Intelligence path. Shares busy/cancel bookkeeping with the other
+    /// paths but never starts the Gemma helper.
+    func optimizeWithAppleIntelligence(
+        segments input: [TranscriptSegment],
+        fallbackText: String,
+        kind: GemmaOptimizationKind,
+        prompt: String,
+        optimizer: AFMOptimizer = .live,
+        ownerID: UUID = UUID(),
+        configurationRevision: UUID? = nil,
+        progress: @escaping @Sendable (Int, Int) -> Void,
+        preview: @escaping @Sendable (String) -> Void = { _ in }
+    ) async throws -> AIOptimizationResult {
+        guard activeID == nil || (activeID == ownerID && activeTask == nil) else { throw AIServiceError.busy }
+        activeID = ownerID
+        activeRevision = configurationRevision
+        let task = Task {
+            await GemmaRuntime.shared.shutdown()
+            try Task.checkCancellation()
+            return try await optimizer.optimize(
+                segments: input,
+                fallbackText: fallbackText,
+                kind: kind,
+                prompt: prompt,
+                progress: progress,
+                preview: preview
+            )
+        }
+        activeTask = task
+        return try await withTaskCancellationHandler {
+            defer {
+                if activeID == ownerID { activeID = nil; activeTask = nil; preparationTask = nil }
+            }
+            let result = try await task.value
+            try Task.checkCancellation()
+            return result
         } onCancel: { task.cancel() }
     }
 

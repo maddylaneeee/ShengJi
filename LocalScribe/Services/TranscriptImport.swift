@@ -207,6 +207,23 @@ enum TranscriptTextEditing {
         return replacing(text, range: NSRange(location: start, length: later.location - start), with: "")
     }
 
+    /// Every case- and diacritic-insensitive match of `query`, capped so a
+    /// one-letter query on a huge transcript stays cheap to highlight.
+    static func matches(of query: String, in text: String, limit: Int = 5_000) -> [NSRange] {
+        guard !query.isEmpty else { return [] }
+        let full = text as NSString
+        var result: [NSRange] = []
+        var searchRange = NSRange(location: 0, length: full.length)
+        while result.count < limit, searchRange.length > 0 {
+            let found = full.range(of: query, options: [.caseInsensitive, .diacriticInsensitive], range: searchRange)
+            guard found.location != NSNotFound, found.length > 0 else { break }
+            result.append(found)
+            let next = found.location + found.length
+            searchRange = NSRange(location: next, length: full.length - next)
+        }
+        return result
+    }
+
     static func find(_ query: String, in text: String, after selection: NSRange) -> NSRange? {
         guard !query.isEmpty else { return nil }
         let full = text as NSString

@@ -715,6 +715,9 @@ struct SegmentTranslation: Codable, Identifiable, Hashable, Sendable {
     let translatedText: String
     let state: SegmentTranslationState
     let errorMessage: String?
+    /// Set when Apple Intelligence could not translate this segment and
+    /// another provider produced the text. Optional for older snapshots.
+    var substituteProvider: TranslationProvider? = nil
 
     var displayText: String {
         displayText(languageCode: nil)

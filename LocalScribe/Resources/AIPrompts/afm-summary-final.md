@@ -1,0 +1,1 @@
+Rewrite these notes as one concise, well-organized summary in {language}, in about {length} characters. Merge repeated points. Keep only information from the notes and copy numbers exactly. Return only the summary.

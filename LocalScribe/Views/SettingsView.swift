@@ -5,7 +5,6 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var updateController: AppUpdateController
     @Bindable var presentationPreferences: AppPresentationPreferences
-    @Bindable var aiPromptPreferences: AIPromptPreferences
     @Environment(\.openURL) private var openURL
     @Environment(\.locale) private var interfaceLocale
     @State private var permissionCenter = PermissionCenter()
@@ -17,8 +16,9 @@ struct SettingsView: View {
     @State private var gemmaModelManager = GemmaModelManager.shared
     @State private var aiServices = AIServicePreferences.shared
     @State private var isShowingAIConfiguration = false
-    @State private var isShowingPromptEditor = false
     @State private var isConfirmingGemma = false
+    @State private var engine = AIEngineController.shared
+    @State private var nllbModelManager = NLLBModelManager()
     @AppStorage("EnableGemma") private var enableGemma = !GemmaHardwareSupport.requiresOptIn
     @AppStorage("EnableGemmaE4B") private var enableGemmaE4B = false
 
@@ -54,13 +54,7 @@ struct SettingsView: View {
             AIServiceConfigurationView(preferences: aiServices)
                 .environment(\.locale, presentationPreferences.language.locale)
         }
-        .sheet(isPresented: $isShowingPromptEditor) {
-            NavigationStack {
-                AIPromptEditorView(preferences: aiPromptPreferences)
-            }
-            // A presented macOS sheet has its own hosting environment.
-            .environment(\.locale, presentationPreferences.language.locale)
-        }
+        .aiEngineMigrationPrompt(.settings)
         .alert("在低内存设备上启用 Gemma？", isPresented: $isConfirmingGemma) {
             Button("取消", role: .cancel) {}
             Button("仍然启用") { enableGemma = true }
@@ -103,6 +97,7 @@ struct SettingsView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             permissionCenter.refresh()
+            engine.refresh()
         }
         .onChange(of: presentationPreferences.language) { _, language in
             ApplicationMenuLocalizer.apply(language)
@@ -205,59 +200,180 @@ struct SettingsView: View {
                         Text(aiServices.readinessError ?? L10n.text("已配置；可在配置菜单测试连接。"))
                             .font(.caption).foregroundStyle(.secondary)
                         Button("配置…") { isShowingAIConfiguration = true }
-                        Text("正在使用自定义服务源，不会下载或加载 Gemma。")
+                        Text(engine.usesAppleIntelligence
+                            ? "纠错润色与总结使用自定义服务源；翻译仍使用 Apple 智能。"
+                            : "正在使用自定义服务源，不会下载或加载 Gemma。")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Section("Gemma 4") {
-                    Toggle("启用 Gemma AI 功能", isOn: Binding(
-                        get: { enableGemma },
-                        set: { enabled in
-                            if enabled && GemmaHardwareSupport.requiresOptIn {
-                                isConfirmingGemma = true
-                            } else {
-                                enableGemma = enabled
-                            }
-                        }
-                    ))
-                    .disabled(aiServices.isEnabled)
-                    .help("8 GB 及以下默认关闭，需手动确认启用。模型仅在点击 AI 功能后加载，任务结束后释放内存。")
-                    if !aiServices.isEnabled && !GemmaHardwareSupport.isSupported {
-                        Label(GemmaHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
-                            .foregroundStyle(.red)
-                    }
-                    Toggle("启用 Gemma 4 E4B 选项", isOn: $enableGemmaE4B)
-                        .disabled(aiServices.isEnabled || !GemmaHardwareSupport.isSupported)
-                        .help("E2B 是默认模型。E4B 占用更多统一内存，仅在开启后出现在 AI 优化的模型列表中。")
 
-                    gemmaModelRow(.e2b)
-                    if enableGemmaE4B { gemmaModelRow(.e4b) }
-                }
-
-                if !NLLBHardwareSupport.isSupported {
-                    Section("离线翻译") {
-                        Label(NLLBHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
-                    }
-                }
-
-                Section("AI 提示词") {
-                    Button("编辑提示词…", systemImage: "square.and.pencil") {
-                        isShowingPromptEditor = true
-                    }
-                    .help("仅开放安全的附加指令；模型协议和校验规则保持受保护。")
-                }
-
-                Section("来源") {
-                    LabeledContent("模型", value: "Google Gemma 4 IT · Apache-2.0")
-                    LabeledContent("运行环境", value: "llama.cpp b10333 · MIT")
+                if engine.usesAppleIntelligence {
+                    appleIntelligenceSections
+                } else {
+                    legacySections
                 }
             }
             .formStyle(.grouped)
         }
-        .onAppear { gemmaModelManager.refresh() }
+        .onAppear {
+            engine.refresh()
+            gemmaModelManager.refresh()
+            nllbModelManager.refresh()
+        }
+    }
+
+    @ViewBuilder
+    private var appleIntelligenceSections: some View {
+        Section("Apple 智能") {
+            Label("翻译、纠错润色与总结使用 Apple 智能，在本机运行", systemImage: "sparkles")
+            if engine.isRemoving {
+                ProgressView("正在删除旧模型…")
+            }
+        }
+
+        Section("NLLB 离线翻译（可选）") {
+            if NLLBHardwareSupport.isSupported {
+                nllbModelRow
+                Toggle("用 NLLB 代替 Apple 智能翻译", isOn: $engine.nllbReplacesAppleIntelligence)
+                    .disabled(!nllbModelManager.isInstalled)
+                    .help("开启后，翻译服务中的“Apple 智能”换成 NLLB。纠错润色与总结仍使用 Apple 智能。")
+            } else {
+                Label(NLLBHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
+            }
+        }
+
+        if nllbModelManager.isInstalled {
+            Section("来源") {
+                LabeledContent("离线翻译模型", value: "\(NLLBModelStore.title) · CC-BY-NC-4.0")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var legacySections: some View {
+        appleIntelligenceStatusSection
+
+        Section("Gemma 4") {
+            Toggle("启用 Gemma AI 功能", isOn: Binding(
+                get: { enableGemma },
+                set: { enabled in
+                    if enabled && GemmaHardwareSupport.requiresOptIn {
+                        isConfirmingGemma = true
+                    } else {
+                        enableGemma = enabled
+                    }
+                }
+            ))
+            .disabled(aiServices.isEnabled)
+            .help("8 GB 及以下默认关闭，需手动确认启用。模型仅在点击 AI 功能后加载，任务结束后释放内存。")
+            if !aiServices.isEnabled && !GemmaHardwareSupport.isSupported {
+                Label(GemmaHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
+                    .foregroundStyle(.red)
+            }
+            Toggle("启用 Gemma 4 E4B 选项", isOn: $enableGemmaE4B)
+                .disabled(aiServices.isEnabled || !GemmaHardwareSupport.isSupported)
+                .help("E2B 是默认模型。E4B 占用更多统一内存，仅在开启后出现在 AI 优化的模型列表中。")
+
+            gemmaModelRow(.e2b)
+            if enableGemmaE4B { gemmaModelRow(.e4b) }
+        }
+
+        if !NLLBHardwareSupport.isSupported {
+            Section("离线翻译") {
+                Label(NLLBHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
+            }
+        }
+
+        Section("来源") {
+            LabeledContent("模型", value: "Google Gemma 4 IT · Apache-2.0")
+            LabeledContent("运行环境", value: "llama.cpp b10333 · MIT")
+        }
+    }
+
+    @ViewBuilder
+    private var appleIntelligenceStatusSection: some View {
+        switch engine.status {
+        case .available:
+            Section("Apple 智能") {
+                HStack {
+                    Text("这台 Mac 可以改用 Apple 智能完成翻译、纠错润色与总结")
+                        .font(.callout)
+                    Spacer()
+                    Button("切换到 Apple 智能…") { engine.requestSwitch(from: .settings) }
+                        .disabled(engine.isRemoving)
+                }
+                if engine.isRemoving {
+                    ProgressView("正在删除旧模型…")
+                }
+            }
+        case .notEnabled, .notReady, .blocked:
+            Section("Apple 智能") {
+                Label(engine.status.message, systemImage: "info.circle")
+                    .font(.callout)
+                if engine.isAppleIntelligencePaused {
+                    Text("重新开启 Apple 智能即可恢复。在此之前使用原有模型。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        case .deviceNotEligible, .osTooOld:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var nllbModelRow: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(NLLBModelStore.title)
+                Text(NLLBModelStore.sizeLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            switch nllbModelManager.state {
+            case .downloading(let progress):
+                ProgressView(value: progress)
+                    .frame(width: 100)
+                Text(progress.formatted(.percent.precision(.fractionLength(0))))
+                    .font(.caption.monospacedDigit())
+                Button("取消") { nllbModelManager.cancelDownload() }
+            case .failed(let message):
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+                Button("重试") { nllbModelManager.download() }
+            case .idle:
+                if nllbModelManager.isInstalled {
+                    Label("已下载", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                    Button("移除", role: .destructive) {
+                        do {
+                            try nllbModelManager.remove()
+                            engine.nllbReplacesAppleIntelligence = false
+                        } catch {
+                            settingsError = error.localizedDescription
+                        }
+                    }
+                } else {
+                    Button("下载", systemImage: "arrow.down.circle") { nllbModelManager.download() }
+                        .disabled(!NLLBTranslationRuntime.isRuntimeBundled)
+                }
+            }
+        }
     }
 
     private var modelsPageNotes: [String] {
+        if engine.usesAppleIntelligence {
+            var notes = ["翻译、纠错润色与总结使用系统自带的 Apple 智能，在本机运行，稿件不会上传。"]
+            if aiServices.isEnabled {
+                notes.append("已启用自定义服务源：纠错润色与总结会把文字稿发送给所选服务。")
+            }
+            notes.append("AI 输出可能出错。纠错结果会按片段、长度、数字、链接、邮箱和时间表达进行校验；未通过的片段保留原文。重要内容仍需人工复核。")
+            notes.append("Apple 智能不支持的语言或无法处理的片段会自动改用 Apple 翻译。NLLB 为可选的离线翻译模型，需要至少 4 GB 内存。")
+            return notes
+        }
         var notes = ["用于已完成转录的纠错、润色或总结"]
         if !aiServices.isEnabled {
             notes.append("模型由 llama.cpp 通过 Metal 在本机运行。稿件不会上传；开始加载前会释放声迹持有的识别和 NLLB 翻译运行环境，任务结束后也会退出 Gemma helper。")

@@ -458,6 +458,39 @@ final class GemmaSafetyTests: XCTestCase {
         )
     }
 
+    func testLiveDiffPlacesJoinedFragmentsAboveTheSentenceTheyFormed() {
+        let original = "Opening\nSamantha, you're the answer when\nwe're stuck with advising events,\nand a little bit of luck.\nNo matter the question,\nbig or small.\nClosing"
+        let proposed = "Opening\nSamantha, you're the answer when we're stuck with advising events and a little bit of luck.\nNo matter the question, big or small.\nClosing"
+        let rows = TranscriptLineDiff.rows(original: original, proposed: proposed)
+        XCTAssertEqual(
+            rows.map { "\($0.kind.id):\($0.number)" },
+            [
+                "same:1",
+                "removed:2", "removed:3", "removed:4", "inserted:2",
+                "removed:5", "removed:6", "inserted:3",
+                "same:4",
+            ]
+        )
+    }
+
+    func testLiveDiffFollowsTheNewestChange() {
+        let rows = TranscriptLineDiff.rows(original: "One\nTwo\nThree\nFour", proposed: "One!\nTwo\nThree?\nFour")
+        XCTAssertEqual(TranscriptLineDiff.latestChangeID(in: rows), rows.first { $0.text == "Three?" }?.id)
+        XCTAssertNil(TranscriptLineDiff.latestChangeID(in: TranscriptLineDiff.rows(original: "A", proposed: "A")))
+    }
+
+    func testSearchMatchesAreCaseAndDiacriticInsensitive() {
+        let matches = TranscriptTextEditing.matches(of: "cafe", in: "Café or CAFE, not caf.")
+        XCTAssertEqual(matches, [NSRange(location: 0, length: 4), NSRange(location: 8, length: 4)])
+        XCTAssertTrue(TranscriptTextEditing.matches(of: "", in: "anything").isEmpty)
+        XCTAssertEqual(TranscriptTextEditing.matches(of: "a", in: String(repeating: "a", count: 20), limit: 5).count, 5)
+    }
+
+    func testLiveDiffPlacesSplitLineBeforeBothNewLines() {
+        let rows = TranscriptLineDiff.rows(original: "Keep\nWe start now and we finish in May\nEnd", proposed: "Keep\nWe start now.\nWe finish in May.\nEnd")
+        XCTAssertEqual(rows.map { "\($0.kind.id):\($0.number)" }, ["same:1", "removed:2", "inserted:2", "inserted:3", "same:4"])
+    }
+
     func testLiveDiffKeepsUnbalancedReplacementAtItsAnchor() {
         let original = "Old one\nOld two\nOld three\nOld four\nShared"
         let proposed = "New one\nNew two\nNew three\nShared"

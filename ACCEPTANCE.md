@@ -2,6 +2,17 @@
 
 This document summarizes the public acceptance and regression history in English. The complete earlier record is preserved in [Chinese (Simplified)](ACCEPTANCE.zh-CN.md).
 
+## 1.9.0 (45): Apple Intelligence
+
+- With Apple Intelligence available, translation, proofreading, refinement, and summaries use the on-device model; the interface and streaming previews are unchanged. Live tests on macOS 27 translated ten English lecture segments into Chinese in about 11 seconds across several windows, with names kept consistent through the per-run glossary.
+- Updating with Gemma or NLLB installed asks once per version; Remove deletes the managed model files and caches and switches, Keep leaves the previous models and workflow in place. Unsupported, disabled, or not-ready Apple Intelligence keeps the previous behavior, and a later loss of availability returns to it with a restore hint.
+- Settings shows only the active engine's options; prompt editing is removed from Settings and available through `--cli prompts edit`, `show`, and `reset`. Saved and one-time instructions are limited to 500 characters.
+- Unsupported languages, declined content, and repeated failures fall back to Apple Translation with a notice; proofreading failures keep the original text. Rolling summaries see the summary written so far and are validated for grounded numbers before use; each step is capped at about 4,000 tokens of context on Macs with 9 GB of memory or less, and about 3,000 on macOS 26.
+- Proofreading aligns each cleaned sentence to the original fragments it came from, so the change preview matches the applied result. Live tests on macOS 27 joined 35 English fragments into 11 sentences and 11 Chinese fragments into 4, keeping every number and name and reporting no failures. Shifted, reordered, or invented lines keep the original text. In the live preview, removed fragments are listed directly above the sentence they formed instead of collecting at the end. Undo AI Changes is in the sidebar's AI Enhancement section, and Apple Intelligence translation progress reports context windows and streamed segments (for example, 16/110 segments, part 1 of 1).
+- Proofreading runs a correction pass and then a cleanup pass. Corrections must replace a few words with sound-alike ones (toneless pinyin for Chinese, spelling distance otherwise); the cleanup may add punctuation, join fragments, and drop filler sounds or stutters, and in-place word swaps are reverted. Live tests on macOS 27 fixed homophone errors such as 公圆 → 公园, kept a repeated name and every spoken word in a short Chinese command, fixed a misheard brand name once it was listed in the instructions box, and no longer replaced names and figures (Kessler Station, Arctic Circle, euros) in the English lecture; 35 English fragments became 10 sentences and 11 Chinese fragments became 4, without spaces between Chinese characters.
+- The live change preview follows the newest output and pauses when the user scrolls; search highlights all matches and the current one.
+- The macOS 26 Apple Intelligence path is not yet verified on real hardware.
+
 ## 1.8.1 (44): language names and quieter settings
 
 - With the macOS system language and the app language set differently, the inspector's recognition language, the Markdown and PDF export language line, unsupported-language errors, live-caption errors, and CLI output use the app language.

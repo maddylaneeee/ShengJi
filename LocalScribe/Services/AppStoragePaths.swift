@@ -15,7 +15,12 @@ enum LocalScribePaths {
     }
 
     static var cachesDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+#if DEBUG
+        if let root = ProcessInfo.processInfo.environment["LOCALSCRIBE_TEST_DATA_ROOT"] {
+            return URL(fileURLWithPath: root, isDirectory: true).appendingPathComponent("Caches", isDirectory: true)
+        }
+#endif
+        return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Containers/\(containerIdentifier)/Data/Library/Caches", isDirectory: true)
     }
 }
