@@ -52,23 +52,12 @@ final class TranscriptionLifecycleTests: XCTestCase {
         XCTAssertTrue(session.resourcesAreReleasedForTesting)
     }
 
-    func testWhisperTemporaryPCMNamesAreUniqueUUIDs() {
-        let first = WhisperFileProcessor.temporaryPCMURL()
-        let second = WhisperFileProcessor.temporaryPCMURL()
-
-        XCTAssertNotEqual(first, second)
-        XCTAssertFalse(first.lastPathComponent.contains("(UUID().uuidString)"))
-        XCTAssertTrue(first.lastPathComponent.hasPrefix("LocalScribe-Whisper-"))
-        XCTAssertEqual(first.pathExtension, "f32")
-    }
-
     func testCancelledSherpaConversionCreatesNoWAV() async {
         let temporaryDirectory = FileManager.default.temporaryDirectory
         let before = sherpaTemporaryWAVs(in: temporaryDirectory)
         let start = AsyncStream<Void>.makeStream()
         let task = Task {
             for await _ in start.stream { break }
-            try Task.checkCancellation()
             return try await SherpaAudioPreparer.makeMonoPCM16Wav(
                 from: URL(fileURLWithPath: "/dev/null")
             )

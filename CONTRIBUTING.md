@@ -33,7 +33,7 @@ xcodebuild \
   test
 ```
 
-Tests that call the on-device Apple Intelligence model are skipped by default. On a Mac with Apple Intelligence turned on, run them with `TEST_RUNNER_LOCALSCRIBE_LIVE_AFM=1` in the environment of the command above; add `TEST_RUNNER_LOCALSCRIBE_LIVE_AFM_LOG=1` to print each prompt and response.
+Keep permanent tests focused on consequential regressions and subtle contracts that are easy to overlook. See the [test selection criteria](LocalScribeTests/README.md). Run model experiments and performance investigations as needed for the relevant change.
 
 ## Regenerate the project
 
@@ -56,7 +56,7 @@ After release validation, pushing a tag matching `CFBundleShortVersionString` in
 
 - Keep each pull request focused on one problem.
 - Describe the user-visible behavior and how it was tested.
-- Add or update tests when behavior changes.
+- Add or update tests for distinct data-loss, privacy, lifecycle, or compatibility risks; avoid duplicating routine implementation checks.
 - Update English, Simplified Chinese, and Japanese strings together for user-facing changes. Keep the three READMEs consistent and link localized guides explicitly.
 - Do not commit downloaded recognition models, private test media, credentials, signing identities, or notarization secrets.
 - Preserve third-party license notices and do not relicense vendored components or models.

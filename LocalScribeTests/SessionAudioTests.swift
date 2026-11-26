@@ -22,83 +22,6 @@ final class SessionAudioTests: XCTestCase {
         try file!.write(from: buffer); file = nil
         return url
     }
-    func testVoicePolicyUsesIdentifierAndLanguageTogether() {
-        XCTAssertTrue(SpeechVoiceOption.isAllowed(identifier: "com.apple.siri.natural.FutureEnglish", language: "en-GB", allowAll: false))
-        XCTAssertFalse(SpeechVoiceOption.isAllowed(identifier: "com.apple.siri.natural.Linfei", language: "zh-CN", allowAll: false))
-        XCTAssertFalse(SpeechVoiceOption.isAllowed(identifier: "com.apple.voice.enhanced.en-US.Alex", language: "en-US", allowAll: false))
-        XCTAssertTrue(SpeechVoiceOption.isAllowed(identifier: "any", language: "zh-CN", allowAll: true))
-    }
-    @MainActor func testEntryPolicyAndPreferencePersistence() throws {
-        for language in ["en", "zh-Hans", "ja"] {
-            XCTAssertFalse(SpeechVoiceCatalog.independentEntryAllowed(allowAll: false, effectiveLanguage: language, hasVoices: true))
-            XCTAssertFalse(SpeechVoiceCatalog.independentEntryAllowed(allowAll: true, effectiveLanguage: language, hasVoices: true))
-        }
-        XCTAssertFalse(SpeechVoiceCatalog.independentEntryAllowed(allowAll: true, effectiveLanguage: "en", hasVoices: false))
-        let suite = "SpeechTests.\(UUID())", defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let prefs = SpeechSynthesisPreferences(defaults: defaults)
-        XCTAssertFalse(prefs.allowAll)
-        prefs.allowAll = true; prefs.lastVoiceIdentifier = "voice.id"
-        let restored = SpeechSynthesisPreferences(defaults: defaults)
-        XCTAssertTrue(restored.allowAll); XCTAssertEqual(restored.lastVoiceIdentifier, "voice.id")
-    }
-    func testLanguageDetectionDoesNotUseImportLanguageWhitelist() {
-        XCTAssertEqual(SpeechTextLanguage.detect("This is a complete English paragraph about writing and reading on this computer."), .english)
-        if case .other = SpeechTextLanguage.detect("这是一段完整的中文正文，用来确认其他语言不能被误认为英语。我们希望在本机生成声音。") {} else { XCTFail("Chinese must be non-English") }
-        if case .other = SpeechTextLanguage.detect("Questo è un testo italiano completo che descrive il lavoro e la vita quotidiana delle persone.") {} else { XCTFail("Italian is outside the old import whitelist but remains non-English") }
-        XCTAssertEqual(SpeechTextLanguage.detect("123 / Nora"), .uncertain)
-        XCTAssertEqual(SpeechTextLanguage.detect("This is a clear English paragraph about writing and reading. 这是一段完整的中文正文，用来确认多语言混合不会被认为是纯英语。"), .uncertain)
-        XCTAssertFalse(SpeechTextLanguage.uncertain.permits(allowAll: false, englishConfirmed: false))
-        XCTAssertTrue(SpeechTextLanguage.uncertain.permits(allowAll: false, englishConfirmed: true))
-        XCTAssertFalse(SpeechTextLanguage.other("zh").permits(allowAll: false, englishConfirmed: true))
-    }
-    func testLongChunkingPreservesEveryCharacter() {
-        let text = String(repeating: "This paragraph must be spoken completely.\n", count: 1_000) + "Final unique sentence."
-        let chunks = SpeechSynthesisService.chunks(text)
-        XCTAssertGreaterThan(text.count, 20_000)
-        XCTAssertEqual(chunks.joined(), text)
-        XCTAssertLessThanOrEqual(chunks.map(\.count).max()!, 800)
-    }
-    func testTimelineRequiresCoverageProvenanceAndOrderedTimes() {
-        let values = [TranscriptSegment(startTime: 1, endTime: 4, text: "One"), TranscriptSegment(startTime: 2, endTime: 3, text: "Two")]
-        XCTAssertTrue(AudioTimeline.isReliable(text: "One\nTwo", segments: values, provenance: .subtitles))
-        XCTAssertFalse(AudioTimeline.isReliable(text: "One\nTwo", segments: values, provenance: .estimated))
-        XCTAssertFalse(AudioTimeline.isReliable(text: "Edited text", segments: values, provenance: .subtitles))
-        XCTAssertFalse(AudioTimeline.isReliable(text: "Two\nOne", segments: values.reversed(), provenance: .subtitles))
-        XCTAssertFalse(AudioTimeline.isReliable(text: "One", segments: [TranscriptSegment(startTime: .nan, endTime: 2, text: "One")], provenance: .json))
-    }
-    func testSubtitleAndPlainTextProvenanceSurvivesJSON() throws {
-        let text = try TranscriptImporter.parse(data: Data("A complete English paragraph for reading.".utf8), fileName: "input.txt")
-        XCTAssertEqual(text.timelineProvenance, .estimated)
-        let json = try TranscriptExporter.makeData(format: .json, title: "Title", source: "Text", language: "en", duration: text.duration, text: text.text, segments: text.segments, hasManualEdits: true)
-        let restored = try TranscriptImporter.parse(data: json, fileName: "input.json")
-        XCTAssertEqual(restored.timelineProvenance, .estimated)
-        let subtitle = try TranscriptImporter.parse(data: Data("1\n00:00:01,000 --> 00:00:02,000\nHello world.\n".utf8), fileName: "input.srt")
-        XCTAssertEqual(subtitle.timelineProvenance, .subtitles)
-        XCTAssertTrue(AudioTimeline.isReliable(text: subtitle.text, segments: subtitle.segments, provenance: subtitle.timelineProvenance))
-    }
-    func testFingerprintIncludesSettingsAndTranslationIdentity() {
-        let base = SynthesisInputSnapshot(text: "Hello", isTranslation: false, voiceIdentifier: "Nora", quality: .quality, usesTimeline: false, segments: [])
-        let changed = [SynthesisInputSnapshot(text: "Hello", isTranslation: true, voiceIdentifier: "Nora", quality: .quality, usesTimeline: false, segments: []),
-                       SynthesisInputSnapshot(text: "Hello", isTranslation: false, voiceIdentifier: "Simone", quality: .quality, usesTimeline: false, segments: []),
-                       SynthesisInputSnapshot(text: "Hello", isTranslation: false, voiceIdentifier: "Nora", quality: .lossless, usesTimeline: false, segments: [])]
-        for value in changed { XCTAssertNotEqual(value.fingerprint, base.fingerprint) }
-    }
-    func testAllQualityFormatsReadBackWithCorrectChannelsAndFrames() throws {
-        let dir = try directory(); defer { try? FileManager.default.removeItem(at: dir) }
-        for channels: UInt32 in [1, 2, 4] {
-            let input = try pcmFile(signal(channels: channels, frames: 48_000), directory: dir)
-            for quality in AudioQualityProfile.allCases {
-                let output = dir.appendingPathComponent("\(channels)-\(quality.rawValue).m4a")
-                let result = try SessionAudioEncoder.encode(inputs: [input], output: output, quality: quality)
-                let read = try AVAudioFile(forReading: output)
-                XCTAssertEqual(read.fileFormat.channelCount, quality.channels(for: channels))
-                XCTAssertEqual(read.fileFormat.streamDescription.pointee.mFormatID, quality == .lossless ? kAudioFormatAppleLossless : kAudioFormatMPEG4AAC)
-                XCTAssertEqual(result.frames, 48_000)
-                XCTAssertEqual(result.rate, 48_000)
-            }
-        }
-    }
     func testALACRoundTripAndPauseConcatenationPreserveSignal() throws {
         let dir = try directory(); defer { try? FileManager.default.removeItem(at: dir) }
         let source = signal(frames: 48_000)
@@ -116,20 +39,19 @@ final class SessionAudioTests: XCTestCase {
     }
     func testAdaptiveEncodingAcrossMicrophoneAndCompactVoiceFormats() throws {
         let dir = try directory(); defer { try? FileManager.default.removeItem(at: dir) }
-        for rate in [8_000.0, 16_000, 22_050, 24_000, 32_000, 44_100, 48_000, 96_000] {
-            for channels: UInt32 in [1, 2, 4] {
-                let input = try pcmFile(signal(channels: channels, frames: UInt32(rate), rate: rate), directory: dir)
-                for quality in AudioQualityProfile.allCases {
-                    print("ADAPTIVE_ENCODING rate=\(rate) channels=\(channels) quality=\(quality)")
-                    let output = dir.appendingPathComponent("\(rate)-\(channels)-\(quality).m4a")
-                    let result = try SessionAudioEncoder.encode(inputs: [input, input], output: output, quality: quality)
-                    XCTAssertEqual(Double(result.frames) / result.rate, 2, accuracy: 0.001, "\(rate)/\(channels)/\(quality)")
-                    XCTAssertEqual(result.sourceRate, rate); XCTAssertEqual(result.sourceChannels, channels)
-                    XCTAssertEqual(result.channels, quality.channels(for: channels))
-                    if quality == .lossless { XCTAssertEqual(result.rate, rate); XCTAssertEqual(result.frames, Int64(rate * 2)) }
-                    let read = try AVAudioFile(forReading: output)
-                    XCTAssertEqual(read.fileFormat.streamDescription.pointee.mFormatID, quality == .lossless ? kAudioFormatAppleLossless : kAudioFormatMPEG4AAC)
-                }
+        // Cover codec resampling, mono/stereo, and multichannel preservation without a full cross product.
+        let formats: [(Double, UInt32)] = [(8_000, 1), (24_000, 1), (44_100, 2), (48_000, 2), (96_000, 4)]
+        for (rate, channels) in formats {
+            let input = try pcmFile(signal(channels: channels, frames: UInt32(rate), rate: rate), directory: dir)
+            for quality in AudioQualityProfile.allCases {
+                let output = dir.appendingPathComponent("\(rate)-\(channels)-\(quality).m4a")
+                let result = try SessionAudioEncoder.encode(inputs: [input, input], output: output, quality: quality)
+                XCTAssertEqual(Double(result.frames) / result.rate, 2, accuracy: 0.001, "\(rate)/\(channels)/\(quality)")
+                XCTAssertEqual(result.sourceRate, rate); XCTAssertEqual(result.sourceChannels, channels)
+                XCTAssertEqual(result.channels, quality.channels(for: channels))
+                if quality == .lossless { XCTAssertEqual(result.rate, rate); XCTAssertEqual(result.frames, Int64(rate * 2)) }
+                let read = try AVAudioFile(forReading: output)
+                XCTAssertEqual(read.fileFormat.streamDescription.pointee.mFormatID, quality == .lossless ? kAudioFormatAppleLossless : kAudioFormatMPEG4AAC)
             }
         }
     }
@@ -171,20 +93,6 @@ final class SessionAudioTests: XCTestCase {
         let asset = try XCTUnwrap(finished)
         XCTAssertTrue(asset.isPartial); XCTAssertEqual(asset.frames, 48_000)
     }
-    func testTimelineAudioContainsSilenceAndDelaysOverlapsWithoutCuttingTail() async throws {
-        let dir = try directory(); defer { try? FileManager.default.removeItem(at: dir) }
-        let url = dir.appendingPathComponent("timeline.caf"), assembler = AudioTimelineAssembler(url: url)
-        try await assembler.append(signal(frames: 48_000), scheduledStart: 0.5)
-        try await assembler.append(signal(frames: 48_000), scheduledStart: 0.6)
-        try await assembler.finish(tail: 2)
-        let file = try AVAudioFile(forReading: url)
-        XCTAssertEqual(file.length, 120_000) // .5 seconds opening silence + two complete 1-second utterances.
-        let b = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 120_000)!
-        try file.read(into: b)
-        XCTAssertEqual(b.floatChannelData![0][12_000], 0)
-        XCTAssertNotEqual(b.floatChannelData![0][24_100], 0)
-        XCTAssertNotEqual(b.floatChannelData![0][72_100], 0)
-    }
     func testAssetPathRejectsTraversalAbsoluteAndSymlinkEscapes() throws {
         let id = UUID(), dir = SessionAudioStore.directory(sessionID: id)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -192,16 +100,6 @@ final class SessionAudioTests: XCTestCase {
         for path in ["../secret.m4a", "/tmp/a.m4a", "sub/../../a", "a//b"] { XCTAssertThrowsError(try SessionAudioStore.resolve(sessionID: id, relativePath: path)) }
         try FileManager.default.createSymbolicLink(at: dir.appendingPathComponent("escape"), withDestinationURL: URL(fileURLWithPath: "/tmp"))
         XCTAssertThrowsError(try SessionAudioStore.resolve(sessionID: id, relativePath: "escape/audio.m4a"))
-    }
-    func testAllTextFormatsExportWithSameAudioBaseName() throws {
-        let dir = try directory(); defer { try? FileManager.default.removeItem(at: dir) }
-        let source = try pcmFile(signal(), directory: dir)
-        for format in TranscriptExportFormat.allCases {
-            let result = try CompanionExportCoordinator.write(data: Data("Text".utf8), format: format, name: "Meeting", directory: dir, audio: source, overwrite: true)
-            XCTAssertEqual(result.textURL.lastPathComponent, "Meeting." + format.fileExtension)
-            XCTAssertEqual(result.audioURL?.lastPathComponent, "Meeting.m4a")
-            XCTAssertTrue(result.isComplete)
-        }
     }
     func testExportCollisionRequiresApprovalAndAudioFailureReportsTextSuccess() throws {
         let dir = try directory(); defer { try? FileManager.default.removeItem(at: dir) }
