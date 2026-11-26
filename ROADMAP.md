@@ -23,7 +23,7 @@ LocalScribe is developed around local processing, transparent behavior, reliable
 - Intel Mac support is not currently planned.
 - Apple SpeechAnalyzer recognition and floating live captions require macOS 26.
 - The project will not claim a single “best” recognition engine without reproducible benchmarks.
-- Recognition audio and imported transcripts should not be uploaded by the app.
+- Recognition stays on device and original audio/video is not uploaded. Built-in AI stays local; a user-selected cloud AI service may receive task text, context, and instructions only after consent.
 
 Please use [GitHub Issues](https://github.com/maddylaneeee/ShengJi/issues) for concrete bugs and feature proposals.
 

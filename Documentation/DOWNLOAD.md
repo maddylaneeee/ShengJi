@@ -35,18 +35,11 @@ Run the installed copy from Applications instead of leaving the app inside the D
 
 ## Step 3: Allow the first launch
 
-The current public build is not Apple Developer ID signed or notarized, so macOS blocks the first launch.
-
-1. Double-click LocalScribe in Applications, allow macOS to show the blocked-app message, and close the message.
-2. Open System Settings → Privacy & Security.
-3. Find the message saying LocalScribe was blocked and click Open Anyway.
-4. Confirm Open.
-
-Only override the warning when the app came from this project's GitHub Release and you trust the project. macOS normally remembers the choice for that installed copy.
+The public build has an ad-hoc integrity signature only and is not Developer ID signed or notarized by Apple. Follow the [first-launch guide](../INSTALL.md#2-try-opening-it-once) for the current System Settings steps, missing **Open Anyway** buttons, and other alerts. Approve an exception only if you trust this project and its download source.
 
 ## Step 4: Choose recognition
 
-### macOS 26
+### macOS 26 or later
 
 Keep Default selected to use Apple Speech Framework. Floating live captions are also available only on macOS 26 or later.
 
@@ -107,3 +100,5 @@ Open a [GitHub Issue](https://github.com/maddylaneeee/ShengJi/issues) and includ
 - reproduction steps and the exact error message.
 
 Return to the [English README](../README.md).
+
+For editing, translation, subtitle burning, microphone audio, and CLI examples, see the [user guide](USAGE.md). AI model choices and requirements are in the [AI guide](AI-SERVICES.md).

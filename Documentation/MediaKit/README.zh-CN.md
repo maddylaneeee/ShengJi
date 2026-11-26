@@ -14,6 +14,6 @@
 - [`download-flow-zh-CN.png`](download-flow-zh-CN.png)：中文四步安装图。
 - [`../Screenshots/home-zh-CN.png`](../Screenshots/home-zh-CN.png) / [暗色版](../Screenshots/home-zh-CN-dark.png)：中文首页实机截图。
 - [`../Screenshots/transcript-editor-zh-CN.png`](../Screenshots/transcript-editor-zh-CN.png) / [暗色版](../Screenshots/transcript-editor-zh-CN-dark.png)：使用导入示例稿件的中文编辑器实机截图。
-- [`PROJECT-BRIEF.zh-CN.md`](PROJECT-BRIEF.zh-CN.md)：一页项目事实表与可引用简介。
+- [`PROJECT-BRIEF.zh-CN.md`](PROJECT-BRIEF.zh-CN.md)：当前项目事实表与可引用简介，含 Apple 智能条件和云端 AI 隐私边界。
 
 项目主页：<https://github.com/maddylaneeee/ShengJi>
