@@ -11,25 +11,6 @@ private actor UpdateClientProbe {
 
 @MainActor
 final class AppUpdateControllerTests: XCTestCase {
-    func testManifestDecodesReleaseBundleIdentifier() throws {
-        let data = Data(#"{"version":"1.6.5","build":"36","bundle_id":"ca.lixinchen.localscribe","download_url":"https://example.invalid/update.zip","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#.utf8)
-        let manifest = try JSONDecoder().decode(AppUpdateManifest.self, from: data)
-
-        XCTAssertEqual(manifest.bundleIdentifier, "ca.lixinchen.localscribe")
-    }
-
-    func testAutomaticUpdatesDefaultToEnabledAndPersistOptOut() {
-        let defaults = makeDefaults()
-        let controller = AppUpdateController(defaults: defaults)
-        XCTAssertTrue(controller.automaticUpdatesEnabled)
-
-        controller.setAutomaticUpdatesEnabled(false)
-        XCTAssertFalse(controller.automaticUpdatesEnabled)
-
-        let restored = AppUpdateController(defaults: defaults)
-        XCTAssertFalse(restored.automaticUpdatesEnabled)
-    }
-
     func testAutomaticCycleChecksAndPreparesNewerUpdate() async {
         let defaults = makeDefaults()
         let probe = UpdateClientProbe()

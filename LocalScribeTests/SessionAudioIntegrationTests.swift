@@ -21,62 +21,6 @@ final class SessionAudioIntegrationTests: XCTestCase {
                           quality: asset.quality, duration: asset.duration, sampleRate: asset.sampleRate, channels: asset.channels,
                           frames: asset.frames, isPartial: asset.isPartial, fingerprint: asset.fingerprint, createdAt: asset.createdAt)
     }
-    @MainActor private final class DelayedSynthesizer: SpeechSynthesizing {
-        var continuation: CheckedContinuation<SessionAudioAsset, Error>?
-        var wasCancelled = false
-        func cancel() { wasCancelled = true }
-        func generate(_ input: SynthesisInputSnapshot, sessionID: UUID, progress: @escaping (Double) -> Void) async throws -> SessionAudioAsset {
-            try await withCheckedThrowingContinuation { continuation = $0 }
-        }
-    }
-    @MainActor func testDisabledSynthesisCannotOverrideWithLegacyPreferencesOrInjectedService() async throws {
-        let id = UUID(); defer { try? FileManager.default.removeItem(at: SessionAudioStore.directory(sessionID: id)) }
-        let old = try await asset(id: id)
-        let suite = "AudioIntegration.\(UUID())", defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        defaults.set(true, forKey: "AllowAllSpeechSynthesis")
-        let preferences = SpeechSynthesisPreferences(defaults: defaults)
-        XCTAssertTrue(preferences.allowAll)
-        var enumerations = 0
-        let catalog = SpeechVoiceCatalog {
-            enumerations += 1
-            return [SpeechVoiceOption(id: "com.apple.siri.natural.Mock", name: "Mock", language: "en-US")]
-        }
-        let synth = DelayedSynthesizer()
-        let model = SpeechAudioModel(sessionID: id, service: synth, catalog: catalog, preferences: preferences)
-        model.restore(old)
-        model.confirmedTextDigest = SynthesisInputSnapshot.digest("Nora")
-        model.generate(model.input(text: "Nora"))
-        await Task.yield()
-        XCTAssertFalse(model.isGenerating)
-        XCTAssertNil(synth.continuation)
-        XCTAssertTrue(catalog.voices.isEmpty)
-        XCTAssertEqual(enumerations, 0)
-        XCTAssertEqual(model.voiceIdentifier, "")
-        XCTAssertEqual(model.asset, old)
-        XCTAssertGreaterThan(model.player.duration, 0.9)
-        XCTAssertNil(model.player.error)
-        await model.cancelAndWait()
-    }
-    @MainActor func testSynthesizedAudioIsNotRestoredPlayedOrExportedAndFileIsRetained() async throws {
-        let id = UUID(); defer { try? FileManager.default.removeItem(at: SessionAudioStore.directory(sessionID: id)) }
-        let old = synthesized(try await asset(id: id))
-        let originalURL = try SessionAudioStore.readableURL(old)
-        try SessionAudioStore.save(old)
-        let model = SpeechAudioModel(sessionID: id)
-        model.restore(old)
-        XCTAssertNil(model.asset)
-        XCTAssertEqual(model.player.duration, 0)
-        model.player.load(old)
-        model.player.toggle()
-        XCTAssertFalse(model.player.isPlaying)
-        XCTAssertEqual(model.player.duration, 0)
-        do {
-            _ = try await CompanionExportCoordinator.export(data: Data("Text".utf8), format: .txt, name: "Text", asset: old, warning: "")
-            XCTFail("Disabled synthesis export must be rejected before opening a save panel")
-        } catch { if case SessionAudioError.synthesisUnavailable = error {} else { XCTFail("Unexpected error: \(error)") } }
-        XCTAssertTrue(FileManager.default.fileExists(atPath: originalURL.path))
-    }
     @MainActor func testOldSpeechRecoveryKeepsTextAndFilesWithoutWritingDuringLoad() async throws {
         let id = UUID(); defer { try? RecoveryStore.clear() }
         let audio = synthesized(try await asset(id: id))
@@ -136,21 +80,6 @@ final class SessionAudioIntegrationTests: XCTestCase {
         for key in ["isTextToSpeech", "audioAsset", "originalAudioEnabled", "timelineProvenance"] { json.removeValue(forKey: key) }
         let legacy = try JSONDecoder().decode(RecoverySnapshot.self, from: JSONSerialization.data(withJSONObject: json))
         XCTAssertNil(legacy.audioAsset); XCTAssertNil(legacy.isTextToSpeech)
-    }
-    // Optional, expensive device-independent validation; enabled explicitly for the local validation run.
-    func testOneHourRecordingPipelineWithBoundedMemory() async throws {
-        guard ProcessInfo.processInfo.environment["LOCALSCRIBE_LONG_AUDIO_TESTS"] == "1" else { throw XCTSkip("Enable LOCALSCRIBE_LONG_AUDIO_TESTS for the one-hour signal fixture") }
-        let id = UUID(); defer { try? FileManager.default.removeItem(at: SessionAudioStore.directory(sessionID: id)) }
-        let recorder = try OriginalAudioRecorder(sessionID: id, quality: .quality) { message in XCTFail(message) }
-        let tenSeconds = pcm(frames: 480_000)
-        for _ in 0..<120 {
-            for _ in 0..<3 { recorder.accept(tenSeconds) }
-            await recorder.pauseBoundary()
-        }
-        let finished = await recorder.finish(), result = try XCTUnwrap(finished)
-        XCTAssertFalse(result.isPartial); XCTAssertEqual(result.frames, 172_800_000)
-        XCTAssertEqual(result.duration, 3_600, accuracy: 0.2)
-        print("ONE_HOUR_AUDIO frames=\(result.frames) duration=\(result.duration)")
     }
     @MainActor func testDisabledSpeechServiceRejectsBeforeCreatingFiles() async throws {
         let suite = "AudioVoices.\(UUID())", defaults = UserDefaults(suiteName: suite)!

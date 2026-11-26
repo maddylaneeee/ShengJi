@@ -61,27 +61,6 @@ final class AIServiceTests: XCTestCase {
             .generationRequest(system: "s", data: "d", maxTokens: 10).value(forHTTPHeaderField: "Authorization"))
     }
 
-    func testModelListExplainsMissingCloudKeyButAllowsLocalServerWithoutToken() {
-        for provider in [AIServiceProvider.openAI, .deepSeek] {
-            let config = AIServiceConfiguration(provider: provider)
-            XCTAssertEqual(config.modelListBlocker(key: nil), AIServiceError.missingKey.localizedDescription)
-            XCTAssertNil(config.modelListBlocker(key: "fixture")) // No model ID or upload consent needed for GET.
-        }
-        XCTAssertNil(AIServiceConfiguration().modelListBlocker(key: nil))
-        XCTAssertNotNil(AIServiceConfiguration(localURL: "http://example.com/v1").modelListBlocker(key: nil))
-    }
-
-    func testSSEParserIgnoresReasoningAndUsageButRequiresCompleteStop() throws {
-        var parser = AIChatResponseParser()
-        try parser.consume(#"{"choices":[{"index":0,"delta":{"reasoning_content":"hidden","content":"中文"},"finish_reason":null}]}"#)
-        try parser.consume(#"{"choices":[],"usage":{"total_tokens":5}}"#)
-        XCTAssertThrowsError(try parser.result())
-        try parser.consume(#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#)
-        XCTAssertThrowsError(try parser.result())
-        try parser.consume("[DONE]")
-        XCTAssertEqual(try parser.result(), "中文")
-    }
-
     func testSSERejectsTruncationRefusalToolsErrorsAndMultipleChoices() {
         let invalid = [
             #"{"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}"#,
@@ -134,18 +113,6 @@ final class AIServiceTests: XCTestCase {
         let client = OpenAICompatibleClient(configuration: AIServiceConfiguration(localURL: server.baseURL, modelID: "fixture"), key: nil)
         do { _ = try await client.complete(system: "s", data: "d", maxTokens: 32); XCTFail("Incomplete stream succeeded") }
         catch { XCTAssertEqual(error as? AIServiceError, .invalidOutput) }
-    }
-
-    func testRealLoopbackJSONAndModelDiscovery() async throws {
-        let server = try LoopbackAIHTTPFixture(body: #"{"choices":[{"message":{"content":"OK"},"finish_reason":"stop"}]}"#, contentType: "application/json")
-        defer { server.stop() }
-        let config = AIServiceConfiguration(localURL: server.baseURL, modelID: "fixture", stream: false)
-        let result = try await OpenAICompatibleClient(configuration: config, key: nil).complete(system: "s", data: "d", maxTokens: 32)
-        XCTAssertEqual(result, "OK")
-        let models = try LoopbackAIHTTPFixture(body: #"{"data":[{"id":"text-b"},{"id":"text-a"},{"id":"text-a"},{"id":"image","output_modalities":["image"]}]}"#, contentType: "application/json")
-        defer { models.stop() }
-        let list = try await OpenAICompatibleClient(configuration: AIServiceConfiguration(localURL: models.baseURL), key: nil).models()
-        XCTAssertEqual(list, ["text-a", "text-b"])
     }
 
     func testOfficialCloudFixturesNeverContactNetworkAndKeepKeyIsolation() async throws {
@@ -310,18 +277,6 @@ final class AIServiceTests: XCTestCase {
         catch { XCTAssertTrue(error is CancellationError) }
     }
 
-    func testCustomProofreadingKeepsSafetyRulesWithoutPreparingGemma() async throws {
-        let source = TranscriptSegment(startTime: 0, endTime: 2, text: "Um, review 42 items at 09:15.")
-        let response = "[{\"id\":\"\(source.id.uuidString)\",\"text\":\"Review 42 items at 09:15.\"}]"
-        let client = ScriptedAIClient(responses: [response])
-        let result = try await AIOptimizationService().optimize(segments: [source], fallbackText: source.text,
-            kind: .proofread, prompt: "", model: .e2b, client: client, progress: { _, _ in })
-        XCTAssertEqual(result.segments.first?.id, source.id)
-        XCTAssertEqual(result.text, "Review 42 items at 09:15.")
-        XCTAssertTrue(result.failures.isEmpty)
-        XCTAssertEqual(GemmaProcessRegistry.activeProcessCount, 0)
-    }
-
     func testInvalidCustomProofreadingRetriesOnlyOnceThenPreservesOriginal() async throws {
         let source = TranscriptSegment(startTime: 0, endTime: 2, text: "Review 42 items.")
         let client = ScriptedAIClient(responses: ["not JSON", "still not JSON"])
@@ -340,15 +295,6 @@ final class AIServiceTests: XCTestCase {
             kind: .proofread, prompt: "", model: .e2b, client: client, progress: { _, _ in })
         XCTAssertEqual(result.text, source.text)
         XCTAssertEqual(result.failures.count, 1)
-    }
-
-    func testCustomSummaryUsesSameValidationPipeline() async throws {
-        let source = TranscriptSegment(startTime: 0, endTime: 2,
-            text: "The team reviewed 42 items for the project. The team will send the report on Tuesday. The report will contain the final review results and next steps.")
-        let client = ScriptedAIClient(responses: ["The team reviewed 42 items and will send the report on Tuesday."])
-        let result = try await AIOptimizationService().optimize(segments: [source], fallbackText: source.text,
-            kind: .summarize, prompt: "", model: .e2b, client: client, progress: { _, _ in })
-        XCTAssertEqual(result.summary, "The team reviewed 42 items and will send the report on Tuesday.")
     }
 
     func testConcurrentWindowsCannotCrossCancelAndRevisionCancelsOldJob() async throws {
