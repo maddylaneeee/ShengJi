@@ -10,178 +10,67 @@
 
 **Turn microphones, media files, and the sound playing on your Mac into editable text and subtitles—locally.**
 
-LocalScribe is a free, open-source, native SwiftUI transcription app for Apple silicon Macs. No account is required. It combines local speech recognition, floating live captions, transcript editing, subtitle export and burning, offline translation, long-task recovery, and on-device AI transcript enhancement with Apple Intelligence or Gemma 4. Recognition audio never leaves the Mac; AI runs locally unless you choose a cloud service.
+LocalScribe is a free, open-source, native macOS app for Apple silicon Macs. Transcribe, edit, translate, and burn subtitles into video in one app, with **on-device Apple Intelligence for translation, proofreading, and summaries** on supported Macs. No account is required for local workflows.
 
-Current release: **1.9.0 (45)** · [Release notes](https://github.com/maddylaneeee/ShengJi/releases) · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [User documentation](https://lixinchen.ca/docs/localscribe/)
+Current release: **1.9.0** · [Release notes](https://github.com/maddylaneeee/ShengJi/releases/latest) · [Download DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Documentation/MediaKit/localscribe-demo-en-dark.gif">
   <img alt="LocalScribe home and editable transcript views in English" src="Documentation/MediaKit/localscribe-demo-en.gif">
 </picture>
 
-> [!IMPORTANT]
-> The app supports macOS 15.5 or later, but **Apple Speech recognition and floating live captions require macOS 26**. On macOS 15.5–25, select Whisper, SenseVoice, or Parakeet on the home screen.
+*Preview and screenshots show earlier releases. Their AI and privacy notes may differ; see the current behavior below.*
 
 ## Download and install
 
 1. [Download the latest DMG](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg).
 2. Open it and drag LocalScribe to Applications.
-3. Open the app once. If macOS blocks it, go to System Settings → Privacy & Security, choose **Open Anyway** for LocalScribe, and confirm.
-
-See the [first-launch guide](INSTALL.md) (including what to do if Open Anyway is missing) and the [Download and Installation Guide](Documentation/DOWNLOAD.md) for illustrated steps and SHA-256 verification.
+3. Try opening the installed app once. If macOS blocks it, follow the [first-launch guide](INSTALL.md), including what to do if **Open Anyway** is missing.
 
 > [!WARNING]
-> Release builds have an ad-hoc signature only and are neither Developer ID signed nor notarized by Apple. Override the warning only if you trust this repository. Every Release includes SHA-256 files.
+> Public builds have an ad-hoc integrity signature only; they are not Developer ID signed or notarized by Apple. Approve an exception only if you trust this repository and download source. See the [download guide](Documentation/DOWNLOAD.md) for SHA-256 verification.
 
-## Features
+## What you can do
 
-- **Three input sources.** Transcribe from a microphone (system default or a chosen input device), audio/video files, or the sound playing on your Mac.
-- **Floating live captions** (macOS 26) for microphone, Mac audio, or both mixed.
-- **Four offline recognition engines.** Apple Speech, whisper.cpp with Metal, SenseVoice, and NVIDIA Parakeet; models are downloaded only when selected.
-- **Transcript editing.** Search, replace, delete selections, and trim ranges, with smooth scrolling for long transcripts.
-- **Import and continue.** Open SRT, WebVTT, TXT, Markdown, or LocalScribe JSON, edit it, or append new microphone transcription to it.
-- **Export.** TXT, Markdown, JSON, PDF, SRT, WebVTT, or the clipboard.
-- **Translation after transcription** with Apple Translation, Apple Intelligence, or optional local NLLB.
-- **AI transcript enhancement.** Proofread, refine, or summarize on device with Apple Intelligence or Gemma 4, or with a custom LM Studio, OpenAI, or DeepSeek service.
-- **Burn subtitles into video** with your own font and style.
-- **Save original microphone audio** and export it as M4A alongside the transcript.
-- **Long-task safety.** Progressive results, pause/resume, append-only journals, and recovery after interruption.
-- **Command-line interface** for models, transcription, translation, and subtitle burning.
-- **English, Simplified Chinese, and Japanese interfaces.** The app follows the macOS language by default and can switch instantly in Settings, along with System, Light, or Dark appearance.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/home-en-dark.png">
-  <img alt="LocalScribe home screen in English with model selection, transcript import, subtitle burning and live-caption controls" src="Documentation/Screenshots/home-en.png">
-</picture>
+- **Transcribe three sources:** microphone, audio/video files, or Mac audio, with progressive results and recovery after interruption.
+- **Follow floating live captions:** microphone, Mac audio, or both mixed, on macOS 26 or later.
+- **Edit and deliver transcripts:** import text or subtitles, search, replace, trim ranges, and export TXT, Markdown, JSON, PDF, SRT, or WebVTT.
+- **Translate and improve text with Apple Intelligence:** on-device translation, proofreading with a live change preview, and summaries of long transcripts. Review AI output before using it.
+- **Burn subtitles into video:** choose a font and style, preview the result, and save a subtitled copy.
+- **Keep original microphone audio:** optionally save and export M4A alongside the transcript.
+- **Work in your preferred language:** English, Simplified Chinese, and Japanese interfaces, light/dark appearance, and a CLI for transcription, translation, models, and subtitle burning.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Documentation/Screenshots/transcript-editor-en-dark.png">
-  <img alt="LocalScribe transcript editor in English with local translation, search, range editing, export and privacy details" src="Documentation/Screenshots/transcript-editor-en.png">
+  <img alt="LocalScribe transcript editor in English with translation, search, range editing and export" src="Documentation/Screenshots/transcript-editor-en.png">
 </picture>
 
-## Recognition and translation engines
+## Apple Intelligence and engine choices
 
-**Prefer Apple's built-in engines when your macOS version and language support them**; their quality is noticeably better than the third-party models.
+On supported Macs with **macOS 26 or later and Apple Intelligence enabled and ready**, LocalScribe can use the system's on-device model for translation and AI enhancement. You do not need a separate app-managed AI model download. When upgrading with Gemma or NLLB installed, you can keep those models or switch to Apple Intelligence; the choice is also available in Settings.
 
-| Engine | Use | Runtime |
-| --- | --- | --- |
-| Apple Speech | Microphone, files, live captions (macOS 26) | SpeechAnalyzer / SpeechTranscriber |
-| Whisper | Microphone and files | whisper.cpp GGML, Metal with CPU fallback |
-| SenseVoice | Files | sherpa-onnx, Core ML where eligible, CPU fallback |
-| NVIDIA Parakeet | Files | sherpa-onnx, Core ML where eligible, CPU fallback |
-| Apple Translation | Default post-transcription translation | macOS Translation framework |
-| NLLB | Optional post-transcription translation | CTranslate2 CPU/int8 |
-| Gemma 4 | Proofreading, refinement, summarization | llama.cpp with Metal, on device |
-| Apple Intelligence | Translation, proofreading, refinement, summarization | Apple Foundation Models framework, on device (macOS 26+) |
+Apple Translation remains the default translation provider. Apple Intelligence is another option, with Apple Translation fallback for unsupported languages or segments it cannot process. Macs without Apple Intelligence can use Gemma 4 for AI enhancement and optional NLLB for translation. Custom LM Studio, OpenAI, and DeepSeek services are also available for proofreading and summaries.
 
-Whisper uses the bundled Silero VAD to skip silence in long media and filters silent, low-confidence, repeated, and known hallucinated output.
+Recognition choices are Apple Speech, Whisper, SenseVoice, and NVIDIA Parakeet. When your system and language support Apple Speech, try it first; results vary with language, recording quality, and task. See the [user guide](Documentation/USAGE.md) for the engine table and [AI guide](Documentation/AI-SERVICES.md) for model choices and fallback behavior.
 
-**Advanced settings.** For third-party engines, the collapsed Advanced section in the right inspector exposes the options each runtime supports—for Whisper: prompt, temperature and fallback, beam or greedy search, context length, silence and confidence filters, VAD, and thread count. The last engine, model, and settings are remembered; **Restore Model Defaults** resets only the selected engine.
+## Requirements and privacy
 
-## AI transcript enhancement
+- **macOS 15.5 or later, Apple silicon (`arm64`).** Intel Macs are not supported.
+- **Apple Speech recognition and floating live captions require macOS 26 or later.** On macOS 15.5–25, select and download Whisper, SenseVoice, or Parakeet. SenseVoice and Parakeet support files only.
+- Apple Intelligence requires a supported Mac and system model readiness. Its macOS 26 path has not yet been tested on real hardware; development and live testing used macOS 27.
+- Live-caption translation is currently disabled; translation after transcription is available.
+- Microphone input requires microphone permission; Mac audio requires Screen & System Audio Recording permission. System language and AI resources may need to download before use.
 
-After transcribing or importing a transcript, open **AI Enhancement** in the right inspector.
+Recognition runs on your Mac and does not upload original audio or video. Translation and built-in AI also run locally. Only when you choose a cloud AI service and consent does LocalScribe send task text, context, and instructions to that provider; API usage may incur charges. Keys stay in this Mac's non-synchronizing Keychain. See [privacy and updates](Documentation/USAGE.md#privacy-and-updates).
 
-- **Proofread / Refine** removes filler, repetition, and obvious recognition errors, shown as a live diff. Segments that fail validation keep their original text. With Apple Intelligence, misheard words are corrected in a separate pass before cleanup, and the cleanup keeps every other word as spoken; add names, brands, and terms to the instructions box to help the model correct them.
-- **Summarize** replaces the preview with a summary and keeps an undo snapshot.
-- Add one-time instructions (up to 500 characters) for names, terminology, style, length, focus, or format. Saved instructions are edited with `--cli prompts edit`. Always review AI output.
+## Guides and feedback
 
-**Apple Intelligence.** On Macs running macOS 26 or later with Apple Intelligence turned on, LocalScribe uses the built-in on-device model for translation, proofreading, and summaries—no model download is needed. Translation sends larger windows to the model and keeps a per-run glossary of names, terms, and style so later windows stay consistent; languages Apple Intelligence doesn't support, and segments it can't process, fall back to Apple Translation. Summaries of long transcripts are written incrementally, with each step seeing the summary so far. When you update from an earlier version with Gemma or NLLB installed, LocalScribe asks once whether to remove those models and switch; if you keep them, nothing changes and you can switch later in **Settings → Models**. NLLB can still be downloaded as an optional translator. On Macs without Apple Intelligence, Gemma and NLLB work as before.
-
-**Built-in Gemma 4** (Macs without Apple Intelligence, or when you keep the previous models). The default E2B model is about 2.8 GB; an optional E4B model (about 4.6 GB) can be enabled in Settings. Models are downloaded on demand and load only when you select an AI task; LocalScribe first releases its recognition and NLLB runtimes. On Macs with 8 GB of memory or less, Gemma is off by default and can be enabled in Settings.
-
-**Custom AI services.** In **Settings → Models → Use a custom AI service**, connect LM Studio (loopback address only, default `http://127.0.0.1:1234/v1`), OpenAI, or DeepSeek. Enabling it cancels and blocks Gemma downloads and loading, with no automatic fallback, and takes priority over Apple Intelligence for AI enhancement. OpenAI and DeepSeek connectors are previews and send task text only after your consent; API usage may incur charges. See the [setup guide](Documentation/AI-SERVICES.md).
-
-## Burn subtitles into video
-
-Open **Burn Subtitles** on the home screen or choose **File → Burn Subtitles…** (⇧⌘B). Choose or drag in a video (MP4, MOV, M4V, or another format macOS can play) and a subtitle file: SRT, WebVTT, LocalScribe JSON, ASS/SSA, SBV, or TTML/DFXP. Files without valid timestamps are flagged as unsupported; ASS styling and TTML regions are ignored.
-
-After a video transcription, **Burn into Video** next to Export opens the same page with the original or translated text currently shown.
-
-- **Output:** Create Copy (default) or Burn into Original, which replaces the source only after the new file is rendered and verified.
-- **Style:** any installed font, size, top or bottom position and margin, optional background, and adjustable shadow, with a live preview. The style is remembered.
-- Rendering uses AVFoundation, keeps the source resolution and orientation, and re-encodes as HEVC for HEVC sources or H.264 otherwise.
-
-## Save original microphone audio
-
-Before starting a new microphone transcription, turn on **Save Original Audio** and pick Storage Priority, Quality Priority, or Highest Quality (AAC or ALAC in M4A). Afterwards, play it back at 0.5×, 1×, or 2× and export it with the transcript under the same base filename. Editing or translating the transcript never changes the audio. This option is unavailable for file transcription, Mac audio, live captions, and transcription appended to an imported transcript.
-
-## Keyboard shortcuts
-
-| Shortcut | Action |
-| --- | --- |
-| ⌘N | Microphone transcription |
-| ⌘O | Transcribe from file |
-| ⇧⌘O | Import transcript |
-| ⇧⌘B | Burn subtitles |
-| Return | Start transcription |
-| Space | Pause / resume |
-| ⌘E | Export transcript |
-
-## Requirements and limitations
-
-- macOS 15.5 or later on Apple silicon (`arm64`). Intel Macs are not supported.
-- Apple Speech recognition and live captions require macOS 26.
-- SenseVoice and Parakeet support file transcription only.
-- Live-caption translation is currently disabled; post-transcription translation is available.
-- Local NLLB translation requires at least 4 GB of memory.
-- Apple Intelligence requires macOS 26 or later, a supported Mac, and Apple Intelligence turned on in System Settings. Its on-device model has a limited context window and may decline some content; affected segments fall back to Apple Translation or keep their original text. The macOS 26 path has not yet been tested on real hardware; development and testing used macOS 27.
-- Microphone input needs microphone permission; Mac audio needs Screen & System Audio Recording permission. Apple Speech and Apple Translation may download language assets managed by macOS.
-
-## Privacy and updates
-
-Recognition and translation run on the Mac, and neither recognition audio nor text processed by Apple Intelligence or built-in Gemma is uploaded. LM Studio receives text over loopback on the same Mac. OpenAI or DeepSeek receive task text, context, and instructions only after you select and confirm them. API keys are stored in the local, non-synchronizing Keychain.
-
-Other network access is limited to on-demand model downloads, update checks and downloads, and opening external documentation. The updater checks at launch and every six hours, reads `update.json` from the latest GitHub Release, verifies the ZIP's SHA-256, bundle identifier, and version, and asks before replacing the app. Automatic updates can be turned off in Settings.
-
-## Command line
-
-```sh
-LS=/Applications/LocalScribe.app/Contents/MacOS/LocalScribe
-
-$LS --cli help
-$LS --cli models --json
-$LS --cli download whisper.largeV3TurboQ5
-$LS --cli transcribe input.mp4 --engine whisper --language en_US \
-  --translate-to zh-Hans --format srt --output output.srt
-$LS --cli translate "Hello" --source en_US --target ja
-$LS --cli translate "Hello" --source en_US --target ja --provider intelligence
-$LS --cli prompts edit
-$LS --cli burn --video input.mp4 --subtitles input.srt --output subtitled.mp4
-```
-
-| Command | Purpose |
-| --- | --- |
-| `models [--json]` | List models and installation state |
-| `download <model-id>` / `remove <model-id>` | Install or uninstall a recognition model |
-| `transcribe <file>` | Transcribe with Whisper, SenseVoice, or Parakeet; options include `--model`, `--compute auto\|coreml\|metal\|cpu`, `--translate-to`, `--translation-provider apple\|nllb\|intelligence`, and `--format txt\|md\|json\|pdf\|srt\|vtt` |
-| `translate <text>` | Translate text with Apple Translation (macOS 26), NLLB, or Apple Intelligence (`--provider intelligence`, macOS 26) |
-| `prompts [show\|edit\|reset]` | Show saved AI instructions (`--json`), open the editor window, or reset them (`proofread\|summary\|all`) |
-| `burn` | Burn subtitles; supports `--in-place`, `--overwrite`, `--font`, `--size`, `--position`, `--margin`, `--background`, and shadow options |
-
-## Build from source
-
-Requires Xcode and its Command Line Tools. Native runtimes are included in the repository; large models are downloaded only when selected.
-
-```sh
-ruby generate_project.rb
-xcodebuild -project LocalScribe.xcodeproj -scheme LocalScribe \
-  -destination 'platform=macOS,arch=arm64' build
-xcodebuild -project LocalScribe.xcodeproj -scheme LocalScribe \
-  -destination 'platform=macOS,arch=arm64' test
-```
-
-CI runs tests and Release static analysis on macOS 26 Apple silicon. `./tools/package_local_release.sh` builds and validates ZIP and DMG packages (`CODESIGN_IDENTITY=-` for an ad-hoc build). Pushing a tag that matches the `Info.plist` version, such as `v1.9.0`, publishes a GitHub Release through `release-unsigned.yml`.
-
-## Documentation
-
-- [User documentation](https://lixinchen.ca/docs/localscribe/)
-- [Download and Installation Guide](Documentation/DOWNLOAD.md)
-- [Custom AI services](Documentation/AI-SERVICES.md)
-- [Roadmap](ROADMAP.md)
-- [Contributing](CONTRIBUTING.md)
-- [Report an issue](https://github.com/maddylaneeee/ShengJi/issues)
+- [User guide: transcription, editing, subtitle burning, audio, shortcuts, and CLI](Documentation/USAGE.md)
+- [AI enhancement and custom services](Documentation/AI-SERVICES.md)
+- [First launch](INSTALL.md) · [Download and verification](Documentation/DOWNLOAD.md)
+- [Website](https://lixinchen.ca/docs/localscribe/) · [Roadmap](ROADMAP.md)
+- [Build, test, and contribute](CONTRIBUTING.md) · [Report an issue](https://github.com/maddylaneeee/ShengJi/issues)
 
 ## License
 
-LocalScribe is available under the [MIT License](LICENSE). Third-party components and models keep their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the license files under `Vendor`. The optional NLLB model is distributed upstream under CC-BY-NC-4.0.
+LocalScribe's source is available under the [MIT License](LICENSE). Third-party runtimes and models keep their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The optional NLLB model is provided upstream under CC-BY-NC-4.0.

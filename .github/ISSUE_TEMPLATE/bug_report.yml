@@ -13,7 +13,7 @@ body:
     attributes:
       label: LocalScribe version
       description: Open Settings → About to find the version and build number.
-      placeholder: 1.3.6 (18)
+      placeholder: 1.9.0 (45)
     validations:
       required: true
 
@@ -41,7 +41,7 @@ body:
   - type: dropdown
     id: engine
     attributes:
-      label: Recognition or translation engine
+      label: Recognition, translation, or AI service
       options:
         - Apple Speech
         - Whisper
@@ -49,6 +49,11 @@ body:
         - NVIDIA Parakeet
         - Apple Translation
         - NLLB
+        - Apple Intelligence
+        - Gemma 4
+        - LM Studio
+        - OpenAI (preview)
+        - DeepSeek (preview)
         - Not engine-specific
     validations:
       required: true

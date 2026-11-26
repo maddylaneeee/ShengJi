@@ -14,6 +14,6 @@ This directory contains reusable screenshots, installation graphics, project car
 - [`download-flow-en.png`](download-flow-en.png): four-step English installation graphic.
 - [`../Screenshots/home-en.png`](../Screenshots/home-en.png) / [dark](../Screenshots/home-en-dark.png): real English home-screen capture.
 - [`../Screenshots/transcript-editor-en.png`](../Screenshots/transcript-editor-en.png) / [dark](../Screenshots/transcript-editor-en-dark.png): real English transcript-editor capture with an imported sample.
-- [`PROJECT-BRIEF.md`](PROJECT-BRIEF.md): one-page project facts and reusable copy.
+- [`PROJECT-BRIEF.md`](PROJECT-BRIEF.md): current project facts and reusable copy, including Apple Intelligence requirements and cloud AI privacy boundaries.
 
 Project: <https://github.com/maddylaneeee/ShengJi>

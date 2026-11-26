@@ -11,11 +11,11 @@ Thank you for helping improve LocalScribe. Bug reports, reproducible test cases,
 
 ## Development setup
 
-LocalScribe requires an Apple silicon Mac with Xcode and its Command Line Tools.
+LocalScribe requires an Apple silicon Mac, Xcode with the macOS 26 SDK or newer, and its Command Line Tools. CI builds, tests, and analyzes on macOS 26 Apple silicon. The app deployment target remains macOS 15.5; running Apple Speech and Apple Intelligence features requires macOS 26 or later and their respective system resources.
+
+The generated Xcode project is committed, so you can build it directly:
 
 ```sh
-ruby generate_project.rb
-
 xcodebuild \
   -project LocalScribe.xcodeproj \
   -scheme LocalScribe \
@@ -35,12 +35,29 @@ xcodebuild \
 
 Tests that call the on-device Apple Intelligence model are skipped by default. On a Mac with Apple Intelligence turned on, run them with `TEST_RUNNER_LOCALSCRIBE_LIVE_AFM=1` in the environment of the command above; add `TEST_RUNNER_LOCALSCRIBE_LIVE_AFM_LOG=1` to print each prompt and response.
 
+## Regenerate the project
+
+When changing file membership, resources, frameworks, or build settings, regenerate the committed project with Ruby and the `xcodeproj` gem. Install the gem for the Ruby interpreter you use to run the generator:
+
+```sh
+gem install --user-install xcodeproj
+ruby generate_project.rb
+```
+
+Review the generated `LocalScribe.xcodeproj` diff before committing. Documentation-only changes do not require project regeneration.
+
+## Packaging and releases
+
+`./tools/package_local_release.sh` builds and validates ZIP and DMG packages. Set `CODESIGN_IDENTITY=-` for an ad-hoc build. Public packages are not Developer ID signed or notarized by Apple.
+
+After release validation, pushing a tag matching `CFBundleShortVersionString` in `LocalScribe/Resources/Info.plist` (for example, `v1.9.0`) publishes a GitHub Release through `.github/workflows/release-unsigned.yml`. Verify the matching DMG, ZIP, checksums, and `update.json` assets before announcing the release.
+
 ## Pull requests
 
 - Keep each pull request focused on one problem.
 - Describe the user-visible behavior and how it was tested.
 - Add or update tests when behavior changes.
-- Update English and Simplified Chinese strings together for user-facing changes.
+- Update English, Simplified Chinese, and Japanese strings together for user-facing changes. Keep the three READMEs consistent and link localized guides explicitly.
 - Do not commit downloaded recognition models, private test media, credentials, signing identities, or notarization secrets.
 - Preserve third-party license notices and do not relicense vendored components or models.
 
