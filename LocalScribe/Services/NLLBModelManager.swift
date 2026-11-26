@@ -204,9 +204,26 @@ final class NLLBModelManager {
     private(set) var isInstalled: Bool
     private var downloadTask: Task<Void, Never>?
     private var activeDownloadID: UUID?
+    @ObservationIgnored private var removalObserver: NSObjectProtocol?
 
     init() {
         isInstalled = NLLBTranslationRuntime.installedModelURL != nil
+        removalObserver = NotificationCenter.default.addObserver(
+            forName: .legacyModelsRemoved, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.cancelDownload()
+                self?.refresh()
+            }
+        }
+    }
+
+    /// Removes the app-managed NLLB model.
+    func remove() throws {
+        cancelDownload()
+        NLLBTranslationRuntime.stopImmediately()
+        try NLLBModelStore.removeManagedModel()
+        refresh()
     }
 
     func refresh() {

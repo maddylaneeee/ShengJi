@@ -18,6 +18,8 @@ enum TranslationBatchPolicy {
         // making translated text and progress visible every few seconds.
         case .apple: 4
         case .nllb: 4
+        // Apple Intelligence windows are sized by tokens, not item counts.
+        case .appleIntelligence: 4
         }
     }
 
@@ -48,6 +50,18 @@ enum TranslationService {
                 targetLanguage: configuration.targetLanguage,
                 quality: .highFidelity
             )
+        case .appleIntelligence:
+            let units = texts.enumerated().map { index, text in
+                TranslationUnit(
+                    segment: TranscriptSegment(startTime: Double(index), endTime: Double(index + 1), text: text),
+                    ordinal: index
+                )
+            }
+            let results = await translate(units: units, sourceLocale: sourceLocale, configuration: configuration)
+            if let failure = results.first(where: { $0.state == .fallback }) {
+                throw TranslationBatchError.provider(failure.errorMessage ?? L10n.text("翻译服务返回了空译文。"))
+            }
+            return results.map(\.translatedText)
         case .nllb:
             return try await NLLBTranslationRuntime.shared.translate(
                 texts: texts,
@@ -62,7 +76,8 @@ enum TranslationService {
         sourceLocale: Locale,
         configuration: TranslationConfiguration,
         onProgress: (@Sendable (TranslationProgress) -> Void)? = nil,
-        onPartialResult: (@Sendable (SegmentTranslation) -> Void)? = nil
+        onPartialResult: (@Sendable (SegmentTranslation) -> Void)? = nil,
+        onNotice: (@Sendable (String) -> Void)? = nil
     ) async -> [SegmentTranslation] {
         if configuration.targetLanguage.isEquivalent(to: sourceLocale) {
             return units.map {
@@ -78,6 +93,17 @@ enum TranslationService {
                     errorMessage: nil
                 )
             }
+        }
+
+        if configuration.provider == .appleIntelligence {
+            return await AFMTranslationEngine.live(substitute: appleSubstitute).translate(
+                units: units,
+                sourceLocale: sourceLocale,
+                targetLanguage: configuration.targetLanguage,
+                onProgress: onProgress,
+                onPartialResult: onPartialResult,
+                onNotice: onNotice
+            )
         }
 
         onProgress?(.preparing)
@@ -129,6 +155,21 @@ enum TranslationService {
             onProgress?(.translating(completed: cursor, total: units.count))
         }
         return output.sorted { $0.ordinal < $1.ordinal }
+    }
+
+    /// Apple Translation for content that Apple Intelligence cannot translate.
+    /// The GUI uses the SwiftUI translation bridge; the CLI uses a headless session.
+    static let appleSubstitute: @Sendable ([String], Locale, TranslationTargetLanguage) async throws -> [String] = { texts, source, target in
+        if CLIController.isActive {
+            guard #available(macOS 26.0, *) else { throw AFMFailure.unavailable(AppleIntelligenceStatus.osTooOld.message) }
+            return try await AppleTranslationCLI.translate(texts: texts, sourceLocale: source, targetLanguage: target)
+        }
+        return try await AppleTranslationCoordinator.shared.translate(
+            texts: texts,
+            sourceLocale: source,
+            targetLanguage: target,
+            quality: .highFidelity
+        )
     }
 
     private static func translateBatchWithFallback(
@@ -270,7 +311,7 @@ enum TranslationService {
         onStreamingResponse: (@Sendable (_ index: Int, _ text: String, _ completed: Int) -> Void)? = nil
     ) async throws -> [String] {
         switch configuration.provider {
-        case .apple:
+        case .apple, .appleIntelligence:
             return try await AppleTranslationCoordinator.shared.translate(
                 texts: units.map(\.sourceText),
                 sourceLocale: sourceLocale,
@@ -291,6 +332,7 @@ enum TranslationService {
 private enum TranslationBatchError: LocalizedError {
     case invalidCount(expected: Int, actual: Int)
     case emptyTranslation
+    case provider(String)
 
     var errorDescription: String? {
         switch self {
@@ -298,6 +340,8 @@ private enum TranslationBatchError: LocalizedError {
             L10n.format("翻译结果数量不匹配（预期 %lld，实际 %lld）。", expected, actual)
         case .emptyTranslation:
             L10n.text("翻译服务返回了空译文。")
+        case .provider(let message):
+            message
         }
     }
 }

@@ -2,10 +2,18 @@ import SwiftUI
 
 struct AIPromptEditorView: View {
     @Bindable var preferences: AIPromptPreferences
+    /// Used by the CLI window, which is not presented by SwiftUI.
+    var onDone: (@MainActor () -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Form {
+            if preferences.wasTruncated {
+                Section {
+                    Label("已保存的提示词超过 500 字，已只保留前 500 字。", systemImage: "scissors")
+                        .foregroundStyle(.orange)
+                }
+            }
             Section("更新行为") {
                 Toggle("更新不覆盖提示词", isOn: $preferences.preservesAcrossUpdates)
                 Text("开启后，升级声迹时保留下面的自定义提示词；关闭时，新版本会采用新版默认设置并清除旧的自定义内容。")
@@ -39,7 +47,9 @@ struct AIPromptEditorView: View {
         .frame(minWidth: 560, minHeight: 500)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("完成") { dismiss() }
+                Button("完成") {
+                    if let onDone { onDone() } else { dismiss() }
+                }
             }
         }
     }

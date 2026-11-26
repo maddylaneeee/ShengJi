@@ -30,11 +30,20 @@ struct LocalScribeApp: App {
                 .environment(\.locale, presentationPreferences.language.locale)
                 .environment(aiPromptPreferences)
                 .preferredColorScheme(presentationPreferences.appearance.colorScheme)
+                .aiEngineMigrationPrompt(.mainWindow)
                 .onAppear {
                     ApplicationMenuLocalizer.apply(presentationPreferences.language)
+                    aiPromptPreferences.observeExternalChanges()
+                    if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+                        AIEngineController.shared.evaluateAtLaunch()
+                    }
                     if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil && ProcessInfo.processInfo.environment["LOCALSCRIBE_TEST_DATA_ROOT"] == nil {
                         updateController.startAutomaticUpdates()
                     }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    AIEngineController.shared.refresh()
+                    aiPromptPreferences.reload()
                 }
                 .onChange(of: presentationPreferences.language) { _, language in
                     ApplicationMenuLocalizer.apply(language)
@@ -52,8 +61,7 @@ struct LocalScribeApp: App {
         Settings {
             SettingsView(
                 updateController: updateController,
-                presentationPreferences: presentationPreferences,
-                aiPromptPreferences: aiPromptPreferences
+                presentationPreferences: presentationPreferences
             )
             .environment(\.locale, presentationPreferences.language.locale)
             .preferredColorScheme(presentationPreferences.appearance.colorScheme)

@@ -29,6 +29,8 @@ struct TranscriptionView: View {
     @State private var isAdvancedExpanded = false
     @State private var gemmaModelManager = GemmaModelManager.shared
     @State private var aiServices = AIServicePreferences.shared
+    @State private var engine = AIEngineController.shared
+    @State private var isNormalizingProvider = false
     @State private var isShowingAIConfiguration = false
     @State private var aiOwnerID = UUID()
     @State private var aiTaskID = UUID()
@@ -124,6 +126,7 @@ struct TranscriptionView: View {
             isAdvancedExpanded = false
             nllbModelManager.refresh()
             gemmaModelManager.refresh()
+            normalizeTranslationProvider()
             session.refreshRealtimeAudioSources()
             session.updateReduceMotion(reduceMotion)
             syncPendingConfiguration()
@@ -179,6 +182,11 @@ struct TranscriptionView: View {
             }
         }
         .onChange(of: aiServices.revision) { _, _ in cancelGemma() }
+        .onReceive(NotificationCenter.default.publisher(for: .aiEngineChanged)) { _ in
+            normalizeTranslationProvider()
+            nllbModelManager.refresh()
+            gemmaModelManager.refresh()
+        }
         .onChange(of: enableGemma) { _, enabled in
             if !enabled && !aiServices.isEnabled {
                 cancelGemma()
@@ -538,7 +546,7 @@ struct TranscriptionView: View {
 
     private var preflightTranslationServicePicker: some View {
         Picker("翻译服务", selection: $translationPreferences.provider) {
-            ForEach(TranslationProvider.allCases) { provider in
+            ForEach(engine.selectableTranslationProviders) { provider in
                 Text(provider.title).tag(provider)
                     .disabled(provider == .nllb && !NLLBHardwareSupport.isSupported)
             }
@@ -764,7 +772,7 @@ struct TranscriptionView: View {
 
     private var translationServicePicker: some View {
         Picker("服务", selection: $translationPreferences.provider) {
-            ForEach(TranslationProvider.allCases) { provider in
+            ForEach(engine.selectableTranslationProviders) { provider in
                 Text(provider.title).tag(provider)
                     .disabled(provider == .nllb && !NLLBHardwareSupport.isSupported)
             }
@@ -831,12 +839,27 @@ struct TranscriptionView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-        } else {
-            Text(translationPreferences.provider == .apple
-                ? "Apple 本地翻译；首次使用可能需要下载语言包"
-                : "NLLB 本机模型翻译")
+        } else if let notice = session.translationNotice {
+            Label(notice, systemImage: "info.circle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .help(notice)
+        } else {
+            switch translationPreferences.provider {
+            case .apple:
+                Text("Apple 本地翻译；首次使用可能需要下载语言包")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .nllb:
+                Text("NLLB 本机模型翻译")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .appleIntelligence:
+                Text("Apple 智能本机翻译")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -848,6 +871,7 @@ struct TranscriptionView: View {
         switch translationPreferences.provider {
         case .apple: true
         case .nllb: isNLLBTranslationReady
+        case .appleIntelligence: engine.usesAppleIntelligence
         }
     }
 
@@ -1205,6 +1229,8 @@ struct TranscriptionView: View {
                     LabeledContent("当前服务", value: aiServices.provider.title)
                     LabeledContent("模型 ID", value: aiServices.configuration.modelID)
                     Button("配置…") { isShowingAIConfiguration = true }
+                } else if engine.usesAppleIntelligence {
+                    LabeledContent("模型", value: L10n.text("Apple 智能"))
                 } else {
                     Picker("模型", selection: $gemmaModel) {
                         Text(GemmaModel.e2b.title).tag(GemmaModel.e2b)
@@ -1230,6 +1256,10 @@ struct TranscriptionView: View {
                             .scrollContentBackground(.hidden)
                             .padding(4)
                             .focused($gemmaPromptFocused)
+                            .onChange(of: gemmaPrompt) { _, value in
+                                let limit = AIPromptPreferences.maximumOneTimeInstructionLength
+                                if value.count > limit { gemmaPrompt = String(value.prefix(limit)) }
+                            }
                     }
                     .frame(minHeight: 86, maxHeight: 120)
                     .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 6))
@@ -1237,6 +1267,10 @@ struct TranscriptionView: View {
                         RoundedRectangle(cornerRadius: 6)
                             .strokeBorder(.secondary.opacity(0.35))
                     }
+                    Text("\(gemmaPrompt.count) / \(AIPromptPreferences.maximumOneTimeInstructionLength)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
 
                 gemmaModelStatus
@@ -1263,7 +1297,9 @@ struct TranscriptionView: View {
                     } else {
                         Button("开始执行", systemImage: "sparkles") { startGemma() }
                             .primaryActionStyle()
-                            .disabled(aiServices.isEnabled ? aiServices.readinessError != nil : (!gemmaReady || !gemmaModelManager.installedModels.contains(gemmaModel)))
+                            .disabled(aiServices.isEnabled
+                                ? aiServices.readinessError != nil
+                                : (engine.usesAppleIntelligence ? false : (!gemmaReady || !gemmaModelManager.installedModels.contains(gemmaModel))))
                     }
                     Spacer()
                     Button("不使用 AI") {
@@ -1295,6 +1331,10 @@ struct TranscriptionView: View {
                 Label("已配置；可开始 AI 优化", systemImage: "checkmark.circle").font(.caption)
             }
             Text("正在使用自定义服务源，不会下载或加载 Gemma。").font(.caption).foregroundStyle(.secondary)
+        } else if engine.usesAppleIntelligence {
+            Label("使用 Apple 智能在本机运行，可直接开始", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         } else if !GemmaRuntime.isBundled {
             Label("当前版本没有 Gemma runtime", systemImage: "exclamationmark.octagon.fill")
                 .foregroundStyle(.red)
@@ -1352,7 +1392,9 @@ struct TranscriptionView: View {
         }
     }
 
-    private var aiEntryAvailable: Bool { aiServices.isEnabled || GemmaHardwareSupport.isSupported }
+    private var aiEntryAvailable: Bool {
+        aiServices.isEnabled || engine.usesAppleIntelligence || GemmaHardwareSupport.isSupported
+    }
 
     private func chooseGemma(_ kind: GemmaOptimizationKind) {
         guard aiEntryAvailable else {
@@ -1368,7 +1410,7 @@ struct TranscriptionView: View {
     }
 
     private func prepareGemma() {
-        guard !aiServices.isEnabled, GemmaHardwareSupport.isSupported, gemmaKind != nil, !gemmaReady, !gemmaIsPreparing else { return }
+        guard !aiServices.isEnabled, !engine.usesAppleIntelligence, GemmaHardwareSupport.isSupported, gemmaKind != nil, !gemmaReady, !gemmaIsPreparing else { return }
         gemmaTask?.cancel()
         gemmaReady = false
         gemmaError = nil
@@ -1407,6 +1449,8 @@ struct TranscriptionView: View {
         gemmaOriginalText = session.transcriptText
         gemmaPreviewText = gemmaKind == .summarize ? "" : session.transcriptText
         let model = gemmaModel
+        aiPromptPreferences.reload()
+        let useAppleIntelligence = client == nil && engine.usesAppleIntelligence
         let prompt = aiPromptPreferences.instructions(for: gemmaKind, oneTimeInstructions: gemmaPrompt)
         let segments = session.aiOptimizationInputSegments
         let fallback = session.transcriptText
@@ -1417,25 +1461,43 @@ struct TranscriptionView: View {
         gemmaTask = Task {
             do {
                 guard !Task.isCancelled, aiTaskID == taskID, aiServices.revision == revision else { return }
-                let result = try await AIOptimizationService.shared.optimize(
-                    segments: segments,
-                    fallbackText: fallback,
-                    kind: gemmaKind,
-                    prompt: prompt,
-                    model: model,
-                    client: client,
-                    ownerID: owner,
-                    configurationRevision: revision
-                ) { completed, total in
+                let reportProgress: @Sendable (Int, Int) -> Void = { completed, total in
                     Task { @MainActor in
                         guard gemmaIsRunning, aiTaskID == taskID, aiServices.revision == revision else { return }
                         gemmaProgress = (completed, total)
                     }
-                } preview: { text in
+                }
+                let reportPreview: @Sendable (String) -> Void = { text in
                     Task { @MainActor in
                         guard gemmaIsRunning, aiTaskID == taskID, aiServices.revision == revision else { return }
                         gemmaPreviewText = text
                     }
+                }
+                let result: AIOptimizationResult
+                if useAppleIntelligence {
+                    result = try await AIOptimizationService.shared.optimizeWithAppleIntelligence(
+                        segments: segments,
+                        fallbackText: fallback,
+                        kind: gemmaKind,
+                        prompt: prompt,
+                        ownerID: owner,
+                        configurationRevision: revision,
+                        progress: reportProgress,
+                        preview: reportPreview
+                    )
+                } else {
+                    result = try await AIOptimizationService.shared.optimize(
+                        segments: segments,
+                        fallbackText: fallback,
+                        kind: gemmaKind,
+                        prompt: prompt,
+                        model: model,
+                        client: client,
+                        ownerID: owner,
+                        configurationRevision: revision,
+                        progress: reportProgress,
+                        preview: reportPreview
+                    )
                 }
                 guard !Task.isCancelled, aiTaskID == taskID, aiServices.revision == revision else { return }
                 guard session.transcriptText == fallback else { throw AIServiceError.invalidOutput }
@@ -1443,9 +1505,10 @@ struct TranscriptionView: View {
                 if result.summary == nil, result.text == fallback, !result.failures.isEmpty {
                     gemmaError = result.failures.first?.message
                 } else if session.applyAIOptimization(result) {
-                    editStatus = gemmaKind == .summarize
+                    let status = gemmaKind == .summarize
                         ? L10n.text("AI 总结已替换文字预览，可一键撤销")
                         : L10n.text("AI 优化已更新文字预览，可一键撤销")
+                    editStatus = [status, result.notice].compactMap { $0 }.joined(separator: " · ")
                     self.gemmaKind = nil
                 } else {
                     gemmaError = L10n.text("AI 没有返回可应用的文字，已保留原文。")
@@ -1454,6 +1517,7 @@ struct TranscriptionView: View {
             } catch {
                 guard !Task.isCancelled, aiTaskID == taskID else { return }
                 gemmaError = error.localizedDescription
+                if useAppleIntelligence { engine.refresh() }
             }
             guard aiTaskID == taskID else { return }
             gemmaIsRunning = false
@@ -1466,7 +1530,7 @@ struct TranscriptionView: View {
     }
 
     private func autoPrepareGemmaIfNeeded() {
-        guard !aiServices.isEnabled, gemmaKind != nil, session.phase == .finished,
+        guard !aiServices.isEnabled, !engine.usesAppleIntelligence, gemmaKind != nil, session.phase == .finished,
               GemmaHardwareSupport.isSupported,
               GemmaRuntime.isBundled,
               GemmaModelStore.isInstalled(gemmaModel),
@@ -2019,9 +2083,22 @@ struct TranscriptionView: View {
         }
     }
 
+    /// Keeps the stored provider on an item that the pickers currently offer,
+    /// without re-translating finished work.
+    private func normalizeTranslationProvider() {
+        let resolved = engine.resolvedProvider(translationPreferences.provider)
+        guard resolved != translationPreferences.provider else { return }
+        isNormalizingProvider = true
+        translationPreferences.provider = resolved
+    }
+
     private func handleTranslationProviderChange(_ provider: TranslationProvider) {
         if provider == .nllb { nllbModelManager.refresh() }
         syncPendingConfiguration()
+        if isNormalizingProvider {
+            isNormalizingProvider = false
+            return
+        }
         guard session.phase == .finished else { return }
         guard session.translationConfiguration != nil || !session.translatedText.isEmpty else { return }
         if selectedTranslationTargetMatchesSource || !selectedTranslationProviderReady {

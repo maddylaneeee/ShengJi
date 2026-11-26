@@ -91,6 +91,9 @@ final class TranscriptionSessionModel {
     private(set) var isTranslating = false
     private(set) var translationProgress: TranslationProgress?
     private(set) var translationError: String?
+    /// Non-error information about the last translation run, such as
+    /// segments that Apple Translation handled for Apple Intelligence.
+    private(set) var translationNotice: String?
     private(set) var computeBackendStatus: ComputeBackendStatus?
     var progress: Double = 0
     private(set) var progressIsIndeterminate = false
@@ -822,6 +825,7 @@ final class TranscriptionSessionModel {
         translatedSegments = []
         segmentTranslations = []
         translationError = nil
+        translationNotice = nil
         translationProgress = nil
         if targetLanguage.isEquivalent(to: locale) {
             isTranslating = false
@@ -849,6 +853,7 @@ final class TranscriptionSessionModel {
         translatedSegments = []
         segmentTranslations = []
         translationError = nil
+        translationNotice = nil
         saveRecoveryNow()
     }
 
@@ -891,6 +896,7 @@ final class TranscriptionSessionModel {
               !isTranslating else { return }
         isTranslating = true
         translationError = nil
+        translationNotice = nil
         translationProgress = .preparing
         let sourceSegments = hasManualEdits || segments.isEmpty
             ? TranscriptSegment.sentenceSegments(from: transcriptText, duration: elapsed)
@@ -909,6 +915,12 @@ final class TranscriptionSessionModel {
                 self?.applyStreamingTranslation(translation, runID: runID)
             }
         }
+        let reportNotice: @Sendable (String) -> Void = { [weak self] notice in
+            Task { @MainActor [weak self] in
+                guard self?.translationRunID == runID else { return }
+                self?.translationNotice = notice
+            }
+        }
         translationTask = Task { [weak self] in
             let units = sourceSegments.enumerated().map { index, segment in
                 TranslationUnit(segment: segment, ordinal: index)
@@ -918,7 +930,8 @@ final class TranscriptionSessionModel {
                 sourceLocale: locale,
                 configuration: translationConfiguration,
                 onProgress: reportProgress,
-                onPartialResult: reportPartialResult
+                onPartialResult: reportPartialResult,
+                onNotice: reportNotice
             )
             guard !Task.isCancelled, let self,
                   self.translationRunID == runID,
@@ -929,6 +942,10 @@ final class TranscriptionSessionModel {
             self.translatedSegments = translations.map(\.transcriptSegment)
             self.translatedText = translations.map(\.displayText).joined(separator: "\n")
             Task { await self.transcriptRepository.replaceTranslations(translations) }
+            let substituted = translations.filter { $0.substituteProvider != nil }.count
+            if self.translationNotice == nil, substituted > 0 {
+                self.translationNotice = L10n.format("%lld 个片段由 Apple 翻译兜底。", substituted)
+            }
             let failures = translations.filter { $0.state == .fallback }
             self.translationError = failures.isEmpty ? nil : L10n.format("有 %lld 个片段未能翻译，已保留原文并标记。", failures.count)
             self.isTranslating = false

@@ -3,10 +3,22 @@ import Darwin
 import Foundation
 
 enum CLIController {
-    static func runIfRequested() {
+    /// True while the process runs as the command-line tool.
+    nonisolated(unsafe) static var isActive = false
+
+    @MainActor static func runIfRequested() {
         var arguments = Array(CommandLine.arguments.dropFirst())
         guard let first = arguments.first, first == "--cli" || first == "cli" else { return }
         arguments.removeFirst()
+        isActive = true
+
+        // The editor window needs AppKit's own event loop on the main thread.
+        if arguments.first == "prompts", arguments.dropFirst().first == "edit" {
+            let code = CLIPromptEditor.run()
+            fflush(stdout)
+            fflush(stderr)
+            Darwin.exit(code)
+        }
 
         var exitCode: Int32 = 0
         var finished = false
@@ -45,6 +57,8 @@ enum CLIController {
                 try await translate(rest)
             case "burn":
                 try await burnSubtitles(rest)
+            case "prompts":
+                try await prompts(rest)
             default:
                 throw CLIError.badArguments(L10n.format("未知命令：%@", command))
             }
@@ -200,6 +214,19 @@ enum CLIController {
         targetLanguage: TranslationTargetLanguage,
         provider: TranslationProvider
     ) async throws -> [SegmentTranslation] {
+        if provider == .appleIntelligence {
+            let status = AppleIntelligenceSupport.status
+            guard status.isAvailable else { throw CLIError.badArguments(status.message) }
+            let units = segments.enumerated().map { index, segment in
+                TranslationUnit(segment: segment, ordinal: index)
+            }
+            return await TranslationService.translate(
+                units: units,
+                sourceLocale: sourceLocale,
+                configuration: TranslationConfiguration(provider: .appleIntelligence, targetLanguage: targetLanguage),
+                onNotice: { fputs($0 + "\n", stderr) }
+            )
+        }
         if provider == .apple {
             guard #available(macOS 26.0, *) else {
                 throw CLIError.badArguments(L10n.text("Apple Translation 的无界面 CLI 会话需要 macOS 26；macOS 15.5–25 请使用 --provider nllb。"))
@@ -387,12 +414,63 @@ enum CLIController {
         }
     }
 
-    private static func parseTranslationProvider(_ value: String?) throws -> TranslationProvider {
+    static func parseTranslationProvider(_ value: String?) throws -> TranslationProvider {
         guard let value else { return .apple }
         switch value.lowercased() {
         case "apple": return .apple
         case "nllb": return .nllb
+        case "intelligence", "afm", "apple-intelligence": return .appleIntelligence
         default: throw CLIError.badArguments(L10n.format("未知翻译提供方：%@", value))
+        }
+    }
+
+    private static func prompts(_ arguments: [String]) async throws {
+        let action = arguments.first.flatMap { $0.hasPrefix("--") ? nil : $0 } ?? "show"
+        switch action {
+        case "show":
+            let asJSON = arguments.contains("--json")
+            let snapshot = await MainActor.run { () -> CLIPromptSnapshot in
+                let preferences = AIPromptPreferences()
+                return CLIPromptSnapshot(
+                    proofread: preferences.proofreadInstructions,
+                    summary: preferences.summaryInstructions,
+                    preserveAcrossUpdates: preferences.preservesAcrossUpdates,
+                    maximumLength: AIPromptPreferences.maximumCustomInstructionLength
+                )
+            }
+            if asJSON {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+                print(String(data: try encoder.encode(snapshot), encoding: .utf8) ?? "{}")
+            } else {
+                let limit = snapshot.maximumLength
+                print(L10n.format("润色提示词（%lld / %lld）：", snapshot.proofread.count, limit))
+                print(snapshot.proofread.isEmpty ? L10n.text("（未设置）") : snapshot.proofread)
+                print("")
+                print(L10n.format("总结提示词（%lld / %lld）：", snapshot.summary.count, limit))
+                print(snapshot.summary.isEmpty ? L10n.text("（未设置）") : snapshot.summary)
+                print("")
+                print(L10n.format("更新不覆盖提示词：%@", snapshot.preserveAcrossUpdates ? L10n.text("开") : L10n.text("关")))
+            }
+        case "reset":
+            let target = arguments.dropFirst().first ?? "all"
+            let kinds: [GemmaOptimizationKind]
+            switch target {
+            case "proofread": kinds = [.proofread]
+            case "summary", "summarize": kinds = [.summarize]
+            case "all": kinds = [.proofread, .summarize]
+            default: throw CLIError.badArguments(L10n.format("未知提示词类型：%@", target))
+            }
+            await MainActor.run {
+                let preferences = AIPromptPreferences()
+                kinds.forEach(preferences.reset)
+            }
+            AIPromptPreferences.postExternalChange()
+            print(L10n.text("已恢复默认提示词。"))
+        case "edit":
+            throw CLIError.badArguments(L10n.text("请单独运行 `prompts edit`。"))
+        default:
+            throw CLIError.badArguments(L10n.format("未知命令：%@", "prompts \(action)"))
         }
     }
 
@@ -583,6 +661,13 @@ struct SubtitleBurnCLIOptions: Equatable {
             style: style.clamped()
         )
     }
+}
+
+struct CLIPromptSnapshot: Codable, Equatable {
+    let proofread: String
+    let summary: String
+    let preserveAcrossUpdates: Bool
+    let maximumLength: Int
 }
 
 enum CLIError: LocalizedError, Equatable {

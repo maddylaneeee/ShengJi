@@ -2,6 +2,14 @@
 
 This document summarizes the public acceptance and regression history in English. The complete earlier record is preserved in [Chinese (Simplified)](ACCEPTANCE.zh-CN.md).
 
+## 1.9.0 (45): Apple Intelligence
+
+- With Apple Intelligence available, translation, proofreading, refinement, and summaries use the on-device model; the interface and streaming previews are unchanged. Live tests on macOS 27 translated ten English lecture segments into Chinese in about 11 seconds across several windows, with names kept consistent through the per-run glossary.
+- Updating with Gemma or NLLB installed asks once per version; Remove deletes the managed model files and caches and switches, Keep leaves the previous models and workflow in place. Unsupported, disabled, or not-ready Apple Intelligence keeps the previous behavior, and a later loss of availability returns to it with a restore hint.
+- Settings shows only the active engine's options; prompt editing is removed from Settings and available through `--cli prompts edit`, `show`, and `reset`. Saved and one-time instructions are limited to 500 characters.
+- Unsupported languages, declined content, and repeated failures fall back to Apple Translation with a notice; proofreading failures keep the original text. Rolling summaries see the summary written so far and are validated for grounded numbers before use.
+- The macOS 26 Apple Intelligence path is not yet verified on real hardware.
+
 ## 1.8.1 (44): language names and quieter settings
 
 - With the macOS system language and the app language set differently, the inspector's recognition language, the Markdown and PDF export language line, unsupported-language errors, live-caption errors, and CLI output use the app language.

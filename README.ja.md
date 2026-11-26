@@ -10,9 +10,9 @@
 
 **マイクの音声、音声・動画ファイル、Macで再生中の音を、そのMac上で編集可能なテキストと字幕に。**
 
-LocalScribeは、Appleシリコン搭載Mac向けの無料・オープンソースのSwiftUIネイティブ文字起こしアプリです。アカウント登録は不要です。ローカル音声認識、フローティング字幕、原稿の編集、字幕の書き出しと焼き込み、オフライン翻訳、長時間タスクの復元、本機でのGemma 4による文章の整理をまとめています。認識用の音声はMacの外に出ません。クラウドサービスを選ばない限り、AIも本機で動作します。
+LocalScribeは、Appleシリコン搭載Mac向けの無料・オープンソースのSwiftUIネイティブ文字起こしアプリです。アカウント登録は不要です。ローカル音声認識、フローティング字幕、原稿の編集、字幕の書き出しと焼き込み、オフライン翻訳、長時間タスクの復元、本機でのApple IntelligenceまたはGemma 4による文章の整理をまとめています。認識用の音声はMacの外に出ません。クラウドサービスを選ばない限り、AIも本機で動作します。
 
-現在のリリース：**1.8.1（44）** · [リリースノート（英語）](https://github.com/maddylaneeee/ShengJi/releases) · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
+現在のリリース：**1.9.0（45）** · [リリースノート（英語）](https://github.com/maddylaneeee/ShengJi/releases) · [DMGをダウンロード](https://github.com/maddylaneeee/ShengJi/releases/latest/download/LocalScribe-macOS-arm64.dmg) · [ユーザードキュメント](https://lixinchen.ca/docs/localscribe/)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Documentation/MediaKit/localscribe-demo-ja-dark.gif">
@@ -41,8 +41,8 @@ LocalScribeは、Appleシリコン搭載Mac向けの無料・オープンソー�
 - **原稿の編集。** 検索、置換、選択範囲の削除、範囲指定での切り詰め。長い原稿も滑らかにスクロールできます。
 - **読み込みと続き。** SRT、WebVTT、TXT、Markdown、LocalScribe JSONを開いて編集したり、末尾にマイクの文字起こしを追加したりできます。
 - **書き出し。** TXT、Markdown、JSON、PDF、SRT、WebVTT、クリップボード。
-- **文字起こし後の翻訳。** Apple翻訳、または任意のローカルNLLB。
-- **AIによる文章の整理。** 本機のGemma 4、またはLM Studio、OpenAI、DeepSeekのカスタムサービスで校正・推敲・要約できます。
+- **文字起こし後の翻訳。** Apple翻訳、Apple Intelligence、または任意のローカルNLLB。
+- **AIによる文章の整理。** 本機のApple IntelligenceまたはGemma 4、またはLM Studio、OpenAI、DeepSeekのカスタムサービスで校正・推敲・要約できます。
 - **動画への字幕の焼き込み。** フォントとスタイルを指定できます。
 - **マイクの元音声を保存**し、原稿と一緒にM4Aで書き出せます。
 - **長時間タスクの保護。** 段階的な結果表示、一時停止と再開、追記式の記録、中断後の復元。
@@ -72,6 +72,7 @@ LocalScribeは、Appleシリコン搭載Mac向けの無料・オープンソー�
 | Apple翻訳 | 標準の文字起こし後翻訳 | macOS Translationフレームワーク |
 | NLLB | 任意の文字起こし後翻訳 | CTranslate2 CPU/int8 |
 | Gemma 4 | 校正・推敲・要約 | llama.cppとMetalによるオンデバイス推論 |
+| Apple Intelligence | 翻訳・校正・推敲・要約 | Apple Foundation Modelsフレームワーク、オンデバイス（macOS 26以降） |
 
 Whisperは長い素材で同梱のSilero VADを使って無音区間をスキップし、無音、低信頼度、繰り返し、既知のハルシネーションを含む出力を除外します。
 
@@ -83,11 +84,13 @@ Whisperは長い素材で同梱のSilero VADを使って無音区間をスキッ
 
 - **校正と推敲：** つなぎ言葉、繰り返し、明らかな認識ミスを修正し、差分をリアルタイムに表示します。検証に失敗したセグメントは原文を保持します。
 - **要約：** プレビューを要約に置き換え、取り消し用のスナップショットを保持します。
-- 人名、用語、文体、長さ、重点、形式などの指示を一時的に、または保存して使えます。AIの出力は必ず確認してください。
+- 人名、用語、文体、長さ、重点、形式などの指示を一時的に（500文字まで）指定できます。保存する指示は`--cli prompts edit`で編集します。AIの出力は必ず確認してください。
 
-**内蔵Gemma 4。** 標準のE2Bモデルは約2.8 GBで、設定で約4.6 GBのE4Bモデルも有効にできます。モデルは必要時にダウンロードし、AIタスクを選んだときだけ読み込みます。読み込み前に音声認識とNLLBのランタイムを解放します。メモリ8 GB以下のMacでは標準で無効ですが、設定で有効にできます。
+**Apple Intelligence。** macOS 26以降でApple Intelligenceがオンになっているmacでは、内蔵のオンデバイスモデルで翻訳・校正・要約を行い、モデルのダウンロードは不要です。翻訳ではより大きな単位でモデルに入力し、1回の翻訳の間、人名・用語・文体の用語集を保持して後続の部分の一貫性を保ちます。Apple Intelligenceが対応していない言語や処理できない部分は、自動的にApple翻訳に切り替わります。長い原稿の要約は段階的に作成され、各段階でそれまでの要約を参照します。GemmaやNLLBをインストール済みの旧バージョンから更新すると、旧モデルを削除して切り替えるかを一度だけ確認します。保持を選んだ場合は従来どおり動作し、後で「設定 → モデル」から切り替えられます。NLLBは任意の翻訳モデルとして引き続きダウンロードできます。Apple Intelligenceに対応していないMacでは、従来どおりGemmaとNLLBを使用します。
 
-**カスタムAIサービス。** 「設定 → モデル → カスタム AI サービスを使用」で、LM Studio（ループバックアドレスのみ、標準は`http://127.0.0.1:1234/v1`）、OpenAI、DeepSeekに接続できます。有効にするとGemmaのダウンロードと読み込みを中止・禁止し、自動ではGemmaに戻りません。OpenAIとDeepSeekはプレビューで、同意後にのみタスクの文章を送信します。API利用には料金が発生する場合があります。[設定ガイド（英語）](Documentation/AI-SERVICES.md)をご覧ください。
+**内蔵Gemma 4**（Apple Intelligence非対応のMac、または旧モデルを保持した場合）。標準のE2Bモデルは約2.8 GBで、設定で約4.6 GBのE4Bモデルも有効にできます。モデルは必要時にダウンロードし、AIタスクを選んだときだけ読み込みます。読み込み前に音声認識とNLLBのランタイムを解放します。メモリ8 GB以下のMacでは標準で無効ですが、設定で有効にできます。
+
+**カスタムAIサービス。** 「設定 → モデル → カスタム AI サービスを使用」で、LM Studio（ループバックアドレスのみ、標準は`http://127.0.0.1:1234/v1`）、OpenAI、DeepSeekに接続できます。有効にするとGemmaのダウンロードと読み込みを中止・禁止し、自動ではGemmaに戻りません。AIによる整理ではApple Intelligenceより優先されます。OpenAIとDeepSeekはプレビューで、同意後にのみタスクの文章を送信します。API利用には料金が発生する場合があります。[設定ガイド（英語）](Documentation/AI-SERVICES.md)をご覧ください。
 
 ## 動画への字幕の焼き込み
 
@@ -122,11 +125,12 @@ Whisperは長い素材で同梱のSilero VADを使って無音区間をスキッ
 - SenseVoiceとParakeetはファイルの文字起こしのみ対応しています。
 - ライブ字幕の翻訳は現在無効です。文字起こし後の翻訳は利用できます。
 - ローカルNLLB翻訳には4 GB以上のメモリが必要です。
+- Apple IntelligenceにはmacOS 26以降、対応するMac、およびシステム設定でのApple Intelligenceの有効化が必要です。オンデバイスモデルのコンテキストには上限があり、一部の内容の処理を拒否する場合があります。該当部分はApple翻訳に切り替わるか、原文のまま残ります。macOS 26での動作は実機で未検証で、開発とテストはmacOS 27で行いました。
 - マイク入力にはマイクのアクセス権、Macの音声には「画面収録とシステムオーディオ録音」のアクセス権が必要です。Apple SpeechとApple翻訳は、macOSが管理する言語リソースをダウンロードする場合があります。
 
 ## プライバシーとアップデート
 
-音声認識と翻訳は本機で行い、認識用の音声も内蔵Gemmaで処理する文章も送信しません。LM Studioは同じMacのループバック経由で文章を受け取ります。OpenAIまたはDeepSeekは、選択して同意した場合にのみ、タスクの文章、文脈、指示を受け取ります。APIキーは同期しない本機のキーチェーンに保存します。
+音声認識と翻訳は本機で行い、認識用の音声も、Apple Intelligenceや内蔵Gemmaで処理する文章も送信しません。LM Studioは同じMacのループバック経由で文章を受け取ります。OpenAIまたはDeepSeekは、選択して同意した場合にのみ、タスクの文章、文脈、指示を受け取ります。APIキーは同期しない本機のキーチェーンに保存します。
 
 その他のネットワーク利用は、必要時のモデルのダウンロード、アップデートの確認とダウンロード、外部ドキュメントを開く場合に限られます。アップデートは起動時と6時間ごとに最新のGitHubリリースの`update.json`を確認し、ZIPのSHA-256、バンドルID、バージョンを検証してから、置き換え前に確認を求めます。自動アップデートは設定で無効にできます。
 
@@ -141,6 +145,8 @@ $LS --cli download whisper.largeV3TurboQ5
 $LS --cli transcribe input.mp4 --engine whisper --language ja_JP \
   --translate-to en --format srt --output output.srt
 $LS --cli translate "こんにちは" --source ja_JP --target en
+$LS --cli translate "こんにちは" --source ja_JP --target en --provider intelligence
+$LS --cli prompts edit
 $LS --cli burn --video input.mp4 --subtitles input.srt --output subtitled.mp4
 ```
 
@@ -148,8 +154,9 @@ $LS --cli burn --video input.mp4 --subtitles input.srt --output subtitled.mp4
 | --- | --- |
 | `models [--json]` | モデルとインストール状態を一覧表示 |
 | `download <model-id>` / `remove <model-id>` | 認識モデルをインストール／削除 |
-| `transcribe <ファイル>` | Whisper、SenseVoice、Parakeetで文字起こし。`--model`、`--compute auto\|coreml\|metal\|cpu`、`--translate-to`、`--translation-provider apple\|nllb`、`--format txt\|md\|json\|pdf\|srt\|vtt` などを指定可能 |
-| `translate <テキスト>` | Apple翻訳（macOS 26）またはNLLBでテキストを翻訳 |
+| `transcribe <ファイル>` | Whisper、SenseVoice、Parakeetで文字起こし。`--model`、`--compute auto\|coreml\|metal\|cpu`、`--translate-to`、`--translation-provider apple\|nllb\|intelligence`、`--format txt\|md\|json\|pdf\|srt\|vtt` などを指定可能 |
+| `translate <テキスト>` | Apple翻訳（macOS 26）、NLLB、またはApple Intelligence（`--provider intelligence`、macOS 26）でテキストを翻訳 |
+| `prompts [show\|edit\|reset]` | 保存した指示の表示（`--json`）、編集ウインドウの表示、標準への復元（`proofread\|summary\|all`） |
 | `burn` | 字幕を焼き込み。`--in-place`、`--overwrite`、`--font`、`--size`、`--position`、`--margin`、`--background`、影のオプションに対応 |
 
 ## ソースからビルド
@@ -164,7 +171,7 @@ xcodebuild -project LocalScribe.xcodeproj -scheme LocalScribe \
   -destination 'platform=macOS,arch=arm64' test
 ```
 
-CIはmacOS 26のAppleシリコン環境でテストとRelease構成の静的解析を実行します。`./tools/package_local_release.sh`はZIPとDMGを作成・検証します（`CODESIGN_IDENTITY=-`でアドホック署名）。`Info.plist`のバージョンと一致するタグ（例：`v1.8.1`）をpushすると、`release-unsigned.yml`がGitHubリリースを公開します。
+CIはmacOS 26のAppleシリコン環境でテストとRelease構成の静的解析を実行します。`./tools/package_local_release.sh`はZIPとDMGを作成・検証します（`CODESIGN_IDENTITY=-`でアドホック署名）。`Info.plist`のバージョンと一致するタグ（例：`v1.9.0`）をpushすると、`release-unsigned.yml`がGitHubリリースを公開します。
 
 ## 関連ドキュメント
 

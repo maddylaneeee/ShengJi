@@ -62,6 +62,12 @@ source_files = %w[
   Services/AITextGenerationClient.swift
   Services/GemmaOptimization.swift
   Services/AIPromptPreferences.swift
+  Services/AppleIntelligenceSupport.swift
+  Services/TokenBudget.swift
+  Services/AFMRuntime.swift
+  Services/AFMTranslation.swift
+  Services/AFMOptimization.swift
+  Services/CLIPromptEditor.swift
   Services/LiveCaptionController.swift
   Services/SubtitleFileParser.swift
   Services/SubtitleBurnStyle.swift
@@ -76,6 +82,7 @@ source_files = %w[
   Views/SettingsView.swift
   Views/AIServiceConfigurationView.swift
   Views/AIPromptEditorView.swift
+  Views/AIEngineMigrationPrompt.swift
   Views/SubtitleBurnView.swift
   Views/SubtitleBurnControls.swift
 ]
@@ -104,6 +111,7 @@ test_target.add_dependency(target)
   SessionAudioIntegrationTests.swift
   SubtitleFileParserTests.swift
   SubtitleBurnTests.swift
+  AppleIntelligenceTests.swift
 ].each do |relative_path|
   reference = tests_group.new_file(relative_path)
   test_target.source_build_phase.add_file_reference(reference)
@@ -151,11 +159,18 @@ if File.directory?(ai_prompts_path)
   target.resources_build_phase.add_file_reference(ai_prompts_ref)
 end
 
-%w[Speech AVFoundation CoreText Metal Accelerate ScreenCaptureKit Translation].each do |framework_name|
+%w[Speech AVFoundation CoreText Metal Accelerate ScreenCaptureKit Translation NaturalLanguage].each do |framework_name|
   reference = project.frameworks_group.new_file("System/Library/Frameworks/#{framework_name}.framework")
   reference.source_tree = "SDKROOT"
   target.frameworks_build_phase.add_file_reference(reference)
 end
+
+# FoundationModels exists only on macOS 26+. Weak linking keeps the app
+# launchable on macOS 15.5, where every call is gated by availability checks.
+foundation_models = project.frameworks_group.new_file("System/Library/Frameworks/FoundationModels.framework")
+foundation_models.source_tree = "SDKROOT"
+foundation_models_build_file = target.frameworks_build_phase.add_file_reference(foundation_models)
+foundation_models_build_file.settings = { "ATTRIBUTES" => ["Weak"] }
 
 vendor_group = project.main_group.new_group("Vendor", "Vendor")
 whisper_group = vendor_group.new_group("WhisperMetal", "WhisperMetal")

@@ -62,6 +62,9 @@ enum TranslationTargetLanguage: String, CaseIterable, Codable, Identifiable, Sen
 enum TranslationProvider: String, CaseIterable, Codable, Identifiable, Sendable {
     case apple
     case nllb
+    /// The on-device Apple Foundation Model. Offered instead of NLLB on Macs
+    /// that use Apple Intelligence.
+    case appleIntelligence
 
     var id: String { rawValue }
 
@@ -69,6 +72,7 @@ enum TranslationProvider: String, CaseIterable, Codable, Identifiable, Sendable 
         switch self {
         case .apple: L10n.text("Apple 翻译")
         case .nllb: "NLLB"
+        case .appleIntelligence: L10n.text("Apple 智能")
         }
     }
 
@@ -76,6 +80,7 @@ enum TranslationProvider: String, CaseIterable, Codable, Identifiable, Sendable 
         switch self {
         case .apple: L10n.text("默认；使用 macOS Translation Framework，本机完成。")
         case .nllb: L10n.text("可选；使用本机 NLLB 模型，适合离线批量翻译。")
+        case .appleIntelligence: L10n.text("使用系统自带的 Apple 智能模型在本机翻译，前后文与术语更连贯。")
         }
     }
 
@@ -83,6 +88,7 @@ enum TranslationProvider: String, CaseIterable, Codable, Identifiable, Sendable 
         switch self {
         case .apple: "Apple Translation"
         case .nllb: "NLLB"
+        case .appleIntelligence: "Apple Intelligence"
         }
     }
 
@@ -90,6 +96,7 @@ enum TranslationProvider: String, CaseIterable, Codable, Identifiable, Sendable 
         switch self {
         case .apple: "apple.logo"
         case .nllb: "translate"
+        case .appleIntelligence: "sparkles"
         }
     }
 }
