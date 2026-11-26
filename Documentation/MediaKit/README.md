@@ -11,6 +11,7 @@ This directory contains reusable screenshots, installation graphics, project car
 - [Chinese preview](shengji-demo.gif) / [dark](shengji-demo-dark.gif): the same preview with Chinese UI and sample text.
 - [`localscribe-demo-poster-en.png`](localscribe-demo-poster-en.png): English poster showing the completed local transcript.
 - [`social-card-en.png`](social-card-en.png): 16:9 English project card.
+- [`social-preview-en.jpg`](social-preview-en.jpg): 1280 × 640 English GitHub social preview. See [design and generation details](SOCIAL-PREVIEW.md) before publication.
 - [`download-flow-en.png`](download-flow-en.png): four-step English installation graphic.
 - [`../Screenshots/home-en.png`](../Screenshots/home-en.png) / [dark](../Screenshots/home-en-dark.png): real English home-screen capture.
 - [`../Screenshots/transcript-editor-en.png`](../Screenshots/transcript-editor-en.png) / [dark](../Screenshots/transcript-editor-en-dark.png): real English transcript-editor capture with an imported sample.
