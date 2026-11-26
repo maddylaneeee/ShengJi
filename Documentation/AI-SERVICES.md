@@ -2,7 +2,7 @@
 
 [Simplified Chinese](AI-SERVICES.zh-CN.md)
 
-LocalScribe 1.7.1 can use built-in Gemma, LM Studio on the same Mac, or the official OpenAI and DeepSeek APIs for transcript proofreading, refinement, and summarization. Recognition, translation, and audio export continue using their existing local engines.
+LocalScribe can use LM Studio on the same Mac, or the official OpenAI and DeepSeek APIs, for transcript proofreading, refinement, and summarization instead of its on-device AI (Apple Intelligence on supported Macs, otherwise built-in Gemma). Recognition, translation, and audio export continue using their existing local engines; with Apple Intelligence, translation still runs on device.
 
 ## Configure a service
 
@@ -15,7 +15,10 @@ LocalScribe 1.7.1 can use built-in Gemma, LM Studio on the same Mac, or the offi
 
 LM Studio must be running with an available text model. LocalScribe does not manage its process or download its models. External LAN servers and arbitrary cloud gateways are not supported in this version.
 
-## Gemma and failure behavior
+## On-device AI and failure behavior
+
+When custom mode is enabled, proofreading and summaries use the custom service even on Macs where Apple Intelligence is available; there is no automatic fallback to Apple Intelligence or Gemma.
+
 
 Custom mode immediately cancels LocalScribe’s Gemma download and stops its owned Gemma helper. Further downloads, install commits, and helper starts are blocked. Installed models remain available for manual removal. Missing credentials, incomplete configuration, HTTP errors, and unavailable models never trigger a fallback or a model download. Disabling custom mode restores built-in eligibility but does not resume a cancelled download. Gemma’s low-memory opt-in does not restrict custom services.
 

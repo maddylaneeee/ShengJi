@@ -12,4 +12,4 @@ LocalScribe includes or optionally uses the third-party components below. Their 
 | SentencePiece | NLLB tokenization | Apache-2.0 · <https://github.com/google/sentencepiece> |
 | nllb-200-distilled-600M-ct2-int8 | Optional translation model, not distributed in this Git repository | CC-BY-NC-4.0 · <https://huggingface.co/osa911/nllb-200-distilled-600M-ct2-int8> |
 
-Apple Speech, Translation, AVFoundation, ScreenCaptureKit, SwiftUI, and other Apple SDK frameworks are governed by Apple's platform SDK terms and are outside the scope of this project's MIT license.
+Apple Speech, Translation, Foundation Models, NaturalLanguage, AVFoundation, ScreenCaptureKit, SwiftUI, and other Apple SDK frameworks are governed by Apple's platform SDK terms and are outside the scope of this project's MIT license.

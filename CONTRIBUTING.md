@@ -33,6 +33,8 @@ xcodebuild \
   test
 ```
 
+Tests that call the on-device Apple Intelligence model are skipped by default. On a Mac with Apple Intelligence turned on, run them with `TEST_RUNNER_LOCALSCRIBE_LIVE_AFM=1` in the environment of the command above; add `TEST_RUNNER_LOCALSCRIBE_LIVE_AFM_LOG=1` to print each prompt and response.
+
 ## Pull requests
 
 - Keep each pull request focused on one problem.
