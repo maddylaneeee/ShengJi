@@ -17,7 +17,9 @@
 ## AI enhancement
 
 - Summaries of long transcripts are written incrementally: each step sees the summary written so far, and a final pass merges it into one summary. On Macs with 9 GB of memory or less, each summary step uses at most about 4,000 tokens of context; on macOS 26, at most about 3,000.
-- Proofreading joins short recognition fragments into complete sentences and drops filler-only fragments such as "um, uh". Each cleaned sentence is matched back to the original fragments it came from, and its time range covers them, so the change preview always shows exactly what will be applied. Edits that cannot be traced back to the original text are discarded and that text is kept.
+- Proofreading joins short recognition fragments into complete sentences and drops filler-only fragments such as "um, uh". Each cleaned sentence is matched back to the original fragments it came from, and its time range covers them, so the change preview always shows exactly what will be applied. Edits that cannot be traced back to the original text are discarded and that text is kept. In the live change preview, the removed fragments appear directly above the sentence they were merged into.
+- After an AI change is applied, **Undo AI Changes** now sits in the AI Enhancement section of the right sidebar.
+- Apple Intelligence translation progress shows the real number of context windows (parts) it sends to the model, together with how many segments have been translated so far.
 - Prompt editing has moved out of Settings. Use `LocalScribe --cli prompts edit` to open the editor window, `prompts show [--json]` to view saved instructions, and `prompts reset [proofread|summary|all]` to restore defaults. Saved and one-time instructions are now limited to 500 characters each; longer saved instructions are shortened once with a notice.
 
 ## Known limitations

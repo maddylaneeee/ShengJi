@@ -7,6 +7,42 @@ enum TranslationProgress: Sendable, Equatable {
     case preparing
     /// `completed` of `total` translation units have finished.
     case translating(completed: Int, total: Int)
+    /// Apple Intelligence sends several segments per request: `completed`
+    /// of `total` context windows are done, and `translated` of `segments`
+    /// segments have streamed in so far.
+    case translatingWindows(completed: Int, total: Int, translated: Int, segments: Int)
+
+    /// Progress-bar position; Apple Intelligence advances per streamed segment
+    /// so a single large window does not sit at zero.
+    var counts: (completed: Int, total: Int)? {
+        switch self {
+        case .preparing: nil
+        case .translating(let completed, let total): (completed, total)
+        case .translatingWindows(_, _, let translated, let segments): (translated, segments)
+        }
+    }
+
+    func headline(provider: String) -> String {
+        switch self {
+        case .preparing:
+            L10n.text("正在准备翻译环境…")
+        case .translating(let completed, let total):
+            L10n.format("%@正在翻译 %lld/%lld", provider, completed, total)
+        case .translatingWindows(let completed, let total, _, _):
+            L10n.format("%@正在翻译第 %lld/%lld 段", provider, min(completed + 1, total), total)
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .preparing:
+            L10n.text("正在准备翻译环境…")
+        case .translating(let completed, let total):
+            L10n.format("已翻译 %lld/%lld 个片段", completed, total)
+        case .translatingWindows(let completed, let total, let translated, let segments):
+            L10n.format("已翻译 %lld/%lld 个片段 · 完成 %lld/%lld 段（按上下文分段）", translated, segments, completed, total)
+        }
+    }
 }
 
 enum TranslationBatchPolicy {

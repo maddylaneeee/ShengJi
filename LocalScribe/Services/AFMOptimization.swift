@@ -206,8 +206,8 @@ enum AFMProofreadPlan {
     /// Source lines one output sentence may absorb.
     static let maximumJoinedLines = 6
     static let maximumJoinedCharacters = 400
-    /// Output lines one long source line may be split into.
-    static let maximumSplitLines = 3
+    /// Output lines one aligned group may span.
+    static let maximumSplitLines = 6
     /// Share of output words that must come from the matched source.
     static let minimumPrecision = 0.75
     /// Share of the source's non-filler words the output must keep.
@@ -252,10 +252,12 @@ enum AFMProofreadPlan {
                         for sourceEnd in (i + 1)...min(n, i + maximumJoinedLines) {
                             merge(&source, sourceCounts[sourceEnd - 1])
                             characters += editable[sourceEnd - 1].text.count
-                            if characters > maximumJoinedCharacters { break }
-                            // One sentence may absorb several lines, or one line
-                            // may become several sentences, but not both at once.
-                            if outputEnd - k > 1, sourceEnd - i > 1 { break }
+                            // A single long line may always be cleaned on its own.
+                            if characters > maximumJoinedCharacters, sourceEnd - i > 1 { break }
+                            // Several sentences may also cover several fragments when
+                            // the model re-cuts sentence boundaries ("…, my name" /
+                            // "is Dr. Varga" → "…" / "My name is Dr. Varga.").
+                            // Ties keep the finer alignment found first.
                             guard acceptedOverlap(output: output, source: source) != nil,
                                   let shared = acceptedOrder(
                                       output: Array(outputTokens[k..<outputEnd].joined()),

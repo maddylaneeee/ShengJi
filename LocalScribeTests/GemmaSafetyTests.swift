@@ -458,6 +458,26 @@ final class GemmaSafetyTests: XCTestCase {
         )
     }
 
+    func testLiveDiffPlacesJoinedFragmentsAboveTheSentenceTheyFormed() {
+        let original = "Opening\nSamantha, you're the answer when\nwe're stuck with advising events,\nand a little bit of luck.\nNo matter the question,\nbig or small.\nClosing"
+        let proposed = "Opening\nSamantha, you're the answer when we're stuck with advising events and a little bit of luck.\nNo matter the question, big or small.\nClosing"
+        let rows = TranscriptLineDiff.rows(original: original, proposed: proposed)
+        XCTAssertEqual(
+            rows.map { "\($0.kind.id):\($0.number)" },
+            [
+                "same:1",
+                "removed:2", "removed:3", "removed:4", "inserted:2",
+                "removed:5", "removed:6", "inserted:3",
+                "same:4",
+            ]
+        )
+    }
+
+    func testLiveDiffPlacesSplitLineBeforeBothNewLines() {
+        let rows = TranscriptLineDiff.rows(original: "Keep\nWe start now and we finish in May\nEnd", proposed: "Keep\nWe start now.\nWe finish in May.\nEnd")
+        XCTAssertEqual(rows.map { "\($0.kind.id):\($0.number)" }, ["same:1", "removed:2", "inserted:2", "inserted:3", "same:4"])
+    }
+
     func testLiveDiffKeepsUnbalancedReplacementAtItsAnchor() {
         let original = "Old one\nOld two\nOld three\nOld four\nShared"
         let proposed = "New one\nNew two\nNew three\nShared"

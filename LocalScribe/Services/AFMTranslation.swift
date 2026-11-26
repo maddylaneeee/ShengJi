@@ -155,6 +155,10 @@ private final class AFMTranslationRun: @unchecked Sendable {
     let sourceLocale: Locale
     let targetLanguage: TranslationTargetLanguage
     let onProgress: (@Sendable (TranslationProgress) -> Void)?
+    private var windowCount = 0
+    private var finishedWindows = 0
+    private var translatedUnits = 0
+    private var lastProgress: TranslationProgress?
     let onPartialResult: (@Sendable (SegmentTranslation) -> Void)?
 
     let lines: [Line]
@@ -203,7 +207,6 @@ private final class AFMTranslationRun: @unchecked Sendable {
 
     func execute(onNotice: (@Sendable (String) -> Void)?) async -> [SegmentTranslation] {
         onProgress?(.preparing)
-        onProgress?(.translating(completed: 0, total: units.count))
 
         if instructions == nil {
             stopReason = L10n.text("Apple 智能提示词文件缺失")
@@ -214,6 +217,8 @@ private final class AFMTranslationRun: @unchecked Sendable {
         }
 
         let ranges = TokenBudget.windows(costs: lines.map(\.tokens), target: engine.windows.targetSourceTokens)
+        windowCount = ranges.count
+        reportProgress()
         for range in ranges {
             if Task.isCancelled { break }
             let indices = Array(range)
@@ -222,6 +227,7 @@ private final class AFMTranslationRun: @unchecked Sendable {
             } else {
                 await process(indices, allowMissingRetry: true)
             }
+            finishedWindows += 1
             reportProgress()
         }
 
@@ -400,6 +406,13 @@ private final class AFMTranslationRun: @unchecked Sendable {
             }
         }
         let touchedUnits = Set(indices.map { lines[$0].unitIndex }).sorted()
+        let streamedInWindow = touchedUnits.filter { unit in
+            linesByUnit[unit].allSatisfy { results[$0] != nil || streaming[$0] != nil }
+        }.count
+        let finishedBefore = linesByUnit.enumerated().filter { index, unitLines in
+            !touchedUnits.contains(index) && unitLines.allSatisfy { results[$0] != nil }
+        }.count
+        if onProgress != nil { reportProgress(streamed: finishedBefore + streamedInWindow) }
         for unitIndex in touchedUnits {
             let pieces = linesByUnit[unitIndex].compactMap { results[$0]?.text ?? streaming[$0] }
             guard !pieces.isEmpty else { continue }
@@ -423,9 +436,17 @@ private final class AFMTranslationRun: @unchecked Sendable {
         }
     }
 
-    private func reportProgress() {
-        let completed = linesByUnit.filter { $0.allSatisfy { results[$0] != nil } }.count
-        onProgress?(.translating(completed: completed, total: units.count))
+    private func reportProgress(streamed: Int = 0) {
+        let finished = linesByUnit.filter { $0.allSatisfy { results[$0] != nil } }.count
+        translatedUnits = max(translatedUnits, finished, streamed)
+        let progress = TranslationProgress.translatingWindows(
+            completed: finishedWindows, total: windowCount,
+            translated: min(translatedUnits, units.count), segments: units.count
+        )
+        // Snapshots arrive per token; only publish real changes.
+        guard progress != lastProgress else { return }
+        lastProgress = progress
+        onProgress?(progress)
     }
 
     private func assemble() -> [SegmentTranslation] {

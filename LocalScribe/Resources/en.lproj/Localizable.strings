@@ -909,3 +909,10 @@
 "将永久删除以下旧模型：\n%@\n如需再次使用，可重新下载。" = "The following previous models will be permanently removed:\n%@\nYou can download them again if you need them.";
 "选择保留则继续使用原有模型；之后可在“设置 > 模型”中切换。" = "If you keep them, the previous models stay in use. You can switch later in Settings > Models.";
 "该片段的修改与原文对不上，已保留原文" = "This segment's edit no longer matched the original, so the original was kept.";
+"AI 修改已应用到文字稿" = "AI changes were applied to the transcript";
+"恢复 AI 修改前的文字稿、时间轴和译文" = "Restore the transcript, timeline, and translation from before the AI changes";
+"撤销 AI 修改" = "Undo AI Changes";
+"保存" = "Save";
+"AI 总结实时预览" = "Live AI summary preview";
+"%@正在翻译第 %lld/%lld 段" = "%@ is translating part %lld/%lld";
+"已翻译 %lld/%lld 个片段 · 完成 %lld/%lld 段（按上下文分段）" = "Translated %lld/%lld segments · %lld/%lld parts done (grouped by context)";

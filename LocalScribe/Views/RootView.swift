@@ -82,6 +82,15 @@ struct RootView: View {
                 preview.phase = .finished
                 session = preview
             }
+            if let path = ProcessInfo.processInfo.environment["LOCALSCRIBE_PREVIEW_TRANSCRIPT"],
+               let imported = try? TranscriptImporter.load(url: URL(fileURLWithPath: path)) {
+                session = TranscriptionSessionModel(
+                    imported: imported,
+                    continueWithMicrophone: false,
+                    locale: Locale(identifier: "en_US"),
+                    configuration: preferences.configuration
+                )
+            }
 #endif
         }
         .fileImporter(

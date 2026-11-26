@@ -212,13 +212,14 @@ struct TranscriptionView: View {
             }
             Spacer()
             if session.isTranslating {
-                if case .translating(let completed, let total) = session.translationProgress {
-                    ProgressView(value: Double(completed), total: Double(total))
+                if let progress = session.translationProgress, let counts = progress.counts {
+                    ProgressView(value: Double(counts.completed), total: Double(counts.total))
                         .frame(width: 90)
-                    Text("\(activeTranslationProviderTitle)正在翻译 \(completed)/\(total)")
+                    Text(verbatim: progress.headline(provider: activeTranslationProviderTitle))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
+                        .help(progress.detail)
                 } else {
                     ProgressView().controlSize(.small)
                     Text("正在准备翻译环境…")
@@ -252,14 +253,6 @@ struct TranscriptionView: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel(session.activityDetail)
                 }
-            }
-            if session.canUndoAIChange {
-                Button("撤销 AI 修改", systemImage: "arrow.uturn.backward.circle") {
-                    session.undoLastAIChange()
-                    editStatus = L10n.text("已撤销 AI 修改")
-                    gemmaFailures = []
-                }
-                .buttonStyle(.bordered)
             }
             Label(session.elapsed.formattedDuration, systemImage: "clock")
                 .font(.callout.monospacedDigit())
@@ -822,11 +815,11 @@ struct TranscriptionView: View {
                 .foregroundStyle(.orange)
                 .lineLimit(1)
         } else if session.isTranslating {
-            if case .translating(let completed, let total) = session.translationProgress {
+            if let progress = session.translationProgress, let counts = progress.counts {
                 HStack(spacing: 6) {
-                    ProgressView(value: Double(completed), total: Double(total))
+                    ProgressView(value: Double(counts.completed), total: Double(counts.total))
                         .frame(width: 80)
-                    Text("已翻译 \(completed)/\(total) 个片段")
+                    Text(verbatim: progress.detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -1186,10 +1179,10 @@ struct TranscriptionView: View {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
                     } else if session.isTranslating {
-                        if case .translating(let completed, let total) = session.translationProgress {
+                        if let progress = session.translationProgress, let counts = progress.counts {
                             VStack(alignment: .leading, spacing: 4) {
-                                ProgressView(value: Double(completed), total: Double(total))
-                                Text("已翻译 \(completed)/\(total) 个片段")
+                                ProgressView(value: Double(counts.completed), total: Double(counts.total))
+                                Text(verbatim: progress.detail)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .monospacedDigit()
@@ -1214,6 +1207,21 @@ struct TranscriptionView: View {
                 Label(GemmaHardwareSupport.unsupportedReason, systemImage: "memorychip.fill")
                     .font(.caption)
                     .foregroundStyle(.red)
+            }
+            if session.canUndoAIChange, !gemmaIsRunning {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("AI 修改已应用到文字稿", systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("撤销 AI 修改", systemImage: "arrow.uturn.backward.circle") {
+                        session.undoLastAIChange()
+                        editStatus = L10n.text("已撤销 AI 修改")
+                        gemmaFailures = []
+                        gemmaError = nil
+                    }
+                    .buttonStyle(.bordered)
+                    .help("恢复 AI 修改前的文字稿、时间轴和译文")
+                }
             }
             if let gemmaKind {
                 Picker("任务", selection: Binding(
@@ -1446,13 +1454,17 @@ struct TranscriptionView: View {
         gemmaError = nil
         gemmaFailures = []
         gemmaProgress = nil
-        gemmaOriginalText = session.transcriptText
-        gemmaPreviewText = gemmaKind == .summarize ? "" : session.transcriptText
+        let segments = session.aiOptimizationInputSegments
+        // Diff against the lines the AI actually receives, so an edited
+        // transcript that was re-split into sentences does not show
+        // phantom changes in parts the AI has not touched yet.
+        let baselineText = segments.isEmpty ? session.transcriptText : segments.map(\.text).joined(separator: "\n")
+        gemmaOriginalText = baselineText
+        gemmaPreviewText = gemmaKind == .summarize ? "" : baselineText
         let model = gemmaModel
         aiPromptPreferences.reload()
         let useAppleIntelligence = client == nil && engine.usesAppleIntelligence
         let prompt = aiPromptPreferences.instructions(for: gemmaKind, oneTimeInstructions: gemmaPrompt)
-        let segments = session.aiOptimizationInputSegments
         let fallback = session.transcriptText
         aiTaskID = UUID()
         let taskID = aiTaskID

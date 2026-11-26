@@ -451,6 +451,31 @@ final class AppleIntelligenceTests: XCTestCase {
         XCTAssertFalse(generator.calls[1].prompt.contains("GLOSSARY"), "only terms present in the window are injected")
     }
 
+    func testTranslationProgressCountsContextWindowsNotSegments() async {
+        let generator = FakeGenerator { call, _ in self.echo(call) }
+        let filler = String(repeating: "lorem ipsum dolor sit amet ", count: 30)
+        let progress = ProgressCollector()
+        _ = await engine(generator, context: 1_500).translate(
+            units: units([filler, filler, filler, "short one", "short two"]),
+            sourceLocale: Locale(identifier: "en"), targetLanguage: .chineseSimplified,
+            onProgress: { progress.append($0) }
+        )
+        let windows = progress.values.compactMap { value -> (Int, Int, Int)? in
+            if case .translatingWindows(let completed, let total, _, let segments) = value { return (completed, total, segments) }
+            return nil
+        }
+        XCTAssertFalse(progress.values.contains { if case .translating = $0 { return true } else { return false } })
+        let total = try? XCTUnwrap(windows.first?.1)
+        XCTAssertEqual(windows.first?.0, 0)
+        XCTAssertEqual(windows.last?.0, total)
+        XCTAssertLessThan(total ?? 99, 5, "several segments share a window")
+        XCTAssertTrue(windows.allSatisfy { $0.2 == 5 })
+        XCTAssertEqual(progress.values.last?.counts?.completed, 5, "the bar reaches every segment")
+        let bar = progress.values.compactMap { $0.counts?.completed }
+        XCTAssertEqual(bar, bar.sorted(), "progress never moves backwards")
+        XCTAssertEqual(TranslationProgress.translatingWindows(completed: 0, total: 1, translated: 37, segments: 110).counts?.completed, 37)
+    }
+
     func testGuardrailRejectionSplitsWindowAndSubstitutesOnlyTheRejectedSegment() async {
         let generator = FakeGenerator { call, _ in
             let lines = numberedLines(in: call.prompt)
@@ -639,6 +664,16 @@ final class AppleIntelligenceTests: XCTestCase {
         XCTAssertEqual(plan.edits[segments[2].id], .text("Next, we discuss hiring.", through: segments[2].id))
         XCTAssertEqual(plan.matchedLines, 3)
 
+        // Sentence boundaries re-cut across fragments.
+        let fragments = [
+            TranscriptSegment(startTime: 0, endTime: 1, text: "Good morning everyone, my name"),
+            TranscriptSegment(startTime: 1, endTime: 2, text: "is Dr. Elena Varga and"),
+            TranscriptSegment(startTime: 2, endTime: 3, text: "today we will talk"),
+        ]
+        plan = AFMProofreadPlan.make(from: ["Good morning, everyone.", "My name is Dr. Elena Varga.", "Today we will talk."], editable: fragments)
+        XCTAssertEqual(plan.edits[fragments[0].id], .text("Good morning, everyone. My name is Dr. Elena Varga.", through: fragments[1].id))
+        XCTAssertEqual(plan.edits[fragments[2].id], .text("Today we will talk.", through: fragments[2].id))
+
         XCTAssertEqual(AFMProofreadPlan.outputLines("[1] euros. [n]  \n1. Good morning [1] [1] [1]\nLINES:\n- [n]\n[3] half", closedOnly: true),
                        ["euros.", "Good morning"])
         XCTAssertTrue(AFMProofreadPlan.isFillerOnly("Um, uh, you know,"))
@@ -657,6 +692,17 @@ final class AppleIntelligenceTests: XCTestCase {
         XCTAssertEqual(ranges, [0..<3, 3..<6])
         XCTAssertEqual(AFMProofreadPlan.ranges(texts: Array(repeating: "no end", count: 5), target: 10_000, maximumCount: 2),
                        [0..<2, 2..<4, 4..<5])
+    }
+
+    func testProofreadCleansOneVeryLongLineIntoSeveralSentences() {
+        let long = "So um we need to talk about the budget " + String(repeating: "and the staffing plan for the spring term ", count: 12) + "okay."
+        let segment = TranscriptSegment(startTime: 0, endTime: 10, text: long)
+        XCTAssertGreaterThan(long.count, AFMProofreadPlan.maximumJoinedCharacters)
+        let cleaned = long.replacingOccurrences(of: "So um we", with: "We")
+        let sentences = cleaned.components(separatedBy: " and the staffing")
+        let outputs = [sentences[0] + "."] + sentences.dropFirst().map { "And the staffing" + $0 }
+        let plan = AFMProofreadPlan.make(from: Array(outputs.prefix(4)) + [outputs.dropFirst(4).joined(separator: " ")], editable: [segment])
+        XCTAssertEqual(plan.matchedLines, 1)
     }
 
     func testProofreadWindowsAreSmallAndSummaryContextIsCapped() {
@@ -740,6 +786,13 @@ final class AppleIntelligenceTests: XCTestCase {
             XCTAssertLessThanOrEqual(words, 80, id.rawValue)
         }
     }
+}
+
+final class ProgressCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [TranslationProgress] = []
+    func append(_ value: TranslationProgress) { lock.withLock { stored.append(value) } }
+    var values: [TranslationProgress] { lock.withLock { stored } }
 }
 
 final class TextCollector: @unchecked Sendable {

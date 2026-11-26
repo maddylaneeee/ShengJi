@@ -387,11 +387,7 @@ enum TranscriptLineDiff {
                 let inserted = new[insertedStart..<newIndex].enumerated().map { offset, text in
                     Row(number: insertedStart + offset + 1, text: text, kind: .inserted)
                 }
-                let pairCount = max(removed.count, inserted.count)
-                for offset in 0..<pairCount {
-                    if offset < removed.count { result.append(removed[offset]) }
-                    if offset < inserted.count { result.append(inserted[offset]) }
-                }
+                result.append(contentsOf: interleaved(removed: removed, inserted: inserted))
             }
         }
 
@@ -400,5 +396,75 @@ enum TranscriptLineDiff {
 
     private static func lines(in text: String) -> [String] {
         text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    }
+
+    /// Orders one replaced block so each removed line sits just before the
+    /// new line its words went into. When AI joins five fragments into one
+    /// sentence, the five red lines appear above that green line instead of
+    /// being paired one-to-one and pushed to the end of the block.
+    static func interleaved(removed: [Row], inserted: [Row]) -> [Row] {
+        guard !removed.isEmpty, !inserted.isEmpty else { return removed + inserted }
+        guard let anchors = anchors(removed: removed.map(\.text), inserted: inserted.map(\.text)) else {
+            var result: [Row] = []
+            for offset in 0..<max(removed.count, inserted.count) {
+                if offset < removed.count { result.append(removed[offset]) }
+                if offset < inserted.count { result.append(inserted[offset]) }
+            }
+            return result
+        }
+        // Sort key: removed lines before (or, when unmatched, after) the new
+        // line they belong to; stable within equal keys.
+        var keyed: [(key: Int, order: Int, row: Row)] = []
+        for (offset, row) in removed.enumerated() {
+            let anchor = anchors[offset]
+            keyed.append((anchor.index * 3 + (anchor.after ? 2 : 0), offset, row))
+        }
+        for (offset, row) in inserted.enumerated() {
+            keyed.append((offset * 3 + 1, removed.count + offset, row))
+        }
+        return keyed.sorted { ($0.key, $0.order) < ($1.key, $1.order) }.map(\.row)
+    }
+
+    /// For each removed line, the inserted line that received its first
+    /// word in an order-preserving word alignment. Unmatched lines follow
+    /// the previous removed line. Nil when nothing matches or the block is
+    /// too large to align cheaply.
+    static func anchors(removed: [String], inserted: [String]) -> [(index: Int, after: Bool)]? {
+        let left = removed.enumerated().flatMap { line, text in AFMLineAlignment.tokens(text).map { (line, $0) } }
+        let right = inserted.enumerated().flatMap { line, text in AFMLineAlignment.tokens(text).map { (line, $0) } }
+        guard !left.isEmpty, !right.isEmpty, left.count * right.count <= 250_000 else { return nil }
+        var table = Array(repeating: Array(repeating: 0, count: right.count + 1), count: left.count + 1)
+        for a in stride(from: left.count - 1, through: 0, by: -1) {
+            for b in stride(from: right.count - 1, through: 0, by: -1) {
+                table[a][b] = left[a].1 == right[b].1 ? table[a + 1][b + 1] + 1 : max(table[a + 1][b], table[a][b + 1])
+            }
+        }
+        var firstMatch = [Int?](repeating: nil, count: removed.count)
+        var a = 0
+        var b = 0
+        while a < left.count, b < right.count {
+            if left[a].1 == right[b].1 {
+                if firstMatch[left[a].0] == nil { firstMatch[left[a].0] = right[b].0 }
+                a += 1
+                b += 1
+            } else if table[a + 1][b] >= table[a][b + 1] {
+                a += 1
+            } else {
+                b += 1
+            }
+        }
+        guard firstMatch.contains(where: { $0 != nil }) else { return nil }
+        var result: [(index: Int, after: Bool)] = []
+        var last: Int?
+        for match in firstMatch {
+            if let match {
+                let index = max(match, last ?? 0)
+                result.append((index, false))
+                last = index
+            } else {
+                result.append((last ?? 0, last != nil))
+            }
+        }
+        return result
     }
 }
