@@ -48,6 +48,7 @@ enum AIPromptID: String, CaseIterable, Sendable {
     case summaryVerify = "summary-verify"
     case afmTranslate = "afm-translate"
     case afmProofread = "afm-proofread"
+    case afmCorrect = "afm-correct"
     case afmSummarySingle = "afm-summary-single"
     case afmSummaryStep = "afm-summary-step"
     case afmSummaryFinal = "afm-summary-final"

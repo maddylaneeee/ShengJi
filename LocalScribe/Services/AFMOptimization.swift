@@ -71,6 +71,8 @@ private final class AFMProofreadRun: @unchecked Sendable {
     let preview: @Sendable (String) -> Void
     var edits: [UUID: AFMProofreadEdit] = [:]
     var failures: [GemmaSegmentFailure] = []
+    /// Text after the recognition-error pass, by segment.
+    var corrected: [UUID: String] = [:]
 
     init(optimizer: AFMOptimizer, segments: [TranscriptSegment], prompt: String, preview: @escaping @Sendable (String) -> Void) {
         self.optimizer = optimizer
@@ -81,6 +83,7 @@ private final class AFMProofreadRun: @unchecked Sendable {
 
     func execute(progress: @escaping @Sendable (Int, Int) -> Void) async throws -> AIOptimizationResult {
         let instructions = try AFMPrompt.instructions(.afmProofread)
+        let correction = try? AFMPrompt.instructions(.afmCorrect)
         let ranges = AFMProofreadPlan.ranges(
             texts: segments.map(\.text),
             target: optimizer.windows.proofreadSourceTokens,
@@ -88,6 +91,10 @@ private final class AFMProofreadRun: @unchecked Sendable {
         )
         for (index, range) in ranges.enumerated() {
             try Task.checkCancellation()
+            if let correction {
+                try await correctRecognitionErrors(Array(range), instructions: correction)
+                preview(AFMProofreadPlan.text(of: AFMProofreadPlan.applying(edits, to: segments)))
+            }
             try await process(Array(range), instructions: instructions)
             progress(index + 1, ranges.count)
             preview(AFMProofreadPlan.text(of: AFMProofreadPlan.applying(edits, to: segments)))
@@ -101,9 +108,53 @@ private final class AFMProofreadRun: @unchecked Sendable {
         )
     }
 
+    /// First pass, one task per request as Apple recommends: replace
+    /// misheard words line by line. Only in-place replacements are kept;
+    /// any other change leaves the line as it was. Failures are silent
+    /// because the cleanup pass still runs.
+    private func correctRecognitionErrors(_ indices: [Int], instructions: String) async throws {
+        let lines = indices.map { segments[$0] }
+        var sections: [String] = []
+        if let preferences = AFMPrompt.userPreferences(prompt) { sections.append(preferences) }
+        sections.append("LINES:\n" + lines.enumerated().map { "[\($0.offset + 1)] \(AFMPrompt.flattened($0.element.text))" }.joined(separator: "\n"))
+        let requestPrompt = sections.joined(separator: "\n\n")
+        let sourceTokens = lines.reduce(0) { $0 + TokenBudget.estimate($1.text) }
+        let response: String
+        do {
+            let limit = try optimizer.responseLimit(instructions: instructions, prompt: requestPrompt, desired: sourceTokens * 3 / 2 + lines.count * 8 + 32)
+            response = try await AFMRetry.run {
+                try await self.optimizer.generator.generate(
+                    instructions: instructions, prompt: requestPrompt,
+                    options: .greedy(maximumResponseTokens: limit), onSnapshot: { _ in }
+                )
+            }
+        } catch {
+            if error is CancellationError || Task.isCancelled { throw CancellationError() }
+            return
+        }
+        let parsed = AFMNumberedLineParser.parse(response, isFinal: true)
+        for (offset, segment) in lines.enumerated() {
+            guard !parsed.duplicates.contains(offset + 1),
+                  let value = parsed.lines[offset + 1]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty, AFMProofreadPlan.isRecognitionFix(value, of: segment.text),
+                  // Only the swapped words move into the original line; its
+                  // own spacing and punctuation stay for the cleanup pass.
+                  case let swapped = AFMProofreadPlan.restoringSourceWords(segment.text, source: value),
+                  swapped != segment.text,
+                  let fixed = AIOptimizationService.validate([GemmaCorrection(id: segment.id.uuidString, text: swapped)], originals: [segment]).values[segment.id]
+            else { continue }
+            corrected[segment.id] = fixed
+            edits[segment.id] = .text(fixed, through: segment.id)
+        }
+    }
+
     private func process(_ indices: [Int], instructions: String) async throws {
         guard let first = indices.first, let last = indices.last else { return }
-        let editable = indices.map { segments[$0] }
+        let editable = indices.map { index in
+            let segment = segments[index]
+            guard let text = corrected[segment.id] else { return segment }
+            return TranscriptSegment(id: segment.id, startTime: segment.startTime, endTime: segment.endTime, text: text)
+        }
         let done = AFMProofreadPlan.applying(edits, to: Array(segments[..<first]))
         let before = done.suffix(2).map(\.text)
         let after = segments[(last + 1)..<min(segments.count, last + 3)].map(\.text)
@@ -288,8 +339,11 @@ enum AFMProofreadPlan {
             case .match(let sourceEnd, let outputEnd, _):
                 let group = Array(editable[i..<sourceEnd])
                 let head = group[0]
-                let text = joined(Array(outputs[k..<outputEnd]))
                 let source = joined(group.map(\.text))
+                // Word fixes belong to the correction pass; cleanup keeps the
+                // speaker's words and only adds punctuation, joins and cuts.
+                let text = latinPunctuation(tighteningDenseSpaces(
+                    restoringSourceWords(joined(Array(outputs[k..<outputEnd])), source: source), source: source))
                 let combined = TranscriptSegment(id: head.id, startTime: head.startTime, endTime: group.last!.endTime, text: source)
                 let validated = AFMRefusalDetector.isRefusal(text, source: source)
                     ? nil
@@ -327,6 +381,57 @@ enum AFMProofreadPlan {
         return result
     }
 
+    /// Puts back the source's words wherever `text` swapped a few of them
+    /// in place ("你" → "您", "gonna" → "going to"), keeping everything else
+    /// the cleanup did: punctuation, spacing, joins and dropped fillers.
+    static func restoringSourceWords(_ text: String, source: String) -> String {
+        let output = AFMLineAlignment.spans(text)
+        let original = AFMLineAlignment.spans(source)
+        guard !output.isEmpty, !original.isEmpty else { return text }
+        let a = original.map(\.token)
+        let b = output.map(\.token)
+        let repeated = repeatedPositions(in: a)
+        let n = a.count
+        let m = b.count
+        var table = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+        for i in stride(from: n - 1, through: 0, by: -1) {
+            for j in stride(from: m - 1, through: 0, by: -1) {
+                table[i][j] = a[i] == b[j] ? table[i + 1][j + 1] + 1 : max(table[i + 1][j], table[i][j + 1])
+            }
+        }
+        var replacements: [(Range<String.Index>, Substring)] = []
+        var deleted: [Int] = []
+        var inserted: [Int] = []
+        func closeGap() {
+            defer { deleted = []; inserted = [] }
+            let removable = removable(deleted, in: a, repeated: repeated)
+            let content = deleted.filter { !removable.contains($0) }
+            guard let first = content.first, let last = content.last, let from = inserted.first, let to = inserted.last,
+                  content.count <= maximumReplacementTokens, inserted.count <= maximumReplacementTokens else { return }
+            replacements.append((output[from].range.lowerBound..<output[to].range.upperBound,
+                                 source[original[first].range.lowerBound..<original[last].range.upperBound]))
+        }
+        var i = 0
+        var j = 0
+        while i < n || j < m {
+            if i < n, j < m, a[i] == b[j] {
+                closeGap()
+                i += 1
+                j += 1
+            } else if j >= m || (i < n && table[i + 1][j] >= table[i][j + 1]) {
+                deleted.append(i)
+                i += 1
+            } else {
+                inserted.append(j)
+                j += 1
+            }
+        }
+        closeGap()
+        var result = text
+        for (range, words) in replacements.reversed() { result.replaceSubrange(range, with: words) }
+        return result
+    }
+
     /// Words kept in order when `output` is a faithful cleanup of `source`:
     /// almost every output word comes from the source, in the same order,
     /// and most of the source's content words survive.
@@ -338,7 +443,239 @@ enum AFMProofreadPlan {
             let kept = commonSubsequence(output.filter { !fillers.contains($0) }, content)
             guard Double(kept) / Double(content.count) >= minimumRecall else { return nil }
         }
+        guard unfaithfulEdits(output: output, source: source) <= content.count / 15 else { return nil }
         return shared
+    }
+
+    /// True when `fixed` only swaps a few misheard words of `source` in
+    /// place: nothing dropped or added beyond fillers, at most a fifth of
+    /// the words (minimum two) replaced, and every replacement sounds like
+    /// what was recognised. The last check stops the model from "fixing"
+    /// names and facts it does not know ("Kessler" → "Gateway").
+    static func isRecognitionFix(_ fixed: String, of source: String) -> Bool {
+        let output = AFMLineAlignment.tokens(fixed)
+        let original = AFMLineAlignment.tokens(source)
+        guard !output.isEmpty, unfaithfulEdits(output: output, source: original) == 0 else { return false }
+        let replaced = original.count - commonSubsequence(output, original)
+        guard replaced <= max(2, original.count / 5) else { return false }
+        return replacements(output: output, source: original).allSatisfy { soundsAlike($0.0, $0.1) }
+    }
+
+    /// Gaps of an order-preserving alignment where source words were
+    /// swapped for different output words, as (source, output) tokens.
+    static func replacements(output: [String], source: [String]) -> [([String], [String])] {
+        let n = source.count
+        let m = output.count
+        guard n > 0, m > 0 else { return [] }
+        var table = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+        for i in stride(from: n - 1, through: 0, by: -1) {
+            for j in stride(from: m - 1, through: 0, by: -1) {
+                table[i][j] = source[i] == output[j] ? table[i + 1][j + 1] + 1 : max(table[i + 1][j], table[i][j + 1])
+            }
+        }
+        var result: [([String], [String])] = []
+        var deleted: [String] = []
+        var inserted: [String] = []
+        func closeGap() {
+            if !deleted.isEmpty, !inserted.isEmpty { result.append((deleted, inserted)) }
+            deleted = []
+            inserted = []
+        }
+        var i = 0
+        var j = 0
+        while i < n || j < m {
+            if i < n, j < m, source[i] == output[j] {
+                closeGap()
+                i += 1
+                j += 1
+            } else if j >= m || (i < n && table[i + 1][j] >= table[i][j + 1]) {
+                deleted.append(source[i])
+                i += 1
+            } else {
+                inserted.append(output[j])
+                j += 1
+            }
+        }
+        closeGap()
+        return result
+    }
+
+    /// Whether two token runs sound alike: CJK compared by toneless pinyin
+    /// (or kana romaji) with common recogniser confusions folded together,
+    /// other text by spelling distance.
+    static func soundsAlike(_ heard: [String], _ fixed: [String]) -> Bool {
+        let dense = (heard + fixed).contains { $0.unicodeScalars.contains(where: TokenBudget.isDense) }
+        func spoken(_ tokens: [String]) -> String {
+            let latin = tokens.joined().applyingTransform(.toLatin, reverse: false) ?? tokens.joined()
+            let plain = (latin.applyingTransform(.stripDiacritics, reverse: false) ?? latin).lowercased()
+                .filter { $0.isLetter || $0.isNumber }
+            guard dense else { return plain }
+            return plain.replacingOccurrences(of: "zh", with: "z").replacingOccurrences(of: "ch", with: "c")
+                .replacingOccurrences(of: "sh", with: "s").replacingOccurrences(of: "ng", with: "n")
+        }
+        let a = Array(spoken(heard))
+        let b = Array(spoken(fixed))
+        guard !a.isEmpty, !b.isEmpty else { return false }
+        if dense { return a == b }
+        var previous = Array(0...b.count)
+        for x in a {
+            var current = [previous[0] + 1]
+            for (index, y) in b.enumerated() {
+                current.append(min(previous[index] + (x == y ? 0 : 1), previous[index + 1] + 1, current[index] + 1))
+            }
+            previous = current
+        }
+        return previous[b.count] * 5 <= max(a.count, b.count) * 2
+    }
+
+    /// Longest replacement treated as a misrecognised word (in tokens; one
+    /// token per CJK character).
+    static let maximumReplacementTokens = 4
+
+    /// Counts edits that change what was said. Walking an order-preserving
+    /// alignment, every gap between matched words is judged:
+    /// - deleted words are fine only when they are fillers or one copy of
+    ///   an immediately repeated word or phrase ("the the", "we, we");
+    /// - a small replacement of similar length is a recognition fix
+    ///   ("公圆" → "公园", "their" → "there");
+    /// - anything else (dropped content, added words, rewrites) counts.
+    static func unfaithfulEdits(output: [String], source: [String]) -> Int {
+        guard !output.isEmpty, !source.isEmpty else { return output.count + source.count }
+        let repeated = repeatedPositions(in: source)
+        let n = source.count
+        let m = output.count
+        var table = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+        for i in stride(from: n - 1, through: 0, by: -1) {
+            for j in stride(from: m - 1, through: 0, by: -1) {
+                table[i][j] = source[i] == output[j] ? table[i + 1][j + 1] + 1 : max(table[i + 1][j], table[i][j + 1])
+            }
+        }
+        var edits = 0
+        var deleted: [Int] = []
+        var inserted = 0
+        func closeGap() {
+            let content = deleted.count - removableCount(deleted, in: source, repeated: repeated)
+            if inserted == 0 {
+                edits += content
+            } else if content == 0 {
+                edits += inserted
+            } else if content <= maximumReplacementTokens, inserted <= maximumReplacementTokens {
+                edits += abs(inserted - content)
+            } else {
+                edits += max(inserted, content)
+            }
+            deleted = []
+            inserted = 0
+        }
+        var i = 0
+        var j = 0
+        while i < n || j < m {
+            if i < n, j < m, source[i] == output[j] {
+                closeGap()
+                i += 1
+                j += 1
+            } else if j >= m || (i < n && table[i + 1][j] >= table[i][j + 1]) {
+                deleted.append(i)
+                i += 1
+            } else {
+                inserted += 1
+                j += 1
+            }
+        }
+        closeGap()
+        return edits
+    }
+
+    /// Filler sounds and fixed filler phrases a cleanup may delete. Single
+    /// function words ("you", "是", "就") are not in it: dropping them alone
+    /// changes what was said.
+    static let removableFillers: [[String]] = [
+        "um", "umm", "uh", "uhm", "erm", "er", "ah", "hmm", "mm", "mhm",
+        "嗯", "啊", "呃", "额", "哦", "唔", "噢", "哎", "诶", "欸", "えー", "えっと", "あのー",
+    ].map { [$0] } + [
+        ["那", "个"], ["这", "个"], ["就", "是"], ["然", "后"], ["you", "know"], ["i", "mean"],
+        ["like"], ["so"], ["well"], ["okay"], ["ok"], ["oh"], ["yeah"], ["あの"], ["まあ"], ["その"],
+        // A sentence re-cut may drop the joining "and".
+        ["and"],
+    ]
+
+    /// Which of the consecutive `positions` deleted from `tokens` are filler
+    /// sounds, filler phrases or one copy of a repetition.
+    static func removable(_ positions: [Int], in tokens: [String], repeated: [Bool]) -> Set<Int> {
+        var result = Set(positions.filter { repeated[$0] })
+        var index = 0
+        while index < positions.count {
+            let rest = positions[index...].map { tokens[$0] }
+            if let phrase = removableFillers.filter({ rest.starts(with: $0) }).max(by: { $0.count < $1.count }) {
+                result.formUnion(positions[index..<(index + phrase.count)])
+                index += phrase.count
+            } else {
+                index += 1
+            }
+        }
+        return result
+    }
+
+    static func removableCount(_ positions: [Int], in tokens: [String], repeated: [Bool]) -> Int {
+        removable(positions, in: tokens, repeated: repeated).count
+    }
+
+    /// Swaps full-width sentence marks for ASCII ones in text with no CJK
+    /// characters ("…the project。" → "…the project.").
+    static func latinPunctuation(_ text: String) -> String {
+        guard !text.unicodeScalars.contains(where: { TokenBudget.isDense($0) && CharacterSet.alphanumerics.contains($0) }) else { return text }
+        var result = text
+        for (wide, ascii) in [("。", "."), ("，", ","), ("？", "?"), ("！", "!"), ("：", ":"), ("；", ";")] {
+            result = result.replacingOccurrences(of: wide + " ", with: ascii + " ").replacingOccurrences(of: wide, with: ascii + " ")
+        }
+        return result.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Removes spaces the model put between two CJK characters when joining
+    /// fragments ("今天我们 主要讨论" → "今天我们主要讨论"), unless the source
+    /// had a space there.
+    static func tighteningDenseSpaces(_ text: String, source: String) -> String {
+        let scalars = Array(text.unicodeScalars)
+        let sourceScalars = Array(source.unicodeScalars)
+        var kept = Set<String>()
+        for (index, scalar) in sourceScalars.enumerated() where scalar.properties.isWhitespace {
+            var start = index
+            while start > 0, sourceScalars[start - 1].properties.isWhitespace { start -= 1 }
+            var end = index
+            while end + 1 < sourceScalars.count, sourceScalars[end + 1].properties.isWhitespace { end += 1 }
+            if start > 0, end + 1 < sourceScalars.count {
+                kept.insert(String(sourceScalars[start - 1]) + String(sourceScalars[end + 1]))
+            }
+        }
+        var result = String.UnicodeScalarView()
+        var index = 0
+        while index < scalars.count {
+            let scalar = scalars[index]
+            if scalar.properties.isWhitespace, let last = result.last, TokenBudget.isDense(last) {
+                var end = index
+                while end < scalars.count, scalars[end].properties.isWhitespace { end += 1 }
+                if end < scalars.count, TokenBudget.isDense(scalars[end]), !kept.contains(String(last) + String(scalars[end])) {
+                    index = end
+                    continue
+                }
+            }
+            result.append(scalar)
+            index += 1
+        }
+        return String(result)
+    }
+
+    /// Positions inside an immediately repeated word or phrase of up to four
+    /// tokens; either copy may be dropped as a stutter.
+    static func repeatedPositions(in tokens: [String]) -> [Bool] {
+        var result = [Bool](repeating: false, count: tokens.count)
+        for size in 1...4 where tokens.count >= size * 2 {
+            for start in 0...(tokens.count - size * 2)
+            where tokens[start..<(start + size)] == tokens[(start + size)..<(start + size * 2)] {
+                for index in start..<(start + size * 2) { result[index] = true }
+            }
+        }
+        return result
     }
 
     static func commonSubsequence(_ a: [String], _ b: [String]) -> Int {
@@ -482,23 +819,33 @@ enum AFMProofreadPlan {
 enum AFMLineAlignment {
     /// Word tokens, lower-cased; one token per CJK character.
     static func tokens(_ text: String) -> [String] {
-        var result: [String] = []
-        var word = ""
-        func flush() {
-            if !word.isEmpty { result.append(word) }
-            word = ""
+        spans(text).map(\.token)
+    }
+
+    /// Tokens with their ranges in `text`.
+    static func spans(_ text: String) -> [(token: String, range: Range<String.Index>)] {
+        var result: [(token: String, range: Range<String.Index>)] = []
+        let scalars = text.unicodeScalars
+        var start: String.Index?
+        func flush(at end: String.Index) {
+            if let start { result.append((String(text.unicodeScalars[start..<end]).lowercased(), start..<end)) }
+            start = nil
         }
-        for scalar in text.lowercased().unicodeScalars {
+        var index = scalars.startIndex
+        while index < scalars.endIndex {
+            let scalar = scalars[index]
+            let next = scalars.index(after: index)
             if TokenBudget.isDense(scalar) {
-                flush()
-                if CharacterSet.alphanumerics.contains(scalar) { result.append(String(scalar)) }
+                flush(at: index)
+                if CharacterSet.alphanumerics.contains(scalar) { result.append((String(scalar).lowercased(), index..<next)) }
             } else if CharacterSet.alphanumerics.contains(scalar) {
-                word.unicodeScalars.append(scalar)
+                if start == nil { start = index }
             } else {
-                flush()
+                flush(at: index)
             }
+            index = next
         }
-        flush()
+        flush(at: scalars.endIndex)
         return result
     }
 }

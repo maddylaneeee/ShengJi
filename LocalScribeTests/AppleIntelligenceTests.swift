@@ -579,7 +579,9 @@ final class AppleIntelligenceTests: XCTestCase {
             progress: { _, _ in }, preview: { _ in }
         )
         XCTAssertEqual(result.segments.map(\.text), ["So we start now.", "It cost 45 dollars."])
-        XCTAssertEqual(result.failures.map(\.id), [segments[1].id])
+        // The changed number is rejected by the correction pass and put back
+        // by the cleanup pass, so nothing is reported as failed.
+        XCTAssertTrue(result.failures.isEmpty)
         XCTAssertTrue(generator.calls[0].prompt.contains("User preferences (style and terminology only):\nPrefer British spelling"))
     }
 
@@ -643,8 +645,84 @@ final class AppleIntelligenceTests: XCTestCase {
             progress: { _, _ in }, preview: { _ in }
         )
         XCTAssertEqual(result.segments.map(\.text), segments.map(\.text))
-        XCTAssertEqual(generator.calls.count, 3, "the drifting window is split once and retried")
+        let cleanups = generator.calls.filter { !$0.instructions.contains("error corrector") }
+        XCTAssertEqual(cleanups.count, 3, "the drifting window is split once and retried")
         XCTAssertTrue(result.failures.isEmpty)
+    }
+
+    func testProofreadCorrectsMisheardWordsBeforeCleanup() async throws {
+        let segments = [
+            TranscriptSegment(startTime: 0, endTime: 1, text: "明天上午九点在三楼会议适开会"),
+            TranscriptSegment(startTime: 1, endTime: 2, text: "小明小明你给我回来"),
+        ]
+        let generator = FakeGenerator { call, _ in
+            if call.instructions.contains("error corrector") {
+                XCTAssertTrue(call.prompt.contains("User preferences"), "user terms reach the correction pass")
+                // One honest fix, one unfaithful edit that must be ignored.
+                return "[1] 明天上午九点在三楼会议室开会\n[2] 小明小明你回来"
+            }
+            return numberedLines(in: call.prompt).map { $0.1 + "。" }.joined(separator: "\n")
+        }
+        let result = try await AFMOptimizer(generator: generator, windows: TokenBudget.Windows(contextSize: 8_192)).optimize(
+            segments: segments, fallbackText: "", kind: .proofread, prompt: "会议室",
+            progress: { _, _ in }, preview: { _ in }
+        )
+        XCTAssertEqual(result.segments.map(\.text), ["明天上午九点在三楼会议室开会。", "小明小明你给我回来。"])
+        XCTAssertTrue(generator.calls.last!.prompt.contains("会议室"), "cleanup sees the corrected text")
+        XCTAssertEqual(AFMProofreadPlan.restoringSourceWords("王小东，王小东，您给我下来！", source: "王小东王小东你给我下来"),
+                       "王小东，王小东，你给我下来！")
+        XCTAssertEqual(AFMProofreadPlan.restoringSourceWords("So we're going to start, today.", source: "um so we're gonna start today"),
+                       "So we're gonna start, today.")
+        XCTAssertEqual(AFMProofreadPlan.restoringSourceWords("嗯，这个我们先看一下数据。", source: "嗯这个那个我们先看一下数据"),
+                       "嗯，这个我们先看一下数据。", "dropped words are left to validation, not restored")
+        XCTAssertEqual(AFMProofreadPlan.tighteningDenseSpaces("今天我们 主要讨论一下 明年的 预算。", source: "今天我们主要讨论一下明年的 预算"),
+                       "今天我们主要讨论一下明年的 预算。")
+        XCTAssertEqual(AFMProofreadPlan.tighteningDenseSpaces("常备 999 板蓝根 。So we go.", source: ""), "常备 999 板蓝根。So we go.")
+        // Filler phrases may go; single function words may not.
+        XCTAssertEqual(AFMProofreadPlan.unfaithfulEdits(output: AFMLineAlignment.tokens("我们先看一下"),
+                                                        source: AFMLineAlignment.tokens("那个我们先看一下")), 0)
+        XCTAssertEqual(AFMProofreadPlan.unfaithfulEdits(output: AFMLineAlignment.tokens("think it works"),
+                                                        source: AFMLineAlignment.tokens("I think it works")), 1)
+        XCTAssertTrue(AFMProofreadPlan.isRecognitionFix("今天去公园散步", of: "今天去公圆散步"))
+        XCTAssertTrue(AFMProofreadPlan.isRecognitionFix("在三楼会议室开会", of: "在三楼会议适开会"))
+        XCTAssertTrue(AFMProofreadPlan.isRecognitionFix("I put it over there now.", of: "I put it over their now."))
+        // Replacements that do not sound alike are guesses, not fixes.
+        XCTAssertFalse(AFMProofreadPlan.isRecognitionFix("about the Gateway Station project.", of: "about the Kessler Station project."))
+        XCTAssertFalse(AFMProofreadPlan.isRecognitionFix("about 3.2 million dollars.", of: "about 3.2 million euros."))
+        XCTAssertFalse(AFMProofreadPlan.isRecognitionFix("小明您给我回来", of: "小明你给我回来"))
+        XCTAssertFalse(AFMProofreadPlan.isRecognitionFix("邀请您观看", of: "邀您观看"))
+        XCTAssertFalse(AFMProofreadPlan.isRecognitionFix("完全不同的一句话", of: "今天去公圆散步"))
+    }
+
+    func testProofreadKeepsSpokenWordsAndCJKSpacing() async throws {
+        let segments = [
+            TranscriptSegment(startTime: 0, endTime: 1, text: "家里常备 999 板蓝跟冲剂，冬天很贴心。"),
+            TranscriptSegment(startTime: 1, endTime: 2, text: "王小东王小东你给我下来"),
+        ]
+        let generator = FakeGenerator { call, _ in
+            if call.instructions.contains("error corrector") { return "" }
+            return "家里常备 999 板蓝跟冲剂，冬天很贴心。\n王小东 王小东 您给我下来。"
+        }
+        let result = try await AFMOptimizer(generator: generator, windows: TokenBudget.Windows(contextSize: 8_192)).optimize(
+            segments: segments, fallbackText: "", kind: .proofread, prompt: "",
+            progress: { _, _ in }, preview: { _ in }
+        )
+        XCTAssertEqual(result.segments.map(\.text), ["家里常备 999 板蓝跟冲剂，冬天很贴心。", "王小东王小东你给我下来。"])
+        XCTAssertEqual(AFMProofreadPlan.latinPunctuation("We start now。Then，we go！"), "We start now. Then, we go!")
+        XCTAssertEqual(AFMProofreadPlan.latinPunctuation("我们开始。"), "我们开始。")
+    }
+
+    func testCorrectionPassMovesOnlySwappedWordsIntoTheLine() async throws {
+        let segments = [TranscriptSegment(startTime: 0, endTime: 1, text: "王小东王小东你给我下来 去公圆")]
+        let generator = FakeGenerator { call, _ in
+            if call.instructions.contains("error corrector") { return "[1] 王小东 王小东 你给我下来，去公园。" }
+            return numberedLines(in: call.prompt).map { $0.1 }.joined(separator: "\n")
+        }
+        let result = try await AFMOptimizer(generator: generator, windows: TokenBudget.Windows(contextSize: 8_192)).optimize(
+            segments: segments, fallbackText: "", kind: .proofread, prompt: "",
+            progress: { _, _ in }, preview: { _ in }
+        )
+        XCTAssertEqual(result.segments.map(\.text), ["王小东王小东你给我下来 去公园"])
     }
 
     func testProofreadPlanAlignsByContentNotNumbers() {
@@ -684,6 +762,23 @@ final class AppleIntelligenceTests: XCTestCase {
         XCTAssertEqual(AFMLineAlignment.tokens("你好, World!"), ["你", "好", "world"])
         XCTAssertNil(AFMProofreadPlan.acceptedOrder(output: ["next", "we", "discuss", "hiring", "and", "the", "budget"],
                                                     source: ["we", "need", "the", "budget", "next", "we", "discuss", "hiring"]))
+    }
+
+    func testProofreadRejectsDroppedWordsButAcceptsRecognitionFixes() {
+        let tokens = AFMLineAlignment.tokens
+        // Dropping "给我" changes what was said.
+        XCTAssertNil(AFMProofreadPlan.acceptedOrder(output: tokens("王小东，王小东，你下来。"), source: tokens("王小东王小东你给我下来")))
+        XCTAssertNotNil(AFMProofreadPlan.acceptedOrder(output: tokens("王小东，王小东，你给我下来！"), source: tokens("王小东王小东你给我下来")))
+        // A misheard character is replaced in place.
+        XCTAssertNotNil(AFMProofreadPlan.acceptedOrder(
+            output: tokens("家里常备999板蓝根冲剂，冬天很贴心。"),
+            source: tokens("家里常备 999 板蓝跟冲剂，冬天很贴心。")
+        ))
+        // Fillers and stutters may go; added words may not.
+        XCTAssertNotNil(AFMProofreadPlan.acceptedOrder(output: tokens("We will start now."), source: tokens("Um, we, we will start now")))
+        XCTAssertNil(AFMProofreadPlan.acceptedOrder(output: tokens("We will start the meeting now."), source: tokens("we will start now")))
+        XCTAssertEqual(AFMProofreadPlan.unfaithfulEdits(output: tokens("their car"), source: tokens("there car")), 0)
+        XCTAssertEqual(AFMProofreadPlan.repeatedPositions(in: tokens("the the cat")), [true, true, false])
     }
 
     func testProofreadWindowsEndOnSentenceBoundaries() {
@@ -781,9 +876,9 @@ final class AppleIntelligenceTests: XCTestCase {
     }
 
     func testAFMPromptsAreShort() throws {
-        for id in [AIPromptID.afmTranslate, .afmProofread, .afmSummarySingle, .afmSummaryStep, .afmSummaryFinal] {
+        for id in [AIPromptID.afmTranslate, .afmProofread, .afmCorrect, .afmSummarySingle, .afmSummaryStep, .afmSummaryFinal] {
             let words = try AIPromptLoader.load(id).split(whereSeparator: \.isWhitespace).count
-            XCTAssertLessThanOrEqual(words, 80, id.rawValue)
+            XCTAssertLessThanOrEqual(words, 100, id.rawValue)
         }
     }
 }
@@ -904,6 +999,42 @@ final class LiveAppleIntelligenceTests: XCTestCase {
         XCTAssertEqual(result.segments.first?.startTime, 0)
         XCTAssertEqual(result.segments.last?.endTime, segments.last { !AFMProofreadPlan.isFillerOnly($0.text) }?.endTime)
         XCTAssertTrue(zip(result.segments, result.segments.dropFirst()).allSatisfy { $0.endTime <= $1.startTime })
+    }
+
+    /// Prints proofread output for recognition-error and faithfulness cases.
+    /// Set `LOCALSCRIBE_LIVE_PROOFREAD_FILE` to a local text file (one line
+    /// per segment) to try your own lines without committing them, and
+    /// `LOCALSCRIBE_LIVE_PROOFREAD_PROMPT` to add one-time instructions.
+    func testLiveProofreadFixesRecognitionErrorsFaithfully() async throws {
+        let lines: [String]
+        if let path = ProcessInfo.processInfo.environment["LOCALSCRIBE_LIVE_PROOFREAD_FILE"], !path.isEmpty {
+            lines = try String(contentsOfFile: path, encoding: .utf8).components(separatedBy: .newlines).filter { !$0.isEmpty }
+        } else {
+            lines = ["明天上午九点在三楼会议适开会", "小明小明你给我回来", "嗯这个那个我们先看一下数据", "今天天气很好我们去公圆散步吧"]
+        }
+        let segments = lines.enumerated().map { TranscriptSegment(startTime: Double($0.offset), endTime: Double($0.offset + 1), text: $0.element) }
+        let result = try await AFMOptimizer(generator: LoggingGenerator(), windows: .current).optimize(
+            segments: segments, fallbackText: "", kind: .proofread,
+            prompt: ProcessInfo.processInfo.environment["LOCALSCRIBE_LIVE_PROOFREAD_PROMPT"] ?? "",
+            progress: { _, _ in }, preview: { _ in })
+        print("LIVE FAITHFUL failures:", result.failures.count, result.failures.map(\.message))
+        result.segments.forEach { print("LIVE FAITH:", $0.text) }
+        XCTAssertFalse(result.segments.isEmpty)
+    }
+
+    /// Prompt experiments: sends `LOCALSCRIBE_LIVE_INSTRUCTIONS_FILE` with
+    /// `LOCALSCRIBE_LIVE_PROMPT_FILE` and prints the raw answer.
+    func testLiveRawPromptExperiment() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let instructionsPath = environment["LOCALSCRIBE_LIVE_INSTRUCTIONS_FILE"], !instructionsPath.isEmpty,
+              let promptPath = environment["LOCALSCRIBE_LIVE_PROMPT_FILE"], !promptPath.isEmpty else {
+            throw XCTSkip("set LOCALSCRIBE_LIVE_INSTRUCTIONS_FILE and LOCALSCRIBE_LIVE_PROMPT_FILE")
+        }
+        let response = try await SystemAppleIntelligenceGenerator().generate(
+            instructions: try String(contentsOfFile: instructionsPath, encoding: .utf8),
+            prompt: try String(contentsOfFile: promptPath, encoding: .utf8),
+            options: .greedy(maximumResponseTokens: 600), onSnapshot: { _ in })
+        print("LIVE RAW>>>\n\(response)\n<<<")
     }
 
     func testLiveProofreadCompressesChineseFragments() async throws {

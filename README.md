@@ -82,7 +82,7 @@ Whisper uses the bundled Silero VAD to skip silence in long media and filters si
 
 After transcribing or importing a transcript, open **AI Enhancement** in the right inspector.
 
-- **Proofread / Refine** removes filler, repetition, and obvious recognition errors, shown as a live diff. Segments that fail validation keep their original text.
+- **Proofread / Refine** removes filler, repetition, and obvious recognition errors, shown as a live diff. Segments that fail validation keep their original text. With Apple Intelligence, misheard words are corrected in a separate pass before cleanup, and the cleanup keeps every other word as spoken; add names, brands, and terms to the instructions box to help the model correct them.
 - **Summarize** replaces the preview with a summary and keeps an undo snapshot.
 - Add one-time instructions (up to 500 characters) for names, terminology, style, length, focus, or format. Saved instructions are edited with `--cli prompts edit`. Always review AI output.
 

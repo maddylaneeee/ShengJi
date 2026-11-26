@@ -473,6 +473,19 @@ final class GemmaSafetyTests: XCTestCase {
         )
     }
 
+    func testLiveDiffFollowsTheNewestChange() {
+        let rows = TranscriptLineDiff.rows(original: "One\nTwo\nThree\nFour", proposed: "One!\nTwo\nThree?\nFour")
+        XCTAssertEqual(TranscriptLineDiff.latestChangeID(in: rows), rows.first { $0.text == "Three?" }?.id)
+        XCTAssertNil(TranscriptLineDiff.latestChangeID(in: TranscriptLineDiff.rows(original: "A", proposed: "A")))
+    }
+
+    func testSearchMatchesAreCaseAndDiacriticInsensitive() {
+        let matches = TranscriptTextEditing.matches(of: "cafe", in: "Café or CAFE, not caf.")
+        XCTAssertEqual(matches, [NSRange(location: 0, length: 4), NSRange(location: 8, length: 4)])
+        XCTAssertTrue(TranscriptTextEditing.matches(of: "", in: "anything").isEmpty)
+        XCTAssertEqual(TranscriptTextEditing.matches(of: "a", in: String(repeating: "a", count: 20), limit: 5).count, 5)
+    }
+
     func testLiveDiffPlacesSplitLineBeforeBothNewLines() {
         let rows = TranscriptLineDiff.rows(original: "Keep\nWe start now and we finish in May\nEnd", proposed: "Keep\nWe start now.\nWe finish in May.\nEnd")
         XCTAssertEqual(rows.map { "\($0.kind.id):\($0.number)" }, ["same:1", "removed:2", "inserted:2", "inserted:3", "same:4"])

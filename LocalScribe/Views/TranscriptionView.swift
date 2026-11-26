@@ -281,7 +281,7 @@ struct TranscriptionView: View {
             } else if session.canEdit {
                 HStack(spacing: 0) {
                     Spacer(minLength: 20)
-                    TranscriptEditingTextView(text: $session.transcriptText, selection: $editorSelection, isEditable: !session.speechAudio.isGenerating)
+                    TranscriptEditingTextView(text: $session.transcriptText, selection: $editorSelection, isEditable: !session.speechAudio.isGenerating, highlight: searchText)
                         .onChange(of: session.transcriptText) { _, _ in session.noteDirectEdit() }
                         .frame(maxWidth: 900)
                     Spacer(minLength: 20)
@@ -1209,19 +1209,14 @@ struct TranscriptionView: View {
                     .foregroundStyle(.red)
             }
             if session.canUndoAIChange, !gemmaIsRunning {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("AI 修改已应用到文字稿", systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Button("撤销 AI 修改", systemImage: "arrow.uturn.backward.circle") {
-                        session.undoLastAIChange()
-                        editStatus = L10n.text("已撤销 AI 修改")
-                        gemmaFailures = []
-                        gemmaError = nil
-                    }
-                    .buttonStyle(.bordered)
-                    .help("恢复 AI 修改前的文字稿、时间轴和译文")
+                Button("撤销 AI 修改", systemImage: "arrow.uturn.backward.circle") {
+                    session.undoLastAIChange()
+                    editStatus = L10n.text("已撤销 AI 修改")
+                    gemmaFailures = []
+                    gemmaError = nil
                 }
+                .buttonStyle(.bordered)
+                .help("恢复 AI 修改前的文字稿、时间轴和译文")
             }
             if let gemmaKind {
                 Picker("任务", selection: Binding(
@@ -1317,9 +1312,6 @@ struct TranscriptionView: View {
                     .buttonStyle(.borderless)
                 }
             } else {
-                Text("转录完成后，可使用所选 AI 服务进行纠错、润色或总结。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 HStack {
                     Button("纠错与润色") { chooseGemma(.proofread) }
                         .disabled(!aiEntryAvailable)
@@ -1517,10 +1509,9 @@ struct TranscriptionView: View {
                 if result.summary == nil, result.text == fallback, !result.failures.isEmpty {
                     gemmaError = result.failures.first?.message
                 } else if session.applyAIOptimization(result) {
-                    let status = gemmaKind == .summarize
-                        ? L10n.text("AI 总结已替换文字预览，可一键撤销")
-                        : L10n.text("AI 优化已更新文字预览，可一键撤销")
-                    editStatus = [status, result.notice].compactMap { $0 }.joined(separator: " · ")
+                    // The sidebar's Undo AI Changes button replaces the old
+                    // status line; only real notices are still shown.
+                    editStatus = result.notice
                     self.gemmaKind = nil
                 } else {
                     gemmaError = L10n.text("AI 没有返回可应用的文字，已保留原文。")

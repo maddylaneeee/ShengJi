@@ -5,6 +5,9 @@ struct TranscriptEditingTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var selection: NSRange
     var isEditable = true
+    /// Search text whose matches are highlighted; the selected match is
+    /// emphasised.
+    var highlight = ""
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -49,17 +52,50 @@ struct TranscriptEditingTextView: NSViewRepresentable {
             textView.string = text
         }
         let safe = TranscriptTextEditing.validRange(selection, in: text) ?? NSRange(location: 0, length: 0)
-        if textView.selectedRange() != safe {
+        let selectionChanged = textView.selectedRange() != safe
+        if selectionChanged {
             textView.setSelectedRange(safe)
             textView.scrollRangeToVisible(safe)
         }
+        context.coordinator.updateHighlights(in: textView, query: highlight, current: safe, revealCurrent: selectionChanged)
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: TranscriptEditingTextView
 
+        private var highlightedQuery = ""
+        private var highlightedText = ""
+        private var highlightedCurrent = NSRange(location: NSNotFound, length: 0)
+
         init(parent: TranscriptEditingTextView) {
             self.parent = parent
+        }
+
+        /// Paints search matches with temporary attributes (never saved into
+        /// the transcript) and emphasises the selected match.
+        func updateHighlights(in textView: NSTextView, query: String, current: NSRange, revealCurrent: Bool) {
+            guard let layoutManager = textView.layoutManager else { return }
+            let text = textView.string
+            let isCurrentMatch = current.length > 0 && !query.isEmpty
+                && (text as NSString).substring(with: current).compare(query, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+            let currentMatch = isCurrentMatch ? current : NSRange(location: NSNotFound, length: 0)
+            guard query != highlightedQuery || text != highlightedText || currentMatch != highlightedCurrent else { return }
+            highlightedQuery = query
+            highlightedText = text
+            highlightedCurrent = currentMatch
+            let full = NSRange(location: 0, length: (text as NSString).length)
+            layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: full)
+            for match in TranscriptTextEditing.matches(of: query, in: text) {
+                layoutManager.addTemporaryAttribute(
+                    .backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.35), forCharacterRange: match
+                )
+            }
+            if isCurrentMatch {
+                layoutManager.addTemporaryAttribute(
+                    .backgroundColor, value: NSColor.systemOrange.withAlphaComponent(0.75), forCharacterRange: current
+                )
+                if revealCurrent { textView.showFindIndicator(for: current) }
+            }
         }
 
         func textDidChange(_ notification: Notification) {
@@ -276,43 +312,86 @@ struct AIChangePreviewView: View {
     let original: String
     let proposed: String
 
+    /// Follows the newest model edit, like the live transcription view,
+    /// until the reader scrolls away.
+    @State private var followsLatest = true
+    @State private var isProgrammaticScroll = false
+    @State private var lastScrollAt = Date.distantPast
+
     var body: some View {
         let rows = TranscriptLineDiff.rows(original: original, proposed: proposed)
+        let frontier = TranscriptLineDiff.latestChangeID(in: rows)
         let numberWidth = TranscriptLineNumberFormatting.columnWidth(
             maximumLineNumber: rows.map(\.number).max() ?? 1,
             fontSize: 13
         )
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(rows) { row in
-                    HStack(alignment: .top, spacing: 14) {
-                        Rectangle()
-                            .fill(row.kind.color.opacity(row.kind == .unchanged ? 0 : 0.85))
-                            .frame(width: 4)
-                        Text(verbatim: TranscriptLineNumberFormatting.label(row.number))
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundStyle(row.kind.color)
-                            .lineLimit(1)
-                            .frame(width: numberWidth, alignment: .trailing)
-                        Text(row.text.isEmpty ? " " : row.text)
-                            .font(.system(size: 19))
-                            .lineSpacing(8)
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+        ScrollViewReader { proxy in
+            ZStack(alignment: .bottomTrailing) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(rows) { row in
+                            HStack(alignment: .top, spacing: 14) {
+                                Rectangle()
+                                    .fill(row.kind.color.opacity(row.kind == .unchanged ? 0 : 0.85))
+                                    .frame(width: 4)
+                                Text(verbatim: TranscriptLineNumberFormatting.label(row.number))
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .foregroundStyle(row.kind.color)
+                                    .lineLimit(1)
+                                    .frame(width: numberWidth, alignment: .trailing)
+                                Text(row.text.isEmpty ? " " : row.text)
+                                    .font(.system(size: 19))
+                                    .lineSpacing(8)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(.vertical, 7)
+                            .padding(.trailing, 20)
+                            .background(row.kind.color.opacity(row.kind == .unchanged ? 0 : 0.14))
+                            .id(row.id)
+                        }
                     }
-                    .padding(.vertical, 7)
-                    .padding(.trailing, 20)
-                    .background(row.kind.color.opacity(row.kind == .unchanged ? 0 : 0.14))
+                    .frame(maxWidth: 940, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
+                }
+                .onScrollPhaseChange { _, phase in
+                    if phase == .interacting, !isProgrammaticScroll { followsLatest = false }
+                }
+                .onChange(of: frontier) { _, target in
+                    guard followsLatest, let target, Date().timeIntervalSince(lastScrollAt) >= 0.15 else { return }
+                    lastScrollAt = Date()
+                    scroll(proxy, to: target, animated: true)
+                }
+
+                if !followsLatest, let frontier {
+                    Button {
+                        followsLatest = true
+                        scroll(proxy, to: frontier, animated: true)
+                    } label: {
+                        Label("回到最新内容", systemImage: "arrow.down.to.line")
+                    }
+                    .primaryActionStyle()
+                    .padding(18)
                 }
             }
-            .frame(maxWidth: 940, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, 20)
         }
         .accessibilityLabel("AI 修改实时对比")
     }
 
+    private func scroll(_ proxy: ScrollViewProxy, to id: String, animated: Bool) {
+        isProgrammaticScroll = true
+        if animated {
+            withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(id, anchor: .center) }
+        } else {
+            proxy.scrollTo(id, anchor: .center)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(240))
+            isProgrammaticScroll = false
+        }
+    }
 }
 
 enum TranscriptLineDiff {
@@ -342,6 +421,11 @@ enum TranscriptLineDiff {
             case .inserted: .green
             }
         }
+    }
+
+    /// The newest model edit: the last row that is not unchanged.
+    static func latestChangeID(in rows: [Row]) -> String? {
+        rows.last { $0.kind != .unchanged }?.id
     }
 
     static func rows(original: String, proposed: String) -> [Row] {
