@@ -52,6 +52,8 @@ Review the generated `LocalScribe.xcodeproj` diff before committing. Documentati
 
 After release validation, pushing a tag matching `CFBundleShortVersionString` in `LocalScribe/Resources/Info.plist` (for example, `v1.9.0`) publishes a GitHub Release through `.github/workflows/release-unsigned.yml`. Verify the matching DMG, ZIP, checksums, and `update.json` assets before announcing the release.
 
+Keep the current version's `RELEASE_NOTES_<version>.md` at the repository root for packaging. When preparing the next release, move the previous file into the [release notes archive](Documentation/ReleaseNotes/README.md), fix its relative links, and update the archive index.
+
 ## Pull requests
 
 - Keep each pull request focused on one problem.

@@ -14,7 +14,7 @@ The full macOS Xcode test suite passed, including five new subtitle and JSON reg
 - Disable Gemma by default on Macs with 8 GB or less. Enable it in Settings after confirming the memory-pressure warning. E4B remains an optional model.
 - Block local NLLB model downloads and execution below approximately 4 GB of memory, allowing a 128 MiB capacity tolerance. Apple Translation remains available.
 - Add a contrasting title bar for light and dark appearances.
-- Add [first-launch installation instructions](INSTALL.md) for macOS 26 and 27, with a [Simplified Chinese edition](INSTALL.zh-CN.md).
+- Add [first-launch installation instructions](../../INSTALL.md) for macOS 26 and 27, with a [Simplified Chinese edition](../../INSTALL.zh-CN.md).
 
 ### Build 38 validation
 
